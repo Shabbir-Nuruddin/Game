@@ -1,29 +1,29 @@
-# Morning Words
+# WordBloom 🌱
 
-A calm, **senior-friendly** daily word game, built in Unity (C#).
+A cozy, **level-based word game** — Word Cookies / Wordscapes style. Spell words
+from a wheel of letters to fill the board, beat the level, earn coins, and grow.
+Built in Unity (C#).
 
-## Why this game?
+## The idea
 
-Mainstream word games (Wordle, etc.) are made for younger players: small text,
-time pressure, and cold design. Older adults love word and puzzle games and play
-them every day — but nobody builds *for them*. Morning Words is designed around
-their needs:
+Word games are one of the most-played, longest-retained mobile genres — and the
+audience skews toward players the big studios under-serve (older and casual
+players who want something *warm and relaxing*, not loud and stressful).
+WordBloom aims for that feel: cozy art direction, big readable letters, no
+timers, gentle encouragement — while still having the **progression and journey**
+(levels, coins, hints, streaks) that keep people coming back daily.
 
-- **Large, high-contrast text** — readable without straining
-- **No timers, no penalties** — a relaxing daily ritual, not a test
-- **Big, well-spaced buttons** — easy for less-steady hands
-- **Warm, encouraging tone** — never makes you feel slow or dumb
-
-The goal is *enjoyment and a daily habit* (with a gentle mental workout as a
-bonus). We make **no medical or "boosts your brain" claims** — those are unproven
-and, for some apps, have led to fines.
+We sell **enjoyment and a daily habit** — not "brain training." We make no
+medical or cognitive claims.
 
 ## Status
 
-🚧 Early prototype — a playable Wordle-style daily puzzle that builds its whole
-UI from code.
+🚧 **Playable prototype.** Real systems are in: home screen, a Word-Cookies-style
+letter wheel, animated answer tiles, bonus words, coins, hints, a level-complete
+celebration, saved progress, and 10 hand-made levels. Still to come: real art &
+sound, a level-map journey, daily streaks, and a share-with-family card.
 
 ## Getting started
 
-See **[SETUP.md](SETUP.md)** for step-by-step instructions to install Unity and
-run the game.
+See **[SETUP.md](SETUP.md)** — install Unity, open this folder, attach one script,
+press Play.

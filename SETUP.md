@@ -1,7 +1,9 @@
-# Morning Words — Setup Guide
+# WordBloom — Setup Guide
 
-A calm, senior-friendly daily word game. This guide gets the prototype running
-on your machine. Take it one step at a time — you can't break anything.
+A cozy, level-based word game (Word Cookies / Wordscapes style): spell words from
+a wheel of letters to fill the board, beat the level, and grow your streak. This
+guide gets it running on your machine. Take it one step at a time — you can't
+break anything.
 
 ---
 
@@ -42,11 +44,12 @@ The game builds its whole screen from code, so there is only **one** thing to se
 2. In the **Hierarchy** window (left), right-click → **Create Empty**.
    Rename it to `Game`.
 3. With `Game` selected, in the **Inspector** (right) click **Add Component**,
-   type **GameBootstrap**, and select it.
+   type **Game**, and select the **Game** script.
 4. Press the big **▶ Play** button at the top.
 
-You should see **Morning Words** with a grid of big tiles and an on-screen
-keyboard. Click letters, then **ENTER** to guess.
+You should see the **WordBloom** home screen with a **PLAY** button. Tap it to
+start Level 1: tap letters on the wheel to spell a word, then **ENTER**. Found
+words fill the board; finish them all to clear the level.
 
 > Tip: in the Game view, set the aspect ratio dropdown to a **portrait phone**
 > ratio (e.g. 9:16) so it looks like a phone.
@@ -65,17 +68,28 @@ keyboard. Click letters, then **ENTER** to guess.
 
 | File | What it does |
 |------|--------------|
-| `Assets/Scripts/WordGame.cs` | The pure game rules (guessing, scoring). No Unity code — easy to test. |
-| `Assets/Scripts/WordList.cs` | The starter word bank + "word of the day" logic. |
-| `Assets/Scripts/GameBootstrap.cs` | Builds the whole senior-friendly screen from code. |
+| `Assets/Scripts/Brand.cs` | The game's identity: name, colours, fonts, UI + animation helpers. |
+| `Assets/Scripts/Levels.cs` | Hand-authored levels (wheel letters + words to find). |
+| `Assets/Scripts/WordPuzzle.cs` | Pure level logic (found words, bonus, hints). No Unity code. |
+| `Assets/Scripts/Game.cs` | Builds the Home + gameplay screens, wheel input, animations, coins, save. |
 | `Packages/manifest.json` | Tells Unity which built-in packages we use. |
 | `.gitignore` | Keeps Unity's auto-generated junk out of git. |
 
+## What works right now
+
+- Home screen with animated title + **PLAY**
+- Word-Cookies-style gameplay: tap the letter wheel, **ENTER** to submit
+- Answer tiles that pop in when you find a word; wrong words shake
+- **Bonus words** earn coins; **Hint** spends coins to reveal a letter
+- **Level-complete** celebration with stars, then **NEXT**
+- Progress + coins **saved** between sessions (10 hand-made levels to start)
+
 ## Ideas we'll add next (in rough order)
 
-- A nicer font (TextMeshPro) and softer tile animations
-- Keyboard keys that change colour as you learn letters
-- A "you've played X days in a row" streak (the daily-ritual hook)
-- A friendly results screen you can share with family (the social hook)
-- Settings: even-bigger text, read-aloud clue (accessibility)
-- A real, larger word list loaded from a file
+- Real art + sound (juice) via asset packs — the biggest "feel" upgrade
+- TextMeshPro for crisper text and nicer fonts
+- A **level map / journey** screen instead of a plain level number
+- A **daily streak** + daily puzzle (the habit hook)
+- A friendly **share-with-family** results card (the social/growth hook)
+- Auto-generated levels from a big dictionary (hundreds of levels)
+- Settings: even-bigger text, read-aloud (accessibility)
