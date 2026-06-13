@@ -1,0 +1,31 @@
+# Unity-generated folders (rebuilt locally, never committed)
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+[Mm]emoryCaptures/
+
+# Visual Studio / Rider / VS Code
+.vs/
+.idea/
+.vscode/
+*.csproj
+*.sln
+*.user
+*.userprefs
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Unity crash/asset import junk
+*.pidb
+*.booproj
+*.svd
+sysinfo.txt
+*.apk
+*.aab
+*.unitypackage
