@@ -85,6 +85,22 @@ namespace TrustIssues
             return go;
         }
 
+        /// <summary>A GameObject showing a sprite scaled to a target world size.</summary>
+        public static GameObject SpriteBox(string name, Transform parent, Vector3 pos,
+            Vector2 worldSize, Sprite sp, int order)
+        {
+            var go = new GameObject(name);
+            if (parent != null) go.transform.SetParent(parent, false);
+            go.transform.position = pos;
+            var sr = go.AddComponent<SpriteRenderer>();
+            sr.sprite = sp; sr.sortingOrder = order;
+            var b = sp.bounds.size;
+            go.transform.localScale = new Vector3(
+                b.x > 0.0001f ? worldSize.x / b.x : 1f,
+                b.y > 0.0001f ? worldSize.y / b.y : 1f, 1f);
+            return go;
+        }
+
         public static BoxCollider2D AddSolid(GameObject go)
         {
             var c = go.AddComponent<BoxCollider2D>();

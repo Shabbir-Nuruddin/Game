@@ -167,6 +167,33 @@ namespace TrustIssues
             }
         }
 
+        // A spray of red bits flung from the death spot (parented to GameRoot so
+        // it survives the level rebuild on respawn). Bloody-candy payoff.
+        void GoreBurst(Vector3 pos)
+        {
+            for (int i = 0; i < 14; i++)
+            {
+                var g = Theme.Box("Gore", transform, pos, new Vector2(0.18f, 0.18f), Theme.Danger, 8);
+                StartCoroutine(GoreBit(g.transform,
+                    new Vector2(Random.Range(-5f, 5f), Random.Range(3f, 8f))));
+            }
+        }
+
+        IEnumerator GoreBit(Transform t, Vector2 vel)
+        {
+            var sr = t.GetComponent<SpriteRenderer>();
+            float life = 0.6f, e = 0f;
+            while (e < life && t != null)
+            {
+                e += Time.deltaTime;
+                vel.y -= 20f * Time.deltaTime;
+                t.position += (Vector3)(vel * Time.deltaTime);
+                if (sr != null) { var c = sr.color; c.a = 1f - e / life; sr.color = c; }
+                yield return null;
+            }
+            if (t != null) Destroy(t.gameObject);
+        }
+
         void FlashRed()
         {
             var go = new GameObject("Flash", typeof(RectTransform));
@@ -300,14 +327,20 @@ namespace TrustIssues
                 }
                 case TrapType.Spring:
                 {
-                    var go = Theme.Box("Spring", _levelRoot, t.pos, t.size, Theme.Coin, 3);
+                    var sp = Assets.Sprite("trampoline");
+                    GameObject go = sp != null
+                        ? Theme.SpriteBox("Spring", _levelRoot, t.pos, new Vector2(t.size.x, 0.7f), sp, 3)
+                        : Theme.Box("Spring", _levelRoot, t.pos, t.size, Theme.Coin, 3);
                     Theme.AddTrigger(go, Vector2.one);
                     go.AddComponent<Trap>().Init(TrapType.Spring);
                     break;
                 }
                 case TrapType.Saw:
                 {
-                    var go = Theme.Box("Saw", _levelRoot, t.pos, t.size, Theme.Danger, 3);
+                    var sp = Assets.Sprite("saw");
+                    GameObject go = sp != null
+                        ? Theme.SpriteBox("Saw", _levelRoot, t.pos, new Vector2(1.1f, 1.1f), sp, 3)
+                        : Theme.Box("Saw", _levelRoot, t.pos, t.size, Theme.Danger, 3);
                     Theme.AddTrigger(go, Vector2.one);
                     var kz = go.AddComponent<KillZone>(); kz.msg = "Sliced.";
                     go.AddComponent<Trap>().Init(TrapType.Saw);
@@ -448,7 +481,7 @@ namespace TrustIssues
         IEnumerator DieRoutine(string msg)
         {
             if (_toast != null) _toast.text = msg;
-            if (_player != null) _player.Freeze();
+            if (_player != null) { GoreBurst(_player.transform.position); _player.Freeze(); }
             StartCoroutine(Juice.Shake(_cam.transform, 0.55f, 0.3f));
             if (_playerVisual != null) yield return Juice.Squish(_playerVisual);
             yield return new WaitForSecondsRealtime(0.2f);

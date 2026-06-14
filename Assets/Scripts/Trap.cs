@@ -148,13 +148,16 @@ namespace TrustIssues
         // An off-screen block slams down on the spot you're standing.
         IEnumerator DropFaller()
         {
-            var blk = Theme.Box("Faller", transform.parent, transform.position + Vector3.up * 6f,
-                new Vector2(1.4f, 1.4f), Theme.Trick, 4);
+            var sp = Assets.Sprite("rockhead");
+            var spawn = transform.position + Vector3.up * 5f;
+            GameObject blk = sp != null
+                ? Theme.SpriteBox("Faller", transform.parent, spawn, new Vector2(1.5f, 1.5f), sp, 4)
+                : Theme.Box("Faller", transform.parent, spawn, new Vector2(1.4f, 1.4f), Theme.Trick, 4);
             var kz = blk.AddComponent<KillZone>(); kz.msg = "From above!";
             var col = blk.AddComponent<BoxCollider2D>(); col.isTrigger = true;
             Vector3 from = blk.transform.position, to = transform.position;
             float t = 0f;
-            while (t < 0.16f && blk != null)
+            while (t < 0.12f && blk != null)
             {
                 t += Time.deltaTime;
                 blk.transform.position = Vector3.Lerp(from, to, t / 0.16f);
@@ -177,9 +180,11 @@ namespace TrustIssues
         IEnumerator RaiseSpike(Collider2D player)
         {
             _armed = false;
-            var go = Theme.Box("Spikes", transform.parent,
-                transform.position + Vector3.down * 0.9f,
-                new Vector2(0.7f, 0.9f), Theme.Danger, 3);
+            var sp = Assets.Sprite("spike");
+            var pos = transform.position + Vector3.down * 0.9f;
+            GameObject go = sp != null
+                ? Theme.SpriteBox("Spikes", transform.parent, pos, new Vector2(1f, 1f), sp, 3)
+                : Theme.Box("Spikes", transform.parent, pos, new Vector2(0.7f, 0.9f), Theme.Danger, 3);
             var kz = go.AddComponent<KillZone>();
             kz.msg = "The spikes said hi.";
             var col = go.AddComponent<BoxCollider2D>();
@@ -200,8 +205,11 @@ namespace TrustIssues
         IEnumerator Crush()
         {
             _armed = false;
-            var go = Theme.Box("Crusher", transform.parent, transform.position + Vector3.up * 3.2f,
-                new Vector2(transform.localScale.x, 1.4f), Theme.Trick, 4);
+            var sp = Assets.Sprite("rockhead");
+            var top = transform.position + Vector3.up * 3.2f;
+            GameObject go = sp != null
+                ? Theme.SpriteBox("Crusher", transform.parent, top, new Vector2(1.6f, 1.6f), sp, 4)
+                : Theme.Box("Crusher", transform.parent, top, new Vector2(transform.localScale.x, 1.4f), Theme.Trick, 4);
             float e = 0f; Vector3 from = go.transform.position;
             Vector3 to = new Vector3(transform.position.x, transform.position.y, 0f);
             while (e < 0.12f)

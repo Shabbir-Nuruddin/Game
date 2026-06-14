@@ -44,6 +44,9 @@ namespace TrustIssues
             _music = go.AddComponent<AudioSource>();
             _music.loop = true;
             _sfx.playOnAwake = _music.playOnAwake = false;
+            // Force 2D so clips are always audible regardless of position/listener.
+            _sfx.spatialBlend = _music.spatialBlend = 0f;
+            _sfx.volume = _music.volume = 1f;
         }
 
         public static void Play(string name, float volume = 1f)
