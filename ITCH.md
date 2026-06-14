@@ -55,19 +55,29 @@ rage, troll, platformer, difficult, pixel-art, funny, unfair, 2d, hard, meme
 
 ---
 
-## 2. Build the game (WebGL)
+## 2. Build the game (Unity 6 → Web)
+
+> In Unity 6 the platform is called **"Web"** (it used to be "WebGL"). Same thing.
 
 1. **Save your scene** (the build needs at least one): `File → Save As…` →
    `Assets/Scenes/Main.unity`. (The game auto-boots, so an empty scene is fine.)
-2. `File → Build Settings` (Unity 6: **Build Profiles**).
-3. Select **WebGL** → **Switch Platform**. *(Missing? Unity Hub → Installs → your
-   version → Add Modules → WebGL Build Support, then come back.)*
-4. **Add Open Scenes** so `Main` is in the scene list.
-5. ⚠️ **Critical for itch:** `Edit → Project Settings → Player → Publishing
-   Settings → Compression Format = Disabled`. (Otherwise itch often shows a
-   black screen / load error.)
-6. Click **Build**, choose an empty folder like `Builds/Web`, and wait.
-   You'll get an `index.html`, plus `Build/` and `TemplateData/` folders.
+2. Open **`File → Build Profiles`** (Unity 6) — or `File → Build Settings` on
+   older versions.
+3. Select **Web** → **Switch Platform**. *(Missing? Unity Hub → Installs → your
+   version → ⚙ → Add Modules → **WebGL Build Support** → install, then reopen.)*
+4. **Add Open Scenes** (or drag `Main` into the Scene List) so it's checked.
+5. ⚠️ **The #1 black-screen fix —** `Edit → Project Settings → Player → Web tab →
+   Publishing Settings → Compression Format = Disabled`. (With compression on,
+   Unity makes `*.js.gz` files itch's server won't run, so you get a black
+   screen.) Set it to **Disabled** before building.
+6. *(Recommended)* In the same **Player → Web** settings, under **Resolution and
+   Presentation**, you can leave the default template. Our game already scales to
+   any size via the Canvas Scaler, so you don't need a custom template.
+7. *(If it won't load later — see troubleshooting)* Under **Player → Web →
+   Other Settings**, if you see **"Enable Native C/C++ Multithreading"**, leave
+   it **OFF** — on requires special server headers itch needs a toggle for.
+8. Click **Build**, choose an **empty** folder like `Builds/Web`, and wait.
+   You'll get **`index.html`**, plus **`Build/`** and **`TemplateData/`** folders.
 
 ## 3. Put it on itch.io
 
@@ -75,16 +85,34 @@ rage, troll, platformer, difficult, pixel-art, funny, unfair, 2d, hard, meme
    (or Dashboard → **Create new project**).
 2. Fill in **Title**, **tagline**, **description**, **tags** from section 1.
 3. **Kind of project: HTML**.
-4. **Zip** the *contents* of `Builds/Web` so that `index.html` is at the TOP
-   level of the zip (not inside an extra folder).
+4. **Zip correctly (most common mistake):** open the `Builds/Web` folder, select
+   **`index.html` + `Build` + `TemplateData`**, and zip *those*. The `index.html`
+   MUST be at the **root of the zip** — NOT inside a `Web/` folder. (If itch says
+   *"index.html not found"*, you zipped the folder instead of its contents.)
 5. **Upload** the zip → tick **"This file will be played in the browser."**
 6. **Embed options:** set a fixed size like **1280 × 720**, tick
-   **"Fullscreen button"** and **"Enable scrollbars"** off.
-7. Add a **cover image** (a screenshot of the game) + 2–3 screenshots.
+   **"Fullscreen button"** on. Leave **"SharedArrayBuffer support"** OFF unless
+   the game won't load (then try turning it on).
+7. Add a **cover image** (a screenshot) + 2–3 screenshots.
 8. Set visibility, **Save & view page**, then **Publish**.
 9. Share the link. 🎉
 
 ---
+
+## 3.5 Troubleshooting (if the page loads but the game doesn't)
+
+- **Black screen / stuck loading bar** → 90% of the time it's compression. Re-build
+  with **Player → Web → Publishing Settings → Compression Format = Disabled**.
+- **"index.html not found" on upload** → you zipped the *folder*. Re-zip the
+  *contents* so `index.html` is at the top of the zip.
+- **Loads forever / fails near the end** → in Build Profiles tick **Development
+  Build**, rebuild, upload that; then open the browser **Console (F12)** to read
+  the actual error.
+- **Game is tiny / has a border** → set the itch **Embed size to 1280 × 720** and
+  tick the fullscreen button.
+- **"SharedArrayBuffer" error in console** → turn OFF "Enable Native C/C++
+  Multithreading" in Player settings and rebuild, OR tick **SharedArrayBuffer
+  support** in the itch embed options.
 
 ## 4. ❗ Does it auto-update when I change the code?
 
