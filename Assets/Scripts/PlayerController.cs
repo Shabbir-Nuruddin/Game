@@ -20,6 +20,10 @@ namespace TrustIssues
         public float coyoteTime = 0.10f;
         public float jumpBuffer = 0.10f;
 
+        // Optional sprite animation (set by GameRoot if art is present).
+        public SpriteRenderer bodyRenderer;
+        public Sprite idleSprite, walkSprite, jumpSprite;
+
         Rigidbody2D _rb;
         BoxCollider2D _col;
         Transform _visual;       // child we squash/stretch (so physics box is stable)
@@ -27,6 +31,7 @@ namespace TrustIssues
         bool _grounded;
         float _inputX;
         bool _frozen;
+        float _baseX = 1f, _baseY = 1f, _facing = 1f, _animTimer;
 
         void Awake()
         {
@@ -37,6 +42,8 @@ namespace TrustIssues
             _rb.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
             _rb.interpolation = RigidbodyInterpolation2D.Interpolate;
             _visual = transform.childCount > 0 ? transform.GetChild(0) : transform;
+            _baseX = Mathf.Abs(_visual.localScale.x);
+            _baseY = _visual.localScale.y;
         }
 
         public void Freeze() { _frozen = true; _rb.linearVelocity = Vector2.zero; _rb.simulated = false; }
@@ -58,15 +65,28 @@ namespace TrustIssues
             _buffer -= Time.deltaTime;
             _coyote -= Time.deltaTime;
 
-            // Face the way we move + squash/stretch from vertical speed.
-            if (Mathf.Abs(_inputX) > 0.01f)
-                _visual.localScale = new Vector3(Mathf.Sign(_inputX) * Mathf.Abs(_visual.localScale.x),
-                    _visual.localScale.y, 1f);
+            // Face the way we move + squash/stretch from vertical speed. The
+            // squash is relative to the visual's BASE scale, so it works whether
+            // the body is a 1-unit box or a sprite scaled up to character size.
+            if (_inputX > 0.01f) _facing = 1f;
+            else if (_inputX < -0.01f) _facing = -1f;
             float vy = _rb.linearVelocity.y;
             float stretch = Mathf.Clamp(vy * 0.02f, -0.18f, 0.25f);
-            float sx = Mathf.Sign(_visual.localScale.x);
-            _visual.localScale = Vector3.Lerp(_visual.localScale,
-                new Vector3(sx * (1f - stretch), 1f + stretch, 1f), 12f * Time.deltaTime);
+            var target = new Vector3(_facing * _baseX * (1f - stretch), _baseY * (1f + stretch), 1f);
+            _visual.localScale = Vector3.Lerp(_visual.localScale, target, 14f * Time.deltaTime);
+
+            // Sprite frames: jump pose in the air, alternate idle/walk on ground.
+            if (bodyRenderer != null && idleSprite != null)
+            {
+                if (!_grounded && jumpSprite != null) bodyRenderer.sprite = jumpSprite;
+                else if (Mathf.Abs(_inputX) > 0.01f)
+                {
+                    _animTimer += Time.deltaTime;
+                    bodyRenderer.sprite = (Mathf.FloorToInt(_animTimer * 10f) % 2 == 0)
+                        ? idleSprite : (walkSprite != null ? walkSprite : idleSprite);
+                }
+                else bodyRenderer.sprite = idleSprite;
+            }
         }
 
         void FixedUpdate()
@@ -90,6 +110,7 @@ namespace TrustIssues
             {
                 v.y = jumpSpeed;
                 _buffer = 0f; _coyote = 0f;
+                Audio.Play("jump", 0.5f);
             }
 
             _rb.linearVelocity = v;

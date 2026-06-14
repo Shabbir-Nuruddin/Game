@@ -129,6 +129,7 @@ namespace TrustIssues
 
         void StartGame(int levelIndex)
         {
+            Audio.Play("click");
             if (_menuPanel != null) Destroy(_menuPanel);
             _levelIndex = levelIndex;
             _deaths = 0;
@@ -232,16 +233,45 @@ namespace TrustIssues
             var col = go.AddComponent<BoxCollider2D>();
             col.size = new Vector2(0.7f, 0.9f);
 
-            var vis = Theme.Box("Body", go.transform, _level.Spawn, new Vector2(0.8f, 0.9f),
-                Theme.Player, 5);
-            vis.transform.localPosition = Vector3.zero;
-            Theme.Box("EyeL", vis.transform, Vector2.zero, new Vector2(0.16f, 0.22f), Theme.Ink, 6)
-                .transform.localPosition = new Vector3(-0.16f, 0.12f, 0);
-            Theme.Box("EyeR", vis.transform, Vector2.zero, new Vector2(0.16f, 0.22f), Theme.Ink, 6)
-                .transform.localPosition = new Vector3(0.18f, 0.12f, 0);
+            // Use the pink character sprite if present; otherwise fall back to a
+            // pink box with eyes (so the game still runs without art).
+            SpriteRenderer bodySr = null;
+            Transform vis;
+            var idle = Assets.Sprite("beanie_idle");
+            if (idle != null)
+            {
+                var b = new GameObject("Body");
+                b.transform.SetParent(go.transform, false);
+                b.transform.localPosition = Vector3.zero;
+                bodySr = b.AddComponent<SpriteRenderer>();
+                bodySr.sprite = idle;
+                bodySr.sortingOrder = 5;
+                float h = idle.bounds.size.y;
+                float s = h > 0.0001f ? 1.15f / h : 1f; // scale sprite to ~1.15 units tall
+                b.transform.localScale = new Vector3(s, s, 1f);
+                vis = b.transform;
+            }
+            else
+            {
+                var b = Theme.Box("Body", go.transform, _level.Spawn, new Vector2(0.8f, 0.9f),
+                    Theme.Player, 5);
+                b.transform.localPosition = Vector3.zero;
+                Theme.Box("EyeL", b.transform, Vector2.zero, new Vector2(0.16f, 0.22f), Theme.Ink, 6)
+                    .transform.localPosition = new Vector3(-0.16f, 0.12f, 0);
+                Theme.Box("EyeR", b.transform, Vector2.zero, new Vector2(0.16f, 0.22f), Theme.Ink, 6)
+                    .transform.localPosition = new Vector3(0.18f, 0.12f, 0);
+                vis = b.transform;
+            }
 
             _player = go.AddComponent<PlayerController>();
-            _playerVisual = vis.transform;
+            _playerVisual = vis;
+            if (bodySr != null)
+            {
+                _player.bodyRenderer = bodySr;
+                _player.idleSprite = idle;
+                _player.walkSprite = Assets.Sprite("beanie_walk");
+                _player.jumpSprite = Assets.Sprite("beanie_walk");
+            }
         }
 
         // ==================== camera & loop ====================
@@ -280,6 +310,7 @@ namespace TrustIssues
             if (_state != State.Play || _dying) return;
             _dying = true;
             _deaths++;
+            Audio.Play("death", 0.6f);
             if (_hud != null) _hud.text = "DEATHS  " + _deaths;
             StartCoroutine(DieRoutine(msg ?? Juice.DeathLine()));
         }
@@ -306,11 +337,13 @@ namespace TrustIssues
             {
                 _levelIndex++;
                 PlayerPrefs.SetInt("ti_level", _levelIndex); PlayerPrefs.Save();
+                Audio.Play("levelup", 0.7f);
                 StartCoroutine(NextLevelFlash());
             }
             else
             {
                 _state = State.Win;
+                Audio.Play("win", 0.7f);
                 StartCoroutine(WinRoutine());
             }
         }

@@ -19,6 +19,7 @@ namespace TrustIssues
             if (Time.time < _cooldownUntil) return;
             _cooldownUntil = Time.time + 0.45f;
             other.transform.position = target + Vector3.up * 0.25f;
+            Audio.Play("portal", 0.6f);
         }
     }
 }
