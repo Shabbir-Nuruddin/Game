@@ -103,28 +103,88 @@ namespace TrustIssues
             _hud.gameObject.SetActive(false);
             _cam.transform.position = new Vector3(-1.5f, CamY, -10f);
 
-            _menuPanel = Overlay(new Color(0, 0, 0, 0.35f), out var root);
+            // Soft plum wash over the gradient (keeps the candy mood).
+            _menuPanel = Overlay(new Color(Theme.Sky.r, Theme.Sky.g, Theme.Sky.b, 0.5f), out var root);
 
-            var title = Theme.Label(root, Theme.Title, 150, Theme.Trick,
+            // Floating candy decorations.
+            MenuCandy(root, "candy_cherry", new Vector2(-720, 300), 130, -15);
+            MenuCandy(root, "candy_lolly",  new Vector2(720, 330), 150, 18);
+            MenuCandy(root, "candy_cane",   new Vector2(-770, -250), 160, -12);
+            MenuCandy(root, "candy_red",    new Vector2(740, -280), 120, 14);
+            MenuCandy(root, "coin",         new Vector2(-560, 60), 90, 0);
+            MenuCandy(root, "portal",       new Vector2(580, 30), 110, 10);
+
+            // Title with a lavender drop-shadow, in candy pink.
+            Theme.Label(root, Theme.Title, 150, Theme.Trick,
+                new Vector2(0.5f, 0.5f), new Vector2(8, 222), new Vector2(1600, 200));
+            var title = Theme.Label(root, Theme.Title, 150, Theme.Player,
                 new Vector2(0.5f, 0.5f), new Vector2(0, 230), new Vector2(1600, 200));
             StartCoroutine(Pulse(title.transform));
-            Theme.Label(root, "adorable. brutal. you will die a lot.", 44,
-                new Color(1, 1, 1, 0.7f), new Vector2(0.5f, 0.5f),
+
+            Theme.Label(root, "a cute little nightmare \U0001F36C", 46,
+                new Color(1f, 0.86f, 0.92f, 0.9f), new Vector2(0.5f, 0.5f),
                 new Vector2(0, 110), new Vector2(1400, 70));
 
-            Theme.Button(root, "NEW GAME", Theme.Exit, Theme.Ink, 56,
-                new Vector2(0.5f, 0.5f), new Vector2(0, -30), new Vector2(460, 130),
+            Theme.Button(root, "NEW GAME", Theme.Player, Theme.Ink, 56,
+                new Vector2(0.5f, 0.5f), new Vector2(0, -30), new Vector2(480, 130),
                 () => StartGame(0));
 
             int saved = PlayerPrefs.GetInt("ti_level", 0);
             if (saved > 0)
-                Theme.Button(root, $"CONTINUE  (Lvl {saved + 1})", Theme.Trick, Theme.Ink, 48,
-                    new Vector2(0.5f, 0.5f), new Vector2(0, -190), new Vector2(560, 120),
+                Theme.Button(root, $"CONTINUE  •  Level {saved + 1}", Theme.Trick, Theme.Ink, 46,
+                    new Vector2(0.5f, 0.5f), new Vector2(0, -200), new Vector2(580, 120),
                     () => StartGame(saved));
 
-            Theme.Label(root, "Move: A/D or  ←  →      Jump: Space / W      Pause: Esc",
-                30, new Color(1, 1, 1, 0.45f), new Vector2(0.5f, 0f),
-                new Vector2(0, 50), new Vector2(1400, 50));
+            Theme.Label(root, "don't trust the floor.", 32,
+                new Color(1, 1, 1, 0.4f), new Vector2(0.5f, 0f),
+                new Vector2(0, 60), new Vector2(1400, 50));
+        }
+
+        void MenuCandy(Transform root, string sprite, Vector2 pos, float size, float rot)
+        {
+            var sp = Assets.Sprite(sprite);
+            if (sp == null) return;
+            var go = new GameObject("Candy", typeof(RectTransform));
+            go.transform.SetParent(root, false);
+            var img = go.AddComponent<Image>();
+            img.sprite = sp; img.preserveAspect = true;
+            img.color = new Color(1, 1, 1, 0.9f);
+            var rt = img.rectTransform;
+            rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
+            rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.anchoredPosition = pos; rt.sizeDelta = new Vector2(size, size);
+            rt.localRotation = Quaternion.Euler(0, 0, rot);
+            StartCoroutine(Bob(rt, Random.Range(0f, 6f)));
+        }
+
+        IEnumerator Bob(RectTransform rt, float phase)
+        {
+            Vector2 home = rt.anchoredPosition;
+            while (rt != null)
+            {
+                rt.anchoredPosition = home + new Vector2(0, Mathf.Sin(Time.unscaledTime * 1.5f + phase) * 12f);
+                yield return null;
+            }
+        }
+
+        void ShowHint(string msg)
+        {
+            var t = Theme.Label(Theme.Canvas.transform, msg, 34, new Color(1, 1, 1, 0.7f),
+                new Vector2(0.5f, 0f), new Vector2(0, 80), new Vector2(1400, 60));
+            StartCoroutine(FadeOutLabel(t, 2.5f));
+        }
+
+        IEnumerator FadeOutLabel(Text t, float delay)
+        {
+            yield return new WaitForSecondsRealtime(delay);
+            float e = 0f; Color c = t.color;
+            while (e < 1f && t != null)
+            {
+                e += Time.unscaledDeltaTime;
+                var cc = c; cc.a = Mathf.Lerp(c.a, 0f, e); t.color = cc;
+                yield return null;
+            }
+            if (t != null) Destroy(t.gameObject);
         }
 
         void StartGame(int levelIndex)
@@ -137,6 +197,7 @@ namespace TrustIssues
             _hud.gameObject.SetActive(true);
             _state = State.Play;
             BuildLevel();
+            if (levelIndex == 0) ShowHint("A / D  or  ← →  to move    •    SPACE to jump");
         }
 
         // ==================== LEVEL ====================

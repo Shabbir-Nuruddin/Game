@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.EventSystems;
 
 namespace TrustIssues
 {
@@ -113,6 +114,15 @@ namespace TrustIssues
                     s.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
                     s.referenceResolution = new Vector2(1920, 1080);
                     go.AddComponent<GraphicRaycaster>();
+
+                    // Without an EventSystem, UI buttons receive NO clicks. We
+                    // build everything from code, so we must create one ourselves.
+                    if (Object.FindFirstObjectByType<EventSystem>() == null)
+                    {
+                        var es = new GameObject("EventSystem");
+                        es.AddComponent<EventSystem>();
+                        es.AddComponent<StandaloneInputModule>();
+                    }
                 }
                 return _canvas;
             }
