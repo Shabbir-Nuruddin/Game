@@ -233,12 +233,7 @@ namespace TrustIssues
             _levelRoot = new GameObject("Level").transform;
 
             foreach (var p in _level.Platforms)
-            {
-                var go = Theme.Box("Platform", _levelRoot, p.pos, p.size, Theme.Platform, 1);
-                Theme.AddSolid(go);
-                Theme.Box("Edge", _levelRoot, p.pos + new Vector2(0, p.size.y / 2f - 0.05f),
-                    new Vector2(p.size.x, 0.1f), Theme.PlatEdge, 2);
-            }
+                BuildPlatform(p);
             foreach (var d in _level.Decos)
                 Theme.Box("Deco", _levelRoot, d.pos, d.size, d.color, 2);
             foreach (var t in _level.Traps)
@@ -248,6 +243,32 @@ namespace TrustIssues
 
             SpawnPlayer();
             SnapCamera();
+        }
+
+        // A platform: candy tile (tiled) if the sprite is present, else a cream box.
+        void BuildPlatform(Rect2 p)
+        {
+            var sp = Assets.Sprite("platform");
+            if (sp != null)
+            {
+                var go = new GameObject("Platform");
+                go.transform.SetParent(_levelRoot, false);
+                go.transform.position = p.pos;
+                var sr = go.AddComponent<SpriteRenderer>();
+                sr.sprite = sp;
+                sr.drawMode = SpriteDrawMode.Tiled;
+                sr.size = p.size;
+                sr.sortingOrder = 1;
+                var col = go.AddComponent<BoxCollider2D>();
+                col.size = p.size;
+            }
+            else
+            {
+                var go = Theme.Box("Platform", _levelRoot, p.pos, p.size, Theme.Platform, 1);
+                Theme.AddSolid(go);
+                Theme.Box("Edge", _levelRoot, p.pos + new Vector2(0, p.size.y / 2f - 0.05f),
+                    new Vector2(p.size.x, 0.1f), Theme.PlatEdge, 2);
+            }
         }
 
         void BuildTrap(TrapSpec t)
