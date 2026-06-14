@@ -9,7 +9,8 @@ namespace TrustIssues
         LateSpike,  // spikes rise up the instant you arrive
         Crusher,    // a block slams down if you go for the high bait
         FakeExit,   // the obvious bright door kills you
-        RealExit    // the unassuming spot that actually wins
+        RealExit,   // the unassuming spot that actually wins
+        Surprise    // INVISIBLE kill zone on safe-looking ground — pure unfair
     }
 
     /// <summary>
@@ -89,6 +90,9 @@ namespace TrustIssues
                 case TrapType.RealExit:
                     _armed = false;
                     GameRoot.I?.ReachExit();
+                    break;
+                case TrapType.Surprise:
+                    GameRoot.I?.Die("You did everything right. You still died.");
                     break;
             }
         }

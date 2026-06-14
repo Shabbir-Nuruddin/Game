@@ -167,6 +167,30 @@ namespace TrustIssues
             }
         }
 
+        void FlashRed()
+        {
+            var go = new GameObject("Flash", typeof(RectTransform));
+            go.transform.SetParent(Theme.Canvas.transform, false);
+            var img = go.AddComponent<Image>();
+            img.color = new Color(1f, 0.2f, 0.3f, 0.45f);
+            var rt = go.GetComponent<RectTransform>();
+            rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
+            rt.offsetMin = rt.offsetMax = Vector2.zero;
+            StartCoroutine(FadeFlash(img));
+        }
+
+        IEnumerator FadeFlash(Image img)
+        {
+            float e = 0f; Color c = img.color;
+            while (e < 0.3f && img != null)
+            {
+                e += Time.unscaledDeltaTime;
+                var cc = c; cc.a = Mathf.Lerp(c.a, 0f, e / 0.3f); img.color = cc;
+                yield return null;
+            }
+            if (img != null) Destroy(img.gameObject);
+        }
+
         void ShowHint(string msg)
         {
             var t = Theme.Label(Theme.Canvas.transform, msg, 34, new Color(1, 1, 1, 0.7f),
@@ -371,7 +395,8 @@ namespace TrustIssues
             if (_state != State.Play || _dying) return;
             _dying = true;
             _deaths++;
-            Audio.Play("death", 0.6f);
+            Audio.Play("death", 0.9f);
+            FlashRed();
             if (_hud != null) _hud.text = "DEATHS  " + _deaths;
             StartCoroutine(DieRoutine(msg ?? Juice.DeathLine()));
         }
@@ -380,7 +405,7 @@ namespace TrustIssues
         {
             if (_toast != null) _toast.text = msg;
             if (_player != null) _player.Freeze();
-            StartCoroutine(Juice.Shake(_cam.transform));
+            StartCoroutine(Juice.Shake(_cam.transform, 0.55f, 0.3f));
             if (_playerVisual != null) yield return Juice.Squish(_playerVisual);
             yield return new WaitForSecondsRealtime(0.2f);
             if (_toast != null) _toast.text = "";
