@@ -17,7 +17,8 @@ namespace TrustIssues
         Saw,        // a hazard that slides back and forth
         WarpBack,   // yanks you all the way back to the start — rage
         Reverse,    // flips your controls for a few seconds
-        SpikeStatic // an always-visible spike you must jump over
+        SpikeStatic,// an always-visible spike you must jump over
+        ArrowRain   // spikes drop from the ceiling on a timer — time your run
     }
 
     /// <summary>
@@ -60,6 +61,39 @@ namespace TrustIssues
                 _faller = go.transform;
                 _fallerHome = _faller.position;
             }
+
+            if (type == TrapType.ArrowRain)
+                StartCoroutine(Rain());
+        }
+
+        // Spikes fall from the ceiling at this column on a loop — time your dash.
+        IEnumerator Rain()
+        {
+            yield return new WaitForSeconds(Random.Range(0f, 1f)); // desync multiple columns
+            while (true)
+            {
+                var sp = Assets.Sprite("spike");
+                var spawn = transform.position + Vector3.up * 5.5f;
+                var go = sp != null
+                    ? Theme.SpriteBox("RainDart", transform, spawn, new Vector2(0.5f, 0.8f), sp, 4)
+                    : Theme.Box("RainDart", transform, spawn, new Vector2(0.3f, 0.7f), Theme.Danger, 4);
+                var col = go.AddComponent<BoxCollider2D>(); col.isTrigger = true;
+                var kz = go.AddComponent<KillZone>(); kz.msg = "Look up next time.";
+                StartCoroutine(FallDart(go.transform));
+                yield return new WaitForSeconds(1.3f);
+            }
+        }
+
+        IEnumerator FallDart(Transform t)
+        {
+            float v = 4f, floor = transform.position.y - 1f;
+            while (t != null && t.position.y > floor)
+            {
+                v += 22f * Time.deltaTime;
+                t.position += Vector3.down * (v * Time.deltaTime);
+                yield return null;
+            }
+            if (t != null) Destroy(t.gameObject);
         }
 
         void Update()

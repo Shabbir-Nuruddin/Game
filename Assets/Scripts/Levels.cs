@@ -48,6 +48,7 @@ namespace TrustIssues
 
         void T(TrapType t, float x, float y, float w, float h) => L.Traps.Add(new TrapSpec(t, x, y, w, h));
         public void Spike(float x) => T(TrapType.SpikeStatic, x, -2.4f, 0.7f, 0.7f);
+        public void ArrowRain(float x) => T(TrapType.ArrowRain, x, -3f, 0.5f, 0.5f);
         public void LateSpike(float x) => T(TrapType.LateSpike, x, -2.4f, 1.0f, 1.2f);
         public void Dart(float x) => T(TrapType.Dart, x, -2.3f, 1.0f, 1.2f);
         public void Faller(float x) => T(TrapType.Faller, x, -2.3f, 1.2f, 1.2f);
@@ -73,7 +74,7 @@ namespace TrustIssues
 
     public static class Levels
     {
-        public static int Count => 15;
+        public static int Count => 20;
 
         public static Level Get(int index)
         {
@@ -83,7 +84,9 @@ namespace TrustIssues
                 case 3: return L4(); case 4: return L5(); case 5: return L6();
                 case 6: return L7(); case 7: return L8(); case 8: return L9();
                 case 9: return L10(); case 10: return L11(); case 11: return L12();
-                case 12: return L13(); case 13: return L14(); default: return L15();
+                case 12: return L13(); case 13: return L14(); case 14: return L15();
+                case 15: return L16(); case 16: return L17(); case 17: return L18();
+                case 18: return L19(); default: return L20();
             }
         }
 
@@ -294,6 +297,74 @@ namespace TrustIssues
             float p3 = b.Plat(4f); b.Faller(p3 - 1f); b.Saw(p3 + 1f);
             b.FakeFloor(2f);
             float p4 = b.Plat(4f); b.Surprise(p4 - 1f); b.LateSpike(p4 + 1f);
+            return b.Finish();
+        }
+
+        // 16 — ceiling arrows (the new feature).
+        static Level L16()
+        {
+            var b = new B();
+            b.Plat(3.5f);
+            b.Gap(2.5f);
+            float p2 = b.Plat(4f); b.ArrowRain(p2 - 1f); b.ArrowRain(p2 + 1f);
+            b.Gap(2.5f);
+            float p3 = b.Plat(3.5f); b.Spike(p3);
+            b.Gap(2.5f);
+            float p4 = b.Plat(3.5f); b.Crusher(p4);
+            return b.Finish();
+        }
+
+        // 17 — rain + darts.
+        static Level L17()
+        {
+            var b = new B();
+            b.Plat(3.5f);
+            b.Gap(2.5f);
+            float p2 = b.Plat(4f); b.Dart(p2); b.ArrowRain(p2 + 1.5f);
+            b.Gap(2.5f);
+            float p3 = b.Plat(4f); b.Faller(p3);
+            b.Gap(2.5f);
+            float p4 = b.Plat(3.5f); b.Spike(p4);
+            return b.Finish();
+        }
+
+        // 18 — the rain corridor.
+        static Level L18()
+        {
+            var b = new B();
+            b.Plat(3.5f);
+            b.Gap(2.5f);
+            float p2 = b.Plat(5f); b.ArrowRain(p2 - 1.5f); b.ArrowRain(p2); b.ArrowRain(p2 + 1.5f);
+            b.Gap(2.5f);
+            float p3 = b.Plat(3.5f); b.LateSpike(p3);
+            return b.Finish();
+        }
+
+        // 19 — reverse, rain, saw, invisible.
+        static Level L19()
+        {
+            var b = new B();
+            float p1 = b.Plat(4f); b.Reverse(p1 + 1f);
+            b.Gap(2.5f);
+            float p2 = b.Plat(4f); b.ArrowRain(p2 - 1f); b.Dart(p2 + 1f);
+            b.Gap(2.5f);
+            float p3 = b.Plat(4f); b.Saw(p3);
+            b.FakeFloor(2f);
+            float p4 = b.Plat(3.5f); b.Surprise(p4);
+            return b.Finish();
+        }
+
+        // 20 — the grand finale.
+        static Level L20()
+        {
+            var b = new B();
+            b.Plat(3.5f);
+            b.Gap(2.8f);
+            float p2 = b.Plat(5f); b.Dart(p2 - 1.5f); b.ArrowRain(p2); b.Spike(p2 + 1.5f);
+            b.Gap(2.8f);
+            float p3 = b.Plat(5f); b.Faller(p3 - 1.5f); b.Saw(p3 + 1.5f);
+            b.FakeFloor(2f);
+            float p4 = b.Plat(4f); b.Surprise(p4 - 1f); b.WarpBack(p4 + 1f);
             return b.Finish();
         }
     }

@@ -142,19 +142,57 @@ namespace TrustIssues
                 new Color(1f, 0.86f, 0.92f, 0.9f), new Vector2(0.5f, 0.5f),
                 new Vector2(0, 110), new Vector2(1400, 70));
 
-            Theme.Button(root, "NEW GAME", Theme.Player, Theme.Ink, 56,
-                new Vector2(0.5f, 0.5f), new Vector2(0, -30), new Vector2(480, 130),
+            Theme.Button(root, "NEW GAME", Theme.Player, Theme.Ink, 54,
+                new Vector2(0.5f, 0.5f), new Vector2(0, 20), new Vector2(480, 120),
                 () => StartGame(0));
+
+            Theme.Button(root, $"LEVELS ({Levels.Count})", Theme.Trick, Theme.Ink, 48,
+                new Vector2(0.5f, 0.5f), new Vector2(0, -120), new Vector2(480, 110),
+                ShowLevelSelect);
 
             int saved = PlayerPrefs.GetInt("ti_level", 0);
             if (saved > 0)
-                Theme.Button(root, $"CONTINUE  •  Level {saved + 1}", Theme.Trick, Theme.Ink, 46,
-                    new Vector2(0.5f, 0.5f), new Vector2(0, -200), new Vector2(580, 120),
+                Theme.Button(root, $"CONTINUE • Lvl {saved + 1}", new Color(1, 1, 1, 0.25f), Color.white, 42,
+                    new Vector2(0.5f, 0.5f), new Vector2(0, -250), new Vector2(480, 100),
                     () => StartGame(saved));
 
             Theme.Label(root, "don't trust the floor.", 32,
                 new Color(1, 1, 1, 0.4f), new Vector2(0.5f, 0f),
-                new Vector2(0, 60), new Vector2(1400, 50));
+                new Vector2(0, 50), new Vector2(1400, 50));
+        }
+
+        // A grid of every level so players can jump in anywhere (great for testing
+        // and for sharing — and it shows the total level count).
+        void ShowLevelSelect()
+        {
+            Audio.Play("click");
+            _state = State.Menu;
+            if (_menuPanel != null) Destroy(_menuPanel);
+            _menuPanel = Overlay(new Color(Theme.Sky.r, Theme.Sky.g, Theme.Sky.b, 0.6f), out var root);
+
+            Theme.Label(root, "SELECT LEVEL", 90, Theme.Player,
+                new Vector2(0.5f, 0.5f), new Vector2(0, 400), new Vector2(1400, 120));
+            Theme.Label(root, $"{Levels.Count} levels of pain", 38, new Color(1, 1, 1, 0.6f),
+                new Vector2(0.5f, 0.5f), new Vector2(0, 310), new Vector2(1200, 60));
+
+            const int cols = 5;
+            float bw = 180, bh = 130, gx = 34, gy = 28;
+            int rows = Mathf.CeilToInt(Levels.Count / (float)cols);
+            float startX = -((cols - 1) * (bw + gx)) / 2f;
+            float startY = 150f + (rows - 1) * (bh + gy) / 2f;
+
+            for (int i = 0; i < Levels.Count; i++)
+            {
+                int r = i / cols, c = i % cols, lvl = i;
+                float x = startX + c * (bw + gx);
+                float y = startY - r * (bh + gy);
+                Theme.Button(root, (i + 1).ToString(), Theme.Trick, Theme.Ink, 56,
+                    new Vector2(0.5f, 0.5f), new Vector2(x, y), new Vector2(bw, bh),
+                    () => StartGame(lvl));
+            }
+
+            Theme.Button(root, "‹ BACK", new Color(1, 1, 1, 0.25f), Color.white, 44,
+                new Vector2(0.5f, 0f), new Vector2(0, 50), new Vector2(360, 100), ShowMenu);
         }
 
         void MenuCandy(Transform root, string sprite, Vector2 pos, float size, float rot)
