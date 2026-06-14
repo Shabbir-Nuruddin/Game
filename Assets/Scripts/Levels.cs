@@ -94,9 +94,9 @@ namespace TrustIssues
             L.Portals.Add(new PortalPair(2.3f, -2.2f, 8.5f, -2.2f));
 
             // Section 3: portal landing -> more traps.
-            L.Platforms.Add(new Rect2(9f, -3f, 3f, 0.6f));      // portal exit landing
-            L.Traps.Add(new TrapSpec(TrapType.LateSpike, 9.3f, -2.4f, 2.2f, 1.2f));
-            L.Decos.Add(new Deco(9.3f, -2.55f, 0.45f, 0.18f, Theme.Danger));
+            L.Platforms.Add(new Rect2(9.5f, -3f, 4f, 0.6f));    // portal exit landing (safe room)
+            L.Traps.Add(new TrapSpec(TrapType.LateSpike, 11f, -2.4f, 1.0f, 1.2f)); // spike further right
+            L.Decos.Add(new Deco(11f, -2.55f, 0.4f, 0.18f, Theme.Danger));
 
             L.Traps.Add(new TrapSpec(TrapType.FakeFloor, 12.5f, -3f, 2f, 0.6f));
             L.Decos.Add(new Deco(12.5f, -2.78f, 1.6f, 0.08f, Theme.Tell));
