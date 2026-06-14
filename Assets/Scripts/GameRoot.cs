@@ -5,27 +5,31 @@ using UnityEngine.UI;
 namespace TrustIssues
 {
     /// <summary>
-    /// Owns the whole game: auto-boots on Play (no manual scene setup), shows a
-    /// start screen, builds the level + Beanie from data, handles
-    /// death/respawn/win, the death counter, and the HUD. Respawn rebuilds the
-    /// level, so every trap resets cleanly with zero per-trap bookkeeping.
+    /// Owns the whole game: auto-boots on Play, runs a main menu (New Game /
+    /// Continue), builds levels from data, follows the player with the camera,
+    /// handles death/respawn, level progression, a pause menu, and the win flow.
+    /// Respawn rebuilds the level, so every trap resets with zero bookkeeping.
     /// </summary>
     public class GameRoot : MonoBehaviour
     {
         public static GameRoot I { get; private set; }
 
-        enum State { Start, Play, Win }
-        State _state = State.Start;
+        enum State { Menu, Play, Paused, Win }
+        State _state = State.Menu;
 
         Camera _cam;
         Transform _levelRoot;
         PlayerController _player;
         Transform _playerVisual;
         Level _level;
+        int _levelIndex;
         int _deaths;
         bool _dying;
+        float _camMin = -1.5f, _camMax = -1.5f;
+        const float CamY = -1.2f;
+
         Text _hud, _toast;
-        GameObject _startPanel;
+        GameObject _menuPanel, _pausePanel;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void AutoBoot()
@@ -37,10 +41,11 @@ namespace TrustIssues
         void Awake()
         {
             I = this;
+            Time.timeScale = 1f;
             SetupCamera();
             BuildBackdrop();
             BuildHUD();
-            ShowStart();
+            ShowMenu();
         }
 
         void SetupCamera()
@@ -48,99 +53,97 @@ namespace TrustIssues
             _cam = Camera.main;
             if (_cam == null)
             {
-                var go = new GameObject("Main Camera");
-                go.tag = "MainCamera";
+                var go = new GameObject("Main Camera"); go.tag = "MainCamera";
                 _cam = go.AddComponent<Camera>();
             }
             _cam.orthographic = true;
             _cam.orthographicSize = 5.6f;
-            _cam.transform.position = new Vector3(-1.5f, -1.2f, -10f);
+            _cam.transform.position = new Vector3(-1.5f, CamY, -10f);
             _cam.backgroundColor = Theme.Sky;
             _cam.clearFlags = CameraClearFlags.SolidColor;
         }
 
-        // A gradient sky + soft floating shapes for depth, so it doesn't read as
-        // a flat 2D test scene. Sits behind everything (negative sort order).
+        // Gradient sky + soft shapes, parented to the camera so they always fill
+        // the view as it scrolls.
         void BuildBackdrop()
         {
             var sky = new GameObject("Sky");
-            sky.transform.position = new Vector3(-1.5f, -1.2f, 5f);
-            sky.transform.localScale = new Vector3(30f, 16f, 1f);
+            sky.transform.SetParent(_cam.transform, false);
+            sky.transform.localPosition = new Vector3(0f, 0f, 20f);
+            sky.transform.localScale = new Vector3(34f, 16f, 1f);
             var sr = sky.AddComponent<SpriteRenderer>();
             sr.sprite = Theme.Gradient(Theme.SkyLow, Theme.Sky);
             sr.sortingOrder = -20;
 
-            // distant soft shapes (parallax-feel, static)
             var shape = new Color(1f, 1f, 1f, 0.04f);
-            Theme.Box("Blob", null, new Vector2(-7f, 3.5f), new Vector2(7f, 7f), shape, -15);
-            Theme.Box("Blob", null, new Vector2(5f, 2.5f), new Vector2(9f, 9f), shape, -15);
-            Theme.Box("Glow", null, new Vector2(3f, -4.8f), new Vector2(3f, 3f),
-                new Color(Theme.Exit.r, Theme.Exit.g, Theme.Exit.b, 0.06f), -15); // hint near real exit
+            MakeBackShape(new Vector2(-7f, 4.5f), new Vector2(7f, 7f), shape);
+            MakeBackShape(new Vector2(6f, 3.5f), new Vector2(9f, 9f), shape);
+        }
+
+        void MakeBackShape(Vector2 local, Vector2 size, Color c)
+        {
+            var go = Theme.Box("Blob", _cam.transform, Vector2.zero, size, c, -15);
+            go.transform.localPosition = new Vector3(local.x, local.y, 18f);
         }
 
         void BuildHUD()
         {
-            // Pushed inward so it can't clip on any aspect ratio.
             _hud = Theme.Label(Theme.Canvas.transform, "DEATHS  0", 46, Theme.Player,
                 new Vector2(0f, 1f), new Vector2(280, -55), new Vector2(520, 70),
                 TextAnchor.MiddleLeft);
-
             _toast = Theme.Label(Theme.Canvas.transform, "", 60, Theme.Player,
                 new Vector2(0.5f, 0.5f), new Vector2(0, 150), new Vector2(1400, 100));
         }
 
-        // -------------------- Start screen --------------------
-        void ShowStart()
+        // ==================== MAIN MENU ====================
+        void ShowMenu()
         {
-            _state = State.Start;
+            _state = State.Menu;
+            Time.timeScale = 1f;
             _hud.gameObject.SetActive(false);
+            _cam.transform.position = new Vector3(-1.5f, CamY, -10f);
 
-            _startPanel = new GameObject("Start", typeof(RectTransform));
-            _startPanel.transform.SetParent(Theme.Canvas.transform, false);
-            var img = _startPanel.AddComponent<Image>();
-            img.color = new Color(0, 0, 0, 0.35f);
-            var rt = _startPanel.GetComponent<RectTransform>();
-            rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
-            rt.offsetMin = rt.offsetMax = Vector2.zero;
+            _menuPanel = Overlay(new Color(0, 0, 0, 0.35f), out var root);
 
-            var t = Theme.Label(_startPanel.transform, Theme.Title, 150, Theme.Trick,
-                new Vector2(0.5f, 0.5f), new Vector2(0, 180), new Vector2(1600, 200));
-            StartCoroutine(Pulse(t.transform));
-
-            Theme.Label(_startPanel.transform, "the level is lying to you.", 48,
+            var title = Theme.Label(root, Theme.Title, 150, Theme.Trick,
+                new Vector2(0.5f, 0.5f), new Vector2(0, 230), new Vector2(1600, 200));
+            StartCoroutine(Pulse(title.transform));
+            Theme.Label(root, "adorable. brutal. you will die a lot.", 44,
                 new Color(1, 1, 1, 0.7f), new Vector2(0.5f, 0.5f),
-                new Vector2(0, 60), new Vector2(1400, 70));
+                new Vector2(0, 110), new Vector2(1400, 70));
 
-            Theme.Label(_startPanel.transform, "Reach the GREEN.  Trust nothing.", 40,
-                Theme.Exit, new Vector2(0.5f, 0.5f), new Vector2(0, -30), new Vector2(1400, 60));
+            Theme.Button(root, "NEW GAME", Theme.Exit, Theme.Ink, 56,
+                new Vector2(0.5f, 0.5f), new Vector2(0, -30), new Vector2(460, 130),
+                () => StartGame(0));
 
-            var press = Theme.Label(_startPanel.transform, "Press  SPACE  to start", 52,
-                Theme.Player, new Vector2(0.5f, 0.5f), new Vector2(0, -190), new Vector2(1400, 80));
-            StartCoroutine(Blink(press));
+            int saved = PlayerPrefs.GetInt("ti_level", 0);
+            if (saved > 0)
+                Theme.Button(root, $"CONTINUE  (Lvl {saved + 1})", Theme.Trick, Theme.Ink, 48,
+                    new Vector2(0.5f, 0.5f), new Vector2(0, -190), new Vector2(560, 120),
+                    () => StartGame(saved));
 
-            Theme.Label(_startPanel.transform,
-                "Move: A/D or  ←  →      Jump: Space / W      Restart: R", 30,
-                new Color(1, 1, 1, 0.45f), new Vector2(0.5f, 0f),
+            Theme.Label(root, "Move: A/D or  ←  →      Jump: Space / W      Pause: Esc",
+                30, new Color(1, 1, 1, 0.45f), new Vector2(0.5f, 0f),
                 new Vector2(0, 50), new Vector2(1400, 50));
-
-            StartCoroutine(WaitToStart());
         }
 
-        IEnumerator WaitToStart()
+        void StartGame(int levelIndex)
         {
-            while (!(Input.GetKeyDown(KeyCode.Space) || Input.GetMouseButtonDown(0)))
-                yield return null;
-            Destroy(_startPanel);
+            if (_menuPanel != null) Destroy(_menuPanel);
+            _levelIndex = levelIndex;
+            _deaths = 0;
+            _hud.text = "DEATHS  0";
             _hud.gameObject.SetActive(true);
             _state = State.Play;
             BuildLevel();
         }
 
-        // -------------------- Level build --------------------
+        // ==================== LEVEL ====================
         void BuildLevel()
         {
             _dying = false;
-            _level = Levels.One();
+            _level = Levels.Get(_levelIndex);
+            _camMin = _level.CamMinX; _camMax = _level.CamMaxX;
             _levelRoot = new GameObject("Level").transform;
 
             foreach (var p in _level.Platforms)
@@ -154,8 +157,11 @@ namespace TrustIssues
                 Theme.Box("Deco", _levelRoot, d.pos, d.size, d.color, 2);
             foreach (var t in _level.Traps)
                 BuildTrap(t);
+            foreach (var pp in _level.Portals)
+                BuildPortals(pp);
 
             SpawnPlayer();
+            SnapCamera();
         }
 
         void BuildTrap(TrapSpec t)
@@ -196,6 +202,25 @@ namespace TrustIssues
             }
         }
 
+        void BuildPortals(PortalPair pp)
+        {
+            var a = MakePortal("PortalA", pp.a);
+            var b = MakePortal("PortalB", pp.b);
+            a.target = b.transform.position;
+            b.target = a.transform.position;
+        }
+
+        Portal MakePortal(string name, Vector2 pos)
+        {
+            var go = Theme.Box(name, _levelRoot, pos, new Vector2(1.1f, 2f), Theme.Trick, 2);
+            var sr = go.GetComponent<SpriteRenderer>();
+            var c = sr.color; c.a = 0.7f; sr.color = c;
+            Theme.AddTrigger(go, Vector2.one);
+            // swirl mark so it reads as a portal
+            Theme.Box("Swirl", go.transform, pos, new Vector2(0.4f, 0.4f), Theme.Coin, 3);
+            return go.AddComponent<Portal>();
+        }
+
         void SpawnPlayer()
         {
             var go = new GameObject("Beanie");
@@ -203,7 +228,7 @@ namespace TrustIssues
             go.transform.position = _level.Spawn;
             go.tag = "Player";
 
-            var rb = go.AddComponent<Rigidbody2D>();
+            go.AddComponent<Rigidbody2D>();
             var col = go.AddComponent<BoxCollider2D>();
             col.size = new Vector2(0.7f, 0.9f);
 
@@ -219,13 +244,37 @@ namespace TrustIssues
             _playerVisual = vis.transform;
         }
 
+        // ==================== camera & loop ====================
+        void SnapCamera()
+        {
+            if (_player == null) return;
+            float x = Mathf.Clamp(_player.transform.position.x, _camMin, _camMax);
+            _cam.transform.position = new Vector3(x, CamY, -10f);
+        }
+
+        void LateUpdate()
+        {
+            if (_state == State.Play && _player != null)
+            {
+                float x = Mathf.Clamp(_player.transform.position.x, _camMin, _camMax);
+                var p = _cam.transform.position;
+                _cam.transform.position = new Vector3(
+                    Mathf.Lerp(p.x, x, 10f * Time.unscaledDeltaTime), CamY, -10f);
+            }
+        }
+
         void Update()
         {
+            if ((_state == State.Play || _state == State.Paused) &&
+                (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.P)))
+                TogglePause();
+
             if (_state == State.Play && _player != null && !_dying &&
                 _player.transform.position.y < -9f)
                 Die("Gravity wins again.");
         }
 
+        // ==================== death / respawn ====================
         public void Die(string msg = null)
         {
             if (_state != State.Play || _dying) return;
@@ -247,63 +296,116 @@ namespace TrustIssues
             BuildLevel();
         }
 
-        public void Win()
+        // ==================== level progression / win ====================
+        public void ReachExit()
         {
             if (_state != State.Play) return;
-            _state = State.Win;
             if (_player != null) _player.Freeze();
-            StartCoroutine(WinRoutine());
+
+            if (_levelIndex + 1 < Levels.Count)
+            {
+                _levelIndex++;
+                PlayerPrefs.SetInt("ti_level", _levelIndex); PlayerPrefs.Save();
+                StartCoroutine(NextLevelFlash());
+            }
+            else
+            {
+                _state = State.Win;
+                StartCoroutine(WinRoutine());
+            }
         }
 
-        IEnumerator WinRoutine()
+        IEnumerator NextLevelFlash()
         {
-            var panel = new GameObject("Win", typeof(RectTransform));
-            panel.transform.SetParent(Theme.Canvas.transform, false);
-            var img = panel.AddComponent<Image>();
-            img.color = new Color(0, 0, 0, 0.8f);
-            var prt = panel.GetComponent<RectTransform>();
-            prt.anchorMin = Vector2.zero; prt.anchorMax = Vector2.one;
-            prt.offsetMin = prt.offsetMax = Vector2.zero;
-
-            Theme.Label(panel.transform, "YOU ESCAPED!", 110, Theme.Exit,
-                new Vector2(0.5f, 0.5f), new Vector2(0, 160), new Vector2(1400, 160));
-            Theme.Label(panel.transform, "(this time)", 44, new Color(1, 1, 1, 0.6f),
-                new Vector2(0.5f, 0.5f), new Vector2(0, 70), new Vector2(900, 60));
-            Theme.Label(panel.transform,
-                $"Beanie died {_deaths} time" + (_deaths == 1 ? "" : "s") + " 💀",
-                64, Theme.Player, new Vector2(0.5f, 0.5f), new Vector2(0, -40),
-                new Vector2(1400, 90));
-            Theme.Label(panel.transform, "Press  SPACE  to play again", 40,
-                new Color(1, 1, 1, 0.7f), new Vector2(0.5f, 0.5f),
-                new Vector2(0, -180), new Vector2(1200, 70));
-
-            while (!Input.GetKeyDown(KeyCode.Space)) yield return null;
-            Destroy(panel);
-            _deaths = 0;
-            if (_hud != null) _hud.text = "DEATHS  0";
+            _state = State.Win; // block input briefly
+            if (_toast != null) _toast.text = $"LEVEL {_levelIndex + 1}";
+            yield return new WaitForSecondsRealtime(0.9f);
+            if (_toast != null) _toast.text = "";
             Destroy(_levelRoot.gameObject);
             _state = State.Play;
             BuildLevel();
         }
 
-        // -------------------- tiny UI animations --------------------
+        IEnumerator WinRoutine()
+        {
+            PlayerPrefs.SetInt("ti_level", 0); PlayerPrefs.Save();
+            var panel = Overlay(new Color(0, 0, 0, 0.8f), out var root);
+            Theme.Label(root, "YOU BEAT IT!", 110, Theme.Exit,
+                new Vector2(0.5f, 0.5f), new Vector2(0, 170), new Vector2(1400, 160));
+            Theme.Label(root, $"Beanie died {_deaths} time" + (_deaths == 1 ? "" : "s") + " \U0001F480",
+                64, Theme.Player, new Vector2(0.5f, 0.5f), new Vector2(0, 30), new Vector2(1400, 90));
+            Theme.Button(root, "MAIN MENU", Theme.Trick, Theme.Ink, 50,
+                new Vector2(0.5f, 0.5f), new Vector2(0, -150), new Vector2(460, 120),
+                () => { Destroy(panel); Destroy(_levelRoot.gameObject); ShowMenu(); });
+            yield break;
+        }
+
+        // ==================== pause ====================
+        void TogglePause()
+        {
+            if (_state == State.Play) Pause();
+            else if (_state == State.Paused) Resume();
+        }
+
+        void Pause()
+        {
+            _state = State.Paused;
+            Time.timeScale = 0f;
+            _pausePanel = Overlay(new Color(0, 0, 0, 0.6f), out var root);
+            Theme.Label(root, "PAUSED", 96, Theme.Player,
+                new Vector2(0.5f, 0.5f), new Vector2(0, 230), new Vector2(1000, 130));
+            Theme.Button(root, "RESUME", Theme.Exit, Theme.Ink, 52,
+                new Vector2(0.5f, 0.5f), new Vector2(0, 70), new Vector2(460, 120), Resume);
+            Theme.Button(root, "RESTART LEVEL", Theme.Trick, Theme.Ink, 46,
+                new Vector2(0.5f, 0.5f), new Vector2(0, -70), new Vector2(560, 120), RestartLevel);
+            Theme.Button(root, "MAIN MENU", new Color(1, 1, 1, 0.25f), Color.white, 46,
+                new Vector2(0.5f, 0.5f), new Vector2(0, -210), new Vector2(560, 120), QuitToMenu);
+        }
+
+        void Resume()
+        {
+            if (_pausePanel != null) Destroy(_pausePanel);
+            Time.timeScale = 1f;
+            _state = State.Play;
+        }
+
+        void RestartLevel()
+        {
+            if (_pausePanel != null) Destroy(_pausePanel);
+            Time.timeScale = 1f;
+            _state = State.Play;
+            Destroy(_levelRoot.gameObject);
+            BuildLevel();
+        }
+
+        void QuitToMenu()
+        {
+            if (_pausePanel != null) Destroy(_pausePanel);
+            Time.timeScale = 1f;
+            if (_levelRoot != null) Destroy(_levelRoot.gameObject);
+            ShowMenu();
+        }
+
+        // ==================== helpers ====================
+        GameObject Overlay(Color bg, out Transform root)
+        {
+            var panel = new GameObject("Overlay", typeof(RectTransform));
+            panel.transform.SetParent(Theme.Canvas.transform, false);
+            var img = panel.AddComponent<Image>();
+            img.color = bg;
+            var rt = panel.GetComponent<RectTransform>();
+            rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
+            rt.offsetMin = rt.offsetMax = Vector2.zero;
+            root = panel.transform;
+            return panel;
+        }
+
         IEnumerator Pulse(Transform t)
         {
             while (t != null)
             {
                 float s = 1f + Mathf.Sin(Time.unscaledTime * 2f) * 0.03f;
                 t.localScale = new Vector3(s, s, 1f);
-                yield return null;
-            }
-        }
-
-        IEnumerator Blink(Text t)
-        {
-            while (t != null)
-            {
-                var c = t.color;
-                c.a = 0.4f + 0.6f * (0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * 4f));
-                t.color = c;
                 yield return null;
             }
         }

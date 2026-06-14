@@ -25,6 +25,13 @@ You should see a dark screen titled **TRUST ISSUES**, the bright platforms, and
 - **Move:** `A`/`D` or `←`/`→`
 - **Jump:** `Space` or `W`
 - **Restart:** `R`
+- **Pause:** `Esc` or `P` (Resume / Restart Level / Main Menu)
+
+There are now **2 levels** (Level 2 is longer, harder, and has **portals** to cross
+deadly gaps). The **main menu** has **New Game** and **Continue** (Continue resumes
+from your saved level). Beat both levels for the win screen.
+
+For making it look great (art + sound), see **[ART.md](ART.md)**.
 
 Goal: reach the **green** exit. But the level lies to you:
 - the floor **collapses**, spikes **pop up**, a block **crushes** you if you grab

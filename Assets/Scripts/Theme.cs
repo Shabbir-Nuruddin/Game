@@ -14,18 +14,18 @@ namespace TrustIssues
         public const string Title = "TRUST ISSUES";
         public const string Mascot = "Beanie";
 
-        // Palette — punchy, meme-y, high contrast.
-        public static readonly Color Sky      = Hex("1E1B2E"); // deep night
-        public static readonly Color SkyLow   = Hex("2C2742");
-        public static readonly Color Platform = Hex("F4F1E9"); // bright safe ground
-        public static readonly Color PlatEdge = Hex("CFC8B6");
-        public static readonly Color Player   = Hex("FFC83D"); // Beanie yellow
-        public static readonly Color Danger   = Hex("FF4D5E"); // spikes / kill
-        public static readonly Color Trick    = Hex("8E7CFF"); // fake/bait purple
-        public static readonly Color Coin      = Hex("FFD84D");
-        public static readonly Color Exit      = Hex("46D17F"); // real exit green
-        public static readonly Color Ink       = Hex("20202A");
-        public static readonly Color Tell      = new Color(0, 0, 0, 0.18f); // subtle hint
+        // Palette — "Candy Troll": cute pastel exterior, brutal gameplay.
+        public static readonly Color Sky      = Hex("2B2440"); // plum night
+        public static readonly Color SkyLow   = Hex("3A3158");
+        public static readonly Color Platform = Hex("FFF3E6"); // cream ground
+        public static readonly Color PlatEdge = Hex("E6D8C8");
+        public static readonly Color Player   = Hex("FF8FB1"); // Beanie pink
+        public static readonly Color Danger   = Hex("FF5D73"); // spikes / kill (coral)
+        public static readonly Color Trick    = Hex("B388FF"); // fake/portal lavender
+        public static readonly Color Coin      = Hex("FFD66B");
+        public static readonly Color Exit      = Hex("5BE0A3"); // real exit mint
+        public static readonly Color Ink       = Hex("2A2438");
+        public static readonly Color Tell      = new Color(0, 0, 0, 0.16f); // subtle hint
 
         static Sprite _square;
         public static Sprite Square
@@ -131,6 +131,32 @@ namespace TrustIssues
                 }
                 return _font;
             }
+        }
+
+        /// <summary>A clickable menu button (Image + Button + centered label).</summary>
+        public static Button Button(Transform parent, string text, Color bg, Color textColor,
+            int size, Vector2 anchor, Vector2 pos, Vector2 dim, System.Action onClick)
+        {
+            var go = new GameObject("Button_" + text, typeof(RectTransform));
+            go.transform.SetParent(parent, false);
+            var img = go.AddComponent<Image>();
+            img.color = bg;
+            var rt = img.rectTransform;
+            rt.anchorMin = rt.anchorMax = anchor; rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.anchoredPosition = pos; rt.sizeDelta = dim;
+
+            var btn = go.AddComponent<Button>();
+            btn.targetGraphic = img;
+            var colors = btn.colors;
+            colors.highlightedColor = Color.Lerp(bg, Color.white, 0.15f);
+            colors.pressedColor = Color.Lerp(bg, Color.black, 0.15f);
+            colors.fadeDuration = 0.06f;
+            btn.colors = colors;
+            if (onClick != null) btn.onClick.AddListener(() => onClick());
+
+            var label = Label(go.transform, text, size, textColor,
+                new Vector2(0.5f, 0.5f), Vector2.zero, dim);
+            return btn;
         }
 
         public static Text Label(Transform parent, string text, int size, Color color,

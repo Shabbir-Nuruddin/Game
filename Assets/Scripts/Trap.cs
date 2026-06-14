@@ -88,7 +88,7 @@ namespace TrustIssues
                     break;
                 case TrapType.RealExit:
                     _armed = false;
-                    GameRoot.I?.Win();
+                    GameRoot.I?.ReachExit();
                     break;
             }
         }
