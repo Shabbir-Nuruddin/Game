@@ -21,6 +21,31 @@ namespace TrustIssues
             return s;
         }
 
+        static readonly Dictionary<string, Sprite[]> _sheets = new();
+
+        /// <summary>
+        /// Loads a horizontal sprite sheet (frames left-to-right) as a Texture2D
+        /// and slices it into frames at runtime — no manual Sprite Editor needed.
+        /// </summary>
+        public static Sprite[] Sheet(string name, int frameW)
+        {
+            if (_sheets.TryGetValue(name, out var cached)) return cached;
+            var tex = Resources.Load<Texture2D>("art/" + name);
+            Sprite[] frames = null;
+            if (tex != null && frameW > 0)
+            {
+                tex.filterMode = FilterMode.Point;
+                int count = Mathf.Max(1, tex.width / frameW);
+                frames = new Sprite[count];
+                for (int i = 0; i < count; i++)
+                    frames[i] = UnityEngine.Sprite.Create(tex,
+                        new Rect(i * frameW, 0, frameW, tex.height),
+                        new Vector2(0.5f, 0.5f), frameW);
+            }
+            _sheets[name] = frames;
+            return frames;
+        }
+
         public static AudioClip Clip(string name)
         {
             if (_clips.TryGetValue(name, out var c)) return c;

@@ -49,6 +49,7 @@ namespace TrustIssues
         void T(TrapType t, float x, float y, float w, float h) => L.Traps.Add(new TrapSpec(t, x, y, w, h));
         public void Spike(float x) => T(TrapType.SpikeStatic, x, -2.4f, 0.7f, 0.7f);
         public void ArrowRain(float x) => T(TrapType.ArrowRain, x, -3f, 0.5f, 0.5f);
+        public void Checkpoint(float x) => T(TrapType.Checkpoint, x, -2f, 1f, 1.6f);
         public void LateSpike(float x) => T(TrapType.LateSpike, x, -2.4f, 1.0f, 1.2f);
         public void Dart(float x) => T(TrapType.Dart, x, -2.3f, 1.0f, 1.2f);
         public void Faller(float x) => T(TrapType.Faller, x, -2.3f, 1.2f, 1.2f);
@@ -116,17 +117,17 @@ namespace TrustIssues
             return b.Finish();
         }
 
-        // 3 — darts and a faller.
+        // 3 — gentle intro to darts (one trap per platform, room to react).
         static Level L3()
         {
             var b = new B();
             b.Plat(3.5f);
             b.Gap(2.5f);
-            float p2 = b.Plat(4f); b.Dart(p2 - 1f); b.Spike(p2 + 1f);
+            float p2 = b.Plat(4.5f); b.Dart(p2);
             b.Gap(2.5f);
-            float p3 = b.Plat(3.5f); b.Faller(p3);
+            float p3 = b.Plat(4f); b.Faller(p3);
             b.Gap(2.5f);
-            float p4 = b.Plat(3.5f); b.Crusher(p4);
+            float p4 = b.Plat(4f); b.Spike(p4);
             return b.Finish();
         }
 
@@ -222,9 +223,9 @@ namespace TrustIssues
             b.Gap(2.8f);
             float p2 = b.Plat(5f); b.Spike(p2 - 1.5f); b.LateSpike(p2 + 0.7f);
             b.Gap(2.8f);
-            float p3 = b.Plat(4f); b.Dart(p3 - 1f); b.Faller(p3 + 1f);
+            float p3 = b.Plat(4.5f); b.Checkpoint(p3 - 1.5f); b.Dart(p3 + 0.5f);
             b.Gap(2.8f);
-            float p4 = b.Plat(4f); b.Saw(p4);
+            float p4 = b.Plat(4f); b.Faller(p4);
             b.FakeFloor(2f);
             float p5 = b.Plat(3.5f); b.Surprise(p5);
             return b.Finish();
@@ -361,6 +362,8 @@ namespace TrustIssues
             b.Plat(3.5f);
             b.Gap(2.8f);
             float p2 = b.Plat(5f); b.Dart(p2 - 1.5f); b.ArrowRain(p2); b.Spike(p2 + 1.5f);
+            b.Gap(2.8f);
+            float pc = b.Plat(3.5f); b.Checkpoint(pc);
             b.Gap(2.8f);
             float p3 = b.Plat(5f); b.Faller(p3 - 1.5f); b.Saw(p3 + 1.5f);
             b.FakeFloor(2f);

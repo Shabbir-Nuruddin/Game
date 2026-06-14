@@ -18,7 +18,8 @@ namespace TrustIssues
         WarpBack,   // yanks you all the way back to the start — rage
         Reverse,    // flips your controls for a few seconds
         SpikeStatic,// an always-visible spike you must jump over
-        ArrowRain   // spikes drop from the ceiling on a timer — time your run
+        ArrowRain,  // spikes drop from the ceiling on a timer — time your run
+        Checkpoint  // touch it and you respawn here instead of the start
     }
 
     /// <summary>
@@ -176,6 +177,9 @@ namespace TrustIssues
                     break;
                 case TrapType.Reverse:
                     pc.SetReversed(3f);
+                    break;
+                case TrapType.Checkpoint:
+                    if (_armed) { _armed = false; GameRoot.I?.SetCheckpoint(transform.position); }
                     break;
             }
         }

@@ -25,6 +25,8 @@ namespace TrustIssues
         int _levelIndex;
         int _deaths;
         bool _dying;
+        Vector3 _checkpoint;
+        bool _hasCheckpoint;
         float _camMin = -1.5f, _camMax = -1.5f;
         const float CamY = -1.2f;
 
@@ -144,7 +146,7 @@ namespace TrustIssues
 
             Theme.Button(root, "NEW GAME", Theme.Player, Theme.Ink, 54,
                 new Vector2(0.5f, 0.5f), new Vector2(0, 20), new Vector2(480, 120),
-                () => StartGame(0));
+                ShowStory);
 
             Theme.Button(root, $"LEVELS ({Levels.Count})", Theme.Trick, Theme.Ink, 48,
                 new Vector2(0.5f, 0.5f), new Vector2(0, -120), new Vector2(480, 110),
@@ -159,6 +161,37 @@ namespace TrustIssues
             Theme.Label(root, "don't trust the floor.", 32,
                 new Color(1, 1, 1, 0.4f), new Vector2(0.5f, 0f),
                 new Vector2(0, 50), new Vector2(1400, 50));
+        }
+
+        // Short, darkly-funny premise shown before a new game.
+        void ShowStory()
+        {
+            Audio.Play("click");
+            _state = State.Menu;
+            if (_menuPanel != null) Destroy(_menuPanel);
+            _menuPanel = Overlay(new Color(Theme.Sky.r, Theme.Sky.g, Theme.Sky.b, 0.88f), out var root);
+
+            Theme.Label(root, "BEANIE'S BAD DAY", 80, Theme.Player,
+                new Vector2(0.5f, 0.5f), new Vector2(0, 360), new Vector2(1600, 120));
+
+            string[] lines =
+            {
+                "Beanie only wanted one piece of candy.",
+                "But the Candy Kingdom is not what it seems.",
+                "Every floor, every door, every sweet little thing…",
+                "…wants Beanie dead.",
+                "20 levels of pure betrayal stand in the way.",
+                "Trust nothing. Especially the cute parts.",
+            };
+            for (int i = 0; i < lines.Length; i++)
+                Theme.Label(root, lines[i], 40, new Color(1f, 0.9f, 0.95f, 0.9f),
+                    new Vector2(0.5f, 0.5f), new Vector2(0, 200 - i * 80), new Vector2(1700, 60));
+
+            Theme.Button(root, "BEGIN ›", Theme.Exit, Theme.Ink, 56,
+                new Vector2(0.5f, 0.5f), new Vector2(0, -330), new Vector2(420, 130),
+                () => StartGame(0));
+            Theme.Button(root, "‹ back", new Color(1, 1, 1, 0.2f), Color.white, 36,
+                new Vector2(0.5f, 0f), new Vector2(0, 50), new Vector2(260, 90), ShowMenu);
         }
 
         // A grid of every level so players can jump in anywhere (great for testing
@@ -299,6 +332,7 @@ namespace TrustIssues
             if (_menuPanel != null) Destroy(_menuPanel);
             _levelIndex = levelIndex;
             _deaths = 0;
+            _hasCheckpoint = false;
             _hud.text = "DEATHS  0";
             _hud.gameObject.SetActive(true);
             _state = State.Play;
@@ -412,6 +446,20 @@ namespace TrustIssues
                     var kz = go.AddComponent<KillZone>(); kz.msg = "Spikes. Obviously.";
                     break;
                 }
+                case TrapType.Checkpoint:
+                {
+                    var go = new GameObject("Checkpoint");
+                    go.transform.SetParent(_levelRoot, false);
+                    go.transform.position = t.pos;
+                    var col = go.AddComponent<BoxCollider2D>(); col.isTrigger = true;
+                    col.size = new Vector2(1.2f, 1.6f);
+                    Theme.Box("Pole", go.transform, t.pos + new Vector2(0f, 0.1f),
+                        new Vector2(0.14f, 1.5f), Theme.Hex("BFE9FF"), 2);
+                    Theme.Box("Flag", go.transform, t.pos + new Vector2(0.32f, 0.5f),
+                        new Vector2(0.5f, 0.34f), Theme.Exit, 3);
+                    go.AddComponent<Trap>().Init(TrapType.Checkpoint);
+                    break;
+                }
                 case TrapType.Spring:
                 {
                     var sp = Assets.Sprite("trampoline");
@@ -467,28 +515,33 @@ namespace TrustIssues
         {
             var go = new GameObject("Beanie");
             go.transform.SetParent(_levelRoot, false);
-            go.transform.position = _level.Spawn;
+            go.transform.position = _hasCheckpoint ? _checkpoint : (Vector3)_level.Spawn;
             go.tag = "Player";
 
             go.AddComponent<Rigidbody2D>();
             var col = go.AddComponent<BoxCollider2D>();
             col.size = new Vector2(0.7f, 0.9f);
 
-            // Use the pink character sprite if present; otherwise fall back to a
-            // pink box with eyes (so the game still runs without art).
+            // Prefer the animated Pink Man (sliced from sheets); then a single
+            // beanie sprite; then a pink box with eyes — so it always runs.
             SpriteRenderer bodySr = null;
             Transform vis;
-            var idle = Assets.Sprite("beanie_idle");
-            if (idle != null)
+            var pmIdle = Assets.Sheet("pinkman_idle", 32);
+            var pmRun = Assets.Sheet("pinkman_run", 32);
+            var pmJump = Assets.Sheet("pinkman_jump", 32);
+            var beanie = Assets.Sprite("beanie_idle");
+            Sprite firstFrame = (pmIdle != null && pmIdle.Length > 0) ? pmIdle[0] : beanie;
+
+            if (firstFrame != null)
             {
                 var b = new GameObject("Body");
                 b.transform.SetParent(go.transform, false);
                 b.transform.localPosition = Vector3.zero;
                 bodySr = b.AddComponent<SpriteRenderer>();
-                bodySr.sprite = idle;
+                bodySr.sprite = firstFrame;
                 bodySr.sortingOrder = 5;
-                float h = idle.bounds.size.y;
-                float s = h > 0.0001f ? 1.15f / h : 1f; // scale sprite to ~1.15 units tall
+                float h = firstFrame.bounds.size.y;
+                float s = h > 0.0001f ? 1.3f / h : 1f;
                 b.transform.localScale = new Vector3(s, s, 1f);
                 vis = b.transform;
             }
@@ -509,9 +562,18 @@ namespace TrustIssues
             if (bodySr != null)
             {
                 _player.bodyRenderer = bodySr;
-                _player.idleSprite = idle;
-                _player.walkSprite = Assets.Sprite("beanie_walk");
-                _player.jumpSprite = Assets.Sprite("beanie_walk");
+                if (pmIdle != null && pmIdle.Length > 0)
+                {
+                    _player.idleFrames = pmIdle;
+                    _player.runFrames = pmRun;
+                    _player.jumpSprite = (pmJump != null && pmJump.Length > 0) ? pmJump[0] : null;
+                }
+                else
+                {
+                    _player.idleSprite = beanie;
+                    _player.walkSprite = Assets.Sprite("beanie_walk");
+                    _player.jumpSprite = Assets.Sprite("beanie_walk");
+                }
             }
         }
 
@@ -546,6 +608,22 @@ namespace TrustIssues
         }
 
         // ==================== death / respawn ====================
+        public void SetCheckpoint(Vector3 pos)
+        {
+            _checkpoint = pos + Vector3.up * 0.6f;
+            _hasCheckpoint = true;
+            Audio.Play("levelup", 0.4f);
+            if (_toast != null) StartCoroutine(FlashToast("Checkpoint!"));
+        }
+
+        IEnumerator FlashToast(string msg)
+        {
+            if (_toast == null) yield break;
+            _toast.text = msg;
+            yield return new WaitForSecondsRealtime(0.9f);
+            if (_toast != null && _toast.text == msg) _toast.text = "";
+        }
+
         public void WarpToStart()
         {
             if (_state != State.Play || _player == null) return;
@@ -605,6 +683,7 @@ namespace TrustIssues
             yield return new WaitForSecondsRealtime(0.9f);
             if (_toast != null) _toast.text = "";
             Destroy(_levelRoot.gameObject);
+            _hasCheckpoint = false;
             _state = State.Play;
             BuildLevel();
         }
@@ -657,6 +736,7 @@ namespace TrustIssues
             if (_pausePanel != null) Destroy(_pausePanel);
             Time.timeScale = 1f;
             _state = State.Play;
+            _hasCheckpoint = false;
             Destroy(_levelRoot.gameObject);
             BuildLevel();
         }

@@ -23,6 +23,7 @@ namespace TrustIssues
         // Optional sprite animation (set by GameRoot if art is present).
         public SpriteRenderer bodyRenderer;
         public Sprite idleSprite, walkSprite, jumpSprite;
+        public Sprite[] idleFrames, runFrames;   // multi-frame animation (preferred)
 
         Rigidbody2D _rb;
         BoxCollider2D _col;
@@ -81,17 +82,32 @@ namespace TrustIssues
             var target = new Vector3(_facing * _baseX * (1f - stretch), _baseY * (1f + stretch), 1f);
             _visual.localScale = Vector3.Lerp(_visual.localScale, target, 14f * Time.deltaTime);
 
-            // Sprite frames: jump pose in the air, alternate idle/walk on ground.
-            if (bodyRenderer != null && idleSprite != null)
+            // Animation: jump pose in the air, else cycle run/idle frames.
+            if (bodyRenderer != null)
             {
-                if (!_grounded && jumpSprite != null) bodyRenderer.sprite = jumpSprite;
-                else if (Mathf.Abs(_inputX) > 0.01f)
+                if (!_grounded && jumpSprite != null)
                 {
-                    _animTimer += Time.deltaTime;
-                    bodyRenderer.sprite = (Mathf.FloorToInt(_animTimer * 10f) % 2 == 0)
-                        ? idleSprite : (walkSprite != null ? walkSprite : idleSprite);
+                    bodyRenderer.sprite = jumpSprite;
                 }
-                else bodyRenderer.sprite = idleSprite;
+                else
+                {
+                    var set = Mathf.Abs(_inputX) > 0.01f ? runFrames : idleFrames;
+                    if (set != null && set.Length > 0)
+                    {
+                        _animTimer += Time.deltaTime;
+                        bodyRenderer.sprite = set[Mathf.FloorToInt(_animTimer * 14f) % set.Length];
+                    }
+                    else if (idleSprite != null) // single-frame fallback
+                    {
+                        if (Mathf.Abs(_inputX) > 0.01f)
+                        {
+                            _animTimer += Time.deltaTime;
+                            bodyRenderer.sprite = (Mathf.FloorToInt(_animTimer * 10f) % 2 == 0)
+                                ? idleSprite : (walkSprite != null ? walkSprite : idleSprite);
+                        }
+                        else bodyRenderer.sprite = idleSprite;
+                    }
+                }
             }
         }
 
