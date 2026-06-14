@@ -16,7 +16,8 @@ namespace TrustIssues
         Spring,     // launches you upward (often into hidden spikes)
         Saw,        // a hazard that slides back and forth
         WarpBack,   // yanks you all the way back to the start — rage
-        Reverse     // flips your controls for a few seconds
+        Reverse,    // flips your controls for a few seconds
+        SpikeStatic // an always-visible spike you must jump over
     }
 
     /// <summary>

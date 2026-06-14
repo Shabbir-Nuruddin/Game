@@ -78,6 +78,22 @@ namespace TrustIssues
             var shape = new Color(1f, 1f, 1f, 0.04f);
             MakeBackShape(new Vector2(-7f, 4.5f), new Vector2(7f, 7f), shape);
             MakeBackShape(new Vector2(6f, 3.5f), new Vector2(9f, 9f), shape);
+
+            // Faint giant candy floating in the background for theme.
+            BgCandy("candy_lolly", new Vector2(-6f, 2f), 5f);
+            BgCandy("candy_cherry", new Vector2(7f, 2.5f), 4f);
+            BgCandy("candy_cane", new Vector2(0f, -3.5f), 4.5f);
+        }
+
+        void BgCandy(string name, Vector2 local, float size)
+        {
+            var sp = Assets.Sprite(name);
+            if (sp == null) return;
+            var go = Theme.SpriteBox("BgCandy", _cam.transform, Vector3.zero,
+                new Vector2(size, size), sp, -16);
+            go.transform.localPosition = new Vector3(local.x, local.y, 18f);
+            var sr = go.GetComponent<SpriteRenderer>();
+            var c = sr.color; c.a = 0.08f; sr.color = c;
         }
 
         void MakeBackShape(Vector2 local, Vector2 size, Color c)
@@ -100,6 +116,7 @@ namespace TrustIssues
         {
             _state = State.Menu;
             Time.timeScale = 1f;
+            Audio.Music("music", 0.3f);
             _hud.gameObject.SetActive(false);
             _cam.transform.position = new Vector3(-1.5f, CamY, -10f);
 
@@ -311,18 +328,34 @@ namespace TrustIssues
                 }
                 case TrapType.FakeExit:
                 {
-                    var go = Theme.Box("FakeExit", _levelRoot, t.pos, t.size, Theme.Trick, 2);
+                    var sp = Assets.Sprite("door");
+                    GameObject go = sp != null
+                        ? Theme.SpriteBox("FakeExit", _levelRoot, t.pos, new Vector2(1.7f, 2.1f), sp, 2)
+                        : Theme.Box("FakeExit", _levelRoot, t.pos, t.size, Theme.Trick, 2);
+                    if (sp != null) go.GetComponent<SpriteRenderer>().color = new Color(1f, 0.55f, 0.65f);
                     Theme.AddTrigger(go, Vector2.one);
                     go.AddComponent<Trap>().Init(TrapType.FakeExit);
-                    Theme.Box("DoorKnob", go.transform, t.pos + new Vector2(0.25f, 0),
-                        new Vector2(0.15f, 0.15f), Theme.Coin, 3);
                     break;
                 }
                 case TrapType.RealExit:
                 {
-                    var go = Theme.Box("RealExit", _levelRoot, t.pos, t.size, Theme.Exit, 2);
+                    var sp = Assets.Sprite("door");
+                    GameObject go = sp != null
+                        ? Theme.SpriteBox("RealExit", _levelRoot, t.pos, new Vector2(1.5f, 1.5f), sp, 2)
+                        : Theme.Box("RealExit", _levelRoot, t.pos, t.size, Theme.Exit, 2);
+                    if (sp != null) go.GetComponent<SpriteRenderer>().color = new Color(0.55f, 1f, 0.7f);
                     Theme.AddTrigger(go, Vector2.one);
                     go.AddComponent<Trap>().Init(TrapType.RealExit);
+                    break;
+                }
+                case TrapType.SpikeStatic:
+                {
+                    var sp = Assets.Sprite("spike");
+                    GameObject go = sp != null
+                        ? Theme.SpriteBox("Spikes", _levelRoot, t.pos, t.size, sp, 3)
+                        : Theme.Box("Spikes", _levelRoot, t.pos, t.size, Theme.Danger, 3);
+                    var c = go.AddComponent<BoxCollider2D>(); c.isTrigger = true;
+                    var kz = go.AddComponent<KillZone>(); kz.msg = "Spikes. Obviously.";
                     break;
                 }
                 case TrapType.Spring:

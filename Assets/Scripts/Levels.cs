@@ -76,6 +76,10 @@ namespace TrustIssues
             // The REAL exit: drop into the scary-looking gap before the door.
             L.Traps.Add(new TrapSpec(TrapType.RealExit, 3f, -5f, 1.3f, 1.2f));
 
+            // Visible spikes you must jump (so the map clearly looks dangerous).
+            L.Traps.Add(new TrapSpec(TrapType.SpikeStatic, -3.8f, -2.5f, 0.7f, 0.7f));
+            L.Traps.Add(new TrapSpec(TrapType.SpikeStatic, 2.2f, -2.5f, 0.7f, 0.7f));
+
             // Only bait remains visible (luring you into the crusher).
             L.Decos.Add(new Deco(1f, -0.6f, 0.4f, 0.4f, Theme.Coin));
             L.Decos.Add(new Deco(0.4f, -0.4f, 0.3f, 0.3f, Theme.Coin));
@@ -113,6 +117,7 @@ namespace TrustIssues
 
             L.Platforms.Add(new Rect2(15.5f, -3f, 3f, 0.6f));
             L.Traps.Add(new TrapSpec(TrapType.Crusher, 15.5f, -1.0f, 1.8f, 1.4f));
+            L.Traps.Add(new TrapSpec(TrapType.SpikeStatic, 14.4f, -2.5f, 0.7f, 0.7f));
             L.Decos.Add(new Deco(15.5f, -0.5f, 0.4f, 0.4f, Theme.Coin));
 
             // Section 4: the fake finish. Bright door kills; drop into the gap.
