@@ -53,6 +53,22 @@ namespace TrustIssues
             return c;
         }
 
+        static Sprite _grad;
+        /// <summary>A soft vertical gradient sprite for backdrops (1 world unit).</summary>
+        public static Sprite Gradient(Color top, Color bottom)
+        {
+            if (_grad != null) return _grad;
+            int h = 64;
+            var tex = new Texture2D(1, h);
+            for (int y = 0; y < h; y++)
+                tex.SetPixel(0, y, Color.Lerp(bottom, top, (float)y / (h - 1)));
+            tex.Apply();
+            tex.wrapMode = TextureWrapMode.Clamp;
+            tex.filterMode = FilterMode.Bilinear;
+            _grad = Sprite.Create(tex, new Rect(0, 0, 1, h), new Vector2(0.5f, 0.5f), h);
+            return _grad;
+        }
+
         /// <summary>A coloured rectangle: a SpriteRenderer scaled to size (world units).</summary>
         public static GameObject Box(string name, Transform parent, Vector2 pos,
             Vector2 size, Color color, int order = 0)

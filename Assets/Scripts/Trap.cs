@@ -48,20 +48,22 @@ namespace TrustIssues
         IEnumerator Collapse()
         {
             _armed = false;
-            yield return new WaitForSeconds(0.12f);
-            // a little shudder, then drop away -> player falls into the pit
-            for (int i = 0; i < 4; i++)
+            // A single-frame shudder as the only warning, then the floor is GONE.
+            // No time to react the first time — that's the trap. The crack tell
+            // means you'll know to jump it next run.
+            Vector3 home = transform.position;
+            for (int i = 0; i < 3; i++)
             {
-                transform.position += (Vector3)(Random.insideUnitCircle * 0.04f);
-                yield return new WaitForSeconds(0.02f);
+                transform.position = home + (Vector3)(Random.insideUnitCircle * 0.05f);
+                yield return null;
             }
-            _col.enabled = false;
+            _col.enabled = false; // you fall NOW
             float e = 0f;
             Vector3 start = transform.position;
             while (e < 0.3f)
             {
                 e += Time.deltaTime;
-                transform.position = start + Vector3.down * (e * 6f);
+                transform.position = start + Vector3.down * (e * 14f);
                 var col = _sr.color; col.a = 1f - e / 0.3f; _sr.color = col;
                 yield return null;
             }
