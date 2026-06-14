@@ -10,7 +10,13 @@ namespace TrustIssues
         Crusher,    // a block slams down if you go for the high bait
         FakeExit,   // the obvious bright door kills you
         RealExit,   // the unassuming spot that actually wins
-        Surprise    // INVISIBLE kill zone on safe-looking ground — pure unfair
+        Surprise,   // INVISIBLE kill zone on safe-looking ground — pure unfair
+        Dart,       // a projectile fires across the moment you arrive
+        Faller,     // an off-screen block drops on you (Thwomp)
+        Spring,     // launches you upward (often into hidden spikes)
+        Saw,        // a hazard that slides back and forth
+        WarpBack,   // yanks you all the way back to the start — rage
+        Reverse     // flips your controls for a few seconds
     }
 
     /// <summary>
@@ -29,10 +35,21 @@ namespace TrustIssues
 
         public void Init(TrapType t) { type = t; }
 
+        Vector3 _origin;
+
         void Start()
         {
             _sr = GetComponent<SpriteRenderer>();
             _col = GetComponent<BoxCollider2D>();
+            _origin = transform.position;
+        }
+
+        void Update()
+        {
+            // A saw slides back and forth across its track.
+            if (type == TrapType.Saw)
+                transform.position = new Vector3(
+                    _origin.x + Mathf.Sin(Time.time * 2.5f) * 2.5f, _origin.y, 0f);
         }
 
         // ---- solid traps (FakeFloor) use collision; the rest are triggers ----
@@ -73,27 +90,85 @@ namespace TrustIssues
 
         void OnTriggerEnter2D(Collider2D other)
         {
-            if (!_armed) return;
-            if (!other.GetComponent<PlayerController>()) return;
+            var pc = other.GetComponent<PlayerController>();
+            if (pc == null) return;
 
             switch (type)
             {
                 case TrapType.LateSpike:
-                    StartCoroutine(RaiseSpike(other));
+                    if (_armed) StartCoroutine(RaiseSpike(other));
                     break;
                 case TrapType.Crusher:
-                    StartCoroutine(Crush());
+                    if (_armed) StartCoroutine(Crush());
                     break;
                 case TrapType.FakeExit:
                     GameRoot.I?.Die("That door? Pure evil.");
                     break;
                 case TrapType.RealExit:
-                    _armed = false;
-                    GameRoot.I?.ReachExit();
+                    if (_armed) { _armed = false; GameRoot.I?.ReachExit(); }
                     break;
                 case TrapType.Surprise:
                     GameRoot.I?.Die("You did everything right. You still died.");
                     break;
+                case TrapType.Dart:
+                    if (_armed) { _armed = false; StartCoroutine(FireDart()); }
+                    break;
+                case TrapType.Faller:
+                    if (_armed) { _armed = false; StartCoroutine(DropFaller()); }
+                    break;
+                case TrapType.Spring:
+                    LaunchPlayer(other);
+                    break;
+                case TrapType.WarpBack:
+                    GameRoot.I?.WarpToStart();
+                    break;
+                case TrapType.Reverse:
+                    pc.SetReversed(3f);
+                    break;
+            }
+        }
+
+        // A dart flies in from the right the instant you step on the sensor.
+        IEnumerator FireDart()
+        {
+            var dart = Theme.Box("Dart", transform.parent, transform.position + Vector3.right * 5f,
+                new Vector2(0.6f, 0.22f), Theme.Danger, 4);
+            var kz = dart.AddComponent<KillZone>(); kz.msg = "Didn't see that coming?";
+            var col = dart.AddComponent<BoxCollider2D>(); col.isTrigger = true;
+            float t = 0f;
+            while (t < 2.2f && dart != null)
+            {
+                t += Time.deltaTime;
+                dart.transform.position += Vector3.left * (15f * Time.deltaTime);
+                yield return null;
+            }
+            if (dart != null) Destroy(dart);
+        }
+
+        // An off-screen block slams down on the spot you're standing.
+        IEnumerator DropFaller()
+        {
+            var blk = Theme.Box("Faller", transform.parent, transform.position + Vector3.up * 6f,
+                new Vector2(1.4f, 1.4f), Theme.Trick, 4);
+            var kz = blk.AddComponent<KillZone>(); kz.msg = "From above!";
+            var col = blk.AddComponent<BoxCollider2D>(); col.isTrigger = true;
+            Vector3 from = blk.transform.position, to = transform.position;
+            float t = 0f;
+            while (t < 0.16f && blk != null)
+            {
+                t += Time.deltaTime;
+                blk.transform.position = Vector3.Lerp(from, to, t / 0.16f);
+                yield return null;
+            }
+        }
+
+        void LaunchPlayer(Collider2D other)
+        {
+            var rb = other.GetComponent<Rigidbody2D>();
+            if (rb != null)
+            {
+                rb.linearVelocity = new Vector2(rb.linearVelocity.x, 21f);
+                Audio.Play("jump", 0.7f);
             }
         }
 

@@ -277,7 +277,22 @@ namespace TrustIssues
                     go.AddComponent<Trap>().Init(TrapType.RealExit);
                     break;
                 }
-                default: // LateSpike / Crusher = invisible sensors
+                case TrapType.Spring:
+                {
+                    var go = Theme.Box("Spring", _levelRoot, t.pos, t.size, Theme.Coin, 3);
+                    Theme.AddTrigger(go, Vector2.one);
+                    go.AddComponent<Trap>().Init(TrapType.Spring);
+                    break;
+                }
+                case TrapType.Saw:
+                {
+                    var go = Theme.Box("Saw", _levelRoot, t.pos, t.size, Theme.Danger, 3);
+                    Theme.AddTrigger(go, Vector2.one);
+                    var kz = go.AddComponent<KillZone>(); kz.msg = "Sliced.";
+                    go.AddComponent<Trap>().Init(TrapType.Saw);
+                    break;
+                }
+                default: // LateSpike / Crusher / Surprise / Dart / Faller / WarpBack / Reverse = invisible sensors
                 {
                     var go = Theme.Box(t.type.ToString(), _levelRoot, t.pos, t.size,
                         new Color(0, 0, 0, 0f), 0);
@@ -390,6 +405,14 @@ namespace TrustIssues
         }
 
         // ==================== death / respawn ====================
+        public void WarpToStart()
+        {
+            if (_state != State.Play || _player == null) return;
+            _player.transform.position = _level.Spawn;
+            Audio.Play("portal", 0.5f);
+            FlashRed();
+        }
+
         public void Die(string msg = null)
         {
             if (_state != State.Play || _dying) return;

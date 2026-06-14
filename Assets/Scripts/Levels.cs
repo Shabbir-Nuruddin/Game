@@ -30,15 +30,27 @@ namespace TrustIssues
 
     public static class Levels
     {
-        public static int Count => 2;
+        public static int Count => 4;
 
         public static Level Get(int index)
         {
             switch (((index % Count) + Count) % Count)
             {
                 case 1: return Two();
+                case 2: return Three();
+                case 3: return Four();
                 default: return One();
             }
+        }
+
+        // Standard fake-finish: a pre-gap platform, then a gap with the REAL exit
+        // at its bottom, then an end platform whose bright door is a LIE.
+        static void Finish(Level L, float x)
+        {
+            L.Platforms.Add(new Rect2(x + 1.5f, -3f, 3f, 0.6f));   // pre-gap platform
+            L.Platforms.Add(new Rect2(x + 6f, -3f, 3f, 0.6f));     // end platform
+            L.Traps.Add(new TrapSpec(TrapType.FakeExit, x + 6.5f, -2f, 1f, 2f));
+            L.Traps.Add(new TrapSpec(TrapType.RealExit, x + 3.75f, -5f, 1.3f, 1.2f));
         }
 
         // -------------------- LEVEL 1 (the unfair gauntlet) --------------------
@@ -107,6 +119,52 @@ namespace TrustIssues
             L.Platforms.Add(new Rect2(20f, -3f, 3f, 0.6f));
             L.Traps.Add(new TrapSpec(TrapType.FakeExit, 21f, -2f, 1f, 2f));
             L.Traps.Add(new TrapSpec(TrapType.RealExit, 17.7f, -5f, 1.3f, 1.2f));
+            return L;
+        }
+
+        // -------------------- LEVEL 3 (incoming: darts, fallers, saw) --------------------
+        public static Level Three()
+        {
+            var L = new Level { Spawn = new Vector2(-10f, -2f) };
+            L.CamMinX = -1.5f; L.CamMaxX = 12f;
+
+            L.Platforms.Add(new Rect2(-9.5f, -3f, 3f, 0.6f));   // start
+            L.Traps.Add(new TrapSpec(TrapType.Dart, -9f, -2.3f, 1.4f, 1.2f)); // dart flies at you
+
+            L.Platforms.Add(new Rect2(-4.5f, -3f, 4f, 0.6f));   // -6.5..-2.5
+            L.Traps.Add(new TrapSpec(TrapType.Faller, -5f, -2.3f, 1.4f, 1.2f)); // block drops
+            L.Traps.Add(new TrapSpec(TrapType.Surprise, -3f, -2.2f, 0.8f, 1.0f)); // invisible death
+
+            L.Platforms.Add(new Rect2(0f, -3f, 3f, 0.6f));      // -1.5..1.5
+            L.Traps.Add(new TrapSpec(TrapType.Saw, 0f, -2.2f, 0.9f, 0.9f)); // sliding saw
+
+            Finish(L, 2.5f);
+            return L;
+        }
+
+        // -------------------- LEVEL 4 (cruelty: reverse, warp-back, spring) -----------
+        public static Level Four()
+        {
+            var L = new Level { Spawn = new Vector2(-10f, -2f) };
+            L.CamMinX = -1.5f; L.CamMaxX = 14f;
+
+            L.Platforms.Add(new Rect2(-9.5f, -3f, 3f, 0.6f));   // start
+            L.Traps.Add(new TrapSpec(TrapType.Reverse, -8.5f, -2.3f, 1.5f, 1.2f)); // controls flip
+
+            L.Platforms.Add(new Rect2(-4.5f, -3f, 4f, 0.6f));   // -6.5..-2.5
+            L.Traps.Add(new TrapSpec(TrapType.Dart, -6f, -2.3f, 1.2f, 1.2f));
+            L.Traps.Add(new TrapSpec(TrapType.Faller, -3.5f, -2.3f, 1.4f, 1.2f));
+
+            // A tempting spring on the next platform launches you into a hidden death.
+            L.Platforms.Add(new Rect2(0f, -3f, 3f, 0.6f));      // -1.5..1.5
+            L.Traps.Add(new TrapSpec(TrapType.Spring, -0.8f, -2.55f, 1.0f, 0.5f));
+            L.Traps.Add(new TrapSpec(TrapType.Surprise, -0.8f, -0.4f, 1.4f, 1.4f)); // above the spring
+            L.Traps.Add(new TrapSpec(TrapType.WarpBack, 1.1f, -2.3f, 0.8f, 1.2f));  // yanked to start
+
+            L.Platforms.Add(new Rect2(4f, -3f, 3f, 0.6f));      // 2.5..5.5
+            L.Traps.Add(new TrapSpec(TrapType.Saw, 4f, -2.2f, 0.9f, 0.9f));
+
+            Finish(L, 6.5f);
             return L;
         }
     }

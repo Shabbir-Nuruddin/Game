@@ -32,6 +32,9 @@ namespace TrustIssues
         float _inputX;
         bool _frozen;
         float _baseX = 1f, _baseY = 1f, _facing = 1f, _animTimer;
+        float _reverseTimer;
+
+        public void SetReversed(float duration) { _reverseTimer = duration; }
 
         void Awake()
         {
@@ -61,6 +64,9 @@ namespace TrustIssues
                 _buffer = jumpBuffer;
 
             if (Input.GetKeyDown(KeyCode.R)) GameRoot.I?.Die("Do-over!");
+
+            // Reverse-controls troll: flip horizontal input for a few seconds.
+            if (_reverseTimer > 0f) { _reverseTimer -= Time.deltaTime; _inputX = -_inputX; }
 
             _buffer -= Time.deltaTime;
             _coyote -= Time.deltaTime;
