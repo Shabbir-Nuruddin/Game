@@ -321,8 +321,24 @@ namespace TrustIssues
             {
                 case TrapType.FakeFloor:
                 {
-                    var go = Theme.Box("FakeFloor", _levelRoot, t.pos, t.size, Theme.Platform, 1);
-                    Theme.AddSolid(go);
+                    // Must look IDENTICAL to a real platform (same candy tile).
+                    var sp = Assets.Sprite("platform");
+                    GameObject go;
+                    if (sp != null)
+                    {
+                        go = new GameObject("FakeFloor");
+                        go.transform.SetParent(_levelRoot, false);
+                        go.transform.position = t.pos;
+                        var sr = go.AddComponent<SpriteRenderer>();
+                        sr.sprite = sp; sr.drawMode = SpriteDrawMode.Tiled;
+                        sr.size = t.size; sr.sortingOrder = 1;
+                        var col = go.AddComponent<BoxCollider2D>(); col.size = t.size;
+                    }
+                    else
+                    {
+                        go = Theme.Box("FakeFloor", _levelRoot, t.pos, t.size, Theme.Platform, 1);
+                        Theme.AddSolid(go);
+                    }
                     go.AddComponent<Trap>().Init(TrapType.FakeFloor);
                     break;
                 }
@@ -332,7 +348,7 @@ namespace TrustIssues
                     GameObject go = sp != null
                         ? Theme.SpriteBox("FakeExit", _levelRoot, t.pos, new Vector2(1.7f, 2.1f), sp, 2)
                         : Theme.Box("FakeExit", _levelRoot, t.pos, t.size, Theme.Trick, 2);
-                    if (sp != null) go.GetComponent<SpriteRenderer>().color = new Color(1f, 0.55f, 0.65f);
+                    if (sp != null) go.GetComponent<SpriteRenderer>().color = new Color(1f, 0.45f, 0.5f);
                     Theme.AddTrigger(go, Vector2.one);
                     go.AddComponent<Trap>().Init(TrapType.FakeExit);
                     break;
@@ -343,7 +359,7 @@ namespace TrustIssues
                     GameObject go = sp != null
                         ? Theme.SpriteBox("RealExit", _levelRoot, t.pos, new Vector2(1.5f, 1.5f), sp, 2)
                         : Theme.Box("RealExit", _levelRoot, t.pos, t.size, Theme.Exit, 2);
-                    if (sp != null) go.GetComponent<SpriteRenderer>().color = new Color(0.55f, 1f, 0.7f);
+                    // natural gold trophy = the real goal (no muddy tint)
                     Theme.AddTrigger(go, Vector2.one);
                     go.AddComponent<Trap>().Init(TrapType.RealExit);
                     break;

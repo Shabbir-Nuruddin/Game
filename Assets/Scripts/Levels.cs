@@ -21,156 +21,209 @@ namespace TrustIssues
     public class Level
     {
         public Vector2 Spawn;
-        public float CamMinX = -1.5f, CamMaxX = -1.5f;  // static camera by default
+        public float CamMinX = -1.5f, CamMaxX = -1.5f;
         public List<Rect2> Platforms = new();
         public List<TrapSpec> Traps = new();
         public List<Deco> Decos = new();
         public List<PortalPair> Portals = new();
     }
 
+    /// <summary>
+    /// Fluent builder that lays platforms left-to-right with controlled gaps, so
+    /// levels are GUARANTEED beatable: every gap is jumpable (<= 3), spike
+    /// platforms are wide enough to land + run + jump, and crushers never share a
+    /// platform with something you must jump over. The "unfair" comes from
+    /// untelegraphed traps (fake floors, invisible deaths), not impossible jumps.
+    /// </summary>
+    class B
+    {
+        public Level L = new();
+        float cur;  // left edge of the next piece
+
+        public B(float spawnX = -10f) { L.Spawn = new Vector2(spawnX, -2f); cur = spawnX - 1.5f; }
+
+        public float Plat(float w) { float cx = cur + w / 2f; L.Platforms.Add(new Rect2(cx, -3f, w, 0.6f)); cur += w; return cx; }
+        public float FakeFloor(float w) { float cx = cur + w / 2f; L.Traps.Add(new TrapSpec(TrapType.FakeFloor, cx, -3f, w, 0.6f)); cur += w; return cx; }
+        public void Gap(float w) { cur += w; }
+
+        void T(TrapType t, float x, float y, float w, float h) => L.Traps.Add(new TrapSpec(t, x, y, w, h));
+        public void Spike(float x) => T(TrapType.SpikeStatic, x, -2.4f, 0.7f, 0.7f);
+        public void LateSpike(float x) => T(TrapType.LateSpike, x, -2.4f, 1.0f, 1.2f);
+        public void Dart(float x) => T(TrapType.Dart, x, -2.3f, 1.0f, 1.2f);
+        public void Faller(float x) => T(TrapType.Faller, x, -2.3f, 1.2f, 1.2f);
+        public void Surprise(float x) => T(TrapType.Surprise, x, -2.2f, 0.8f, 1.0f);
+        public void Saw(float x) => T(TrapType.Saw, x, -2.2f, 0.9f, 0.9f);
+        public void Reverse(float x) => T(TrapType.Reverse, x, -2.3f, 1.5f, 1.2f);
+        public void WarpBack(float x) => T(TrapType.WarpBack, x, -2.3f, 0.8f, 1.2f);
+        public void Crusher(float x) { T(TrapType.Crusher, x, -1f, 1.6f, 1.4f); L.Decos.Add(new Deco(x, -0.6f, 0.35f, 0.35f, Theme.Coin)); }
+        public void Spring(float x) { T(TrapType.Spring, x, -2.55f, 1.0f, 0.5f); T(TrapType.Surprise, x, -0.4f, 1.4f, 1.4f); }
+
+        public Level Finish()
+        {
+            float pre = Plat(3.5f);
+            Gap(1.6f);
+            float endc = Plat(3.5f);
+            T(TrapType.FakeExit, endc + 0.6f, -2f, 1f, 2f);
+            T(TrapType.RealExit, (pre + endc) / 2f, -5f, 1.3f, 1.2f);
+            L.CamMinX = -1.5f;
+            L.CamMaxX = Mathf.Max(-1.5f, cur - 10f);
+            return L;
+        }
+    }
+
     public static class Levels
     {
-        public static int Count => 4;
+        public static int Count => 10;
 
         public static Level Get(int index)
         {
             switch (((index % Count) + Count) % Count)
             {
-                case 1: return Two();
-                case 2: return Three();
-                case 3: return Four();
-                default: return One();
+                case 0: return L1(); case 1: return L2(); case 2: return L3();
+                case 3: return L4(); case 4: return L5(); case 5: return L6();
+                case 6: return L7(); case 7: return L8(); case 8: return L9();
+                default: return L10();
             }
         }
 
-        // Standard fake-finish: a pre-gap platform, then a gap with the REAL exit
-        // at its bottom, then an end platform whose bright door is a LIE.
-        static void Finish(Level L, float x)
+        // 1 — intro: fake floor, one spike, one crusher.
+        static Level L1()
         {
-            L.Platforms.Add(new Rect2(x + 1.5f, -3f, 3f, 0.6f));   // pre-gap platform
-            L.Platforms.Add(new Rect2(x + 6f, -3f, 3f, 0.6f));     // end platform
-            L.Traps.Add(new TrapSpec(TrapType.FakeExit, x + 6.5f, -2f, 1f, 2f));
-            L.Traps.Add(new TrapSpec(TrapType.RealExit, x + 3.75f, -5f, 1.3f, 1.2f));
+            var b = new B();
+            b.Plat(3.5f);
+            b.FakeFloor(2f);
+            float p2 = b.Plat(3.5f); b.Spike(p2);
+            b.Gap(2.5f);
+            float p3 = b.Plat(3.5f); b.Crusher(p3);
+            return b.Finish();
         }
 
-        // -------------------- LEVEL 1 (the unfair gauntlet) --------------------
-        // No tells. Traps look IDENTICAL to safe ground. You will die the first
-        // time at each one with no warning — then you memorise and feel clever.
-        public static Level One()
+        // 2 — gap jumps + a late spike.
+        static Level L2()
         {
-            var L = new Level { Spawn = new Vector2(-9f, -2f) };
-
-            L.Platforms.Add(new Rect2(-8.5f, -3f, 3f, 0.6f)); // start (safe)
-            L.Platforms.Add(new Rect2(-3f,  -3f, 3f, 0.6f));  // "safe" platform (it isn't)
-            L.Platforms.Add(new Rect2( 1f,  -3f, 3f, 0.6f));  // bait-coin platform
-            L.Platforms.Add(new Rect2( 5f,  -3f, 3f, 0.6f));  // the fake finish
-
-            // The obvious path forward collapses (looks just like real floor).
-            L.Traps.Add(new TrapSpec(TrapType.FakeFloor, -6f, -3f, 2f, 0.6f));
-            // A totally normal-looking platform that kills you mid-stride. Pure unfair.
-            L.Traps.Add(new TrapSpec(TrapType.Surprise, -2.6f, -2.2f, 0.8f, 1.0f));
-            // Reach for the shiny coins -> crushed from above.
-            L.Traps.Add(new TrapSpec(TrapType.Crusher, 1f, -1.0f, 1.8f, 1.4f));
-            // The bright, obvious "exit" door is a lie and kills you.
-            L.Traps.Add(new TrapSpec(TrapType.FakeExit, 6f, -2f, 1f, 2f));
-            // The REAL exit: drop into the scary-looking gap before the door.
-            L.Traps.Add(new TrapSpec(TrapType.RealExit, 3f, -5f, 1.3f, 1.2f));
-
-            // Visible spikes you must jump (so the map clearly looks dangerous).
-            L.Traps.Add(new TrapSpec(TrapType.SpikeStatic, -3.8f, -2.5f, 0.7f, 0.7f));
-            L.Traps.Add(new TrapSpec(TrapType.SpikeStatic, 2.2f, -2.5f, 0.7f, 0.7f));
-
-            // Only bait remains visible (luring you into the crusher).
-            L.Decos.Add(new Deco(1f, -0.6f, 0.4f, 0.4f, Theme.Coin));
-            L.Decos.Add(new Deco(0.4f, -0.4f, 0.3f, 0.3f, Theme.Coin));
-            L.Decos.Add(new Deco(1.6f, -0.4f, 0.3f, 0.3f, Theme.Coin));
-            return L;
+            var b = new B();
+            b.Plat(3.5f);
+            b.Gap(2.5f);
+            float p2 = b.Plat(3.5f); b.LateSpike(p2);
+            b.Gap(2.5f);
+            float p3 = b.Plat(3.5f); b.Spike(p3);
+            b.FakeFloor(2f);
+            float p4 = b.Plat(3.5f); b.Crusher(p4);
+            return b.Finish();
         }
 
-        // -------------------- LEVEL 2 (longer, meaner, portals) --------------------
-        public static Level Two()
+        // 3 — darts and a faller.
+        static Level L3()
         {
-            var L = new Level { Spawn = new Vector2(-10f, -2f) };
-            L.CamMinX = -1.5f; L.CamMaxX = 13f;   // camera follows right
-
-            // Section 1: warm-up that immediately betrays you (no warning).
-            L.Platforms.Add(new Rect2(-9.5f, -3f, 3f, 0.6f));   // start
-            L.Traps.Add(new TrapSpec(TrapType.FakeFloor, -6.5f, -3f, 2f, 0.6f));
-
-            // Section 2: a "safe" platform with an invisible death, then a crusher.
-            L.Platforms.Add(new Rect2(-3.5f, -3f, 3f, 0.6f));
-            L.Traps.Add(new TrapSpec(TrapType.Surprise, -3.8f, -2.2f, 0.8f, 1.0f));
-            L.Traps.Add(new TrapSpec(TrapType.LateSpike, -2.4f, -2.4f, 1.0f, 1.2f));
-
-            L.Platforms.Add(new Rect2(0.5f, -3f, 3f, 0.6f));
-            L.Traps.Add(new TrapSpec(TrapType.Crusher, 0.5f, -1.0f, 1.8f, 1.4f));
-            L.Decos.Add(new Deco(0.5f, -0.6f, 0.4f, 0.4f, Theme.Coin));
-            L.Decos.Add(new Deco(1.1f, -0.4f, 0.3f, 0.3f, Theme.Coin));
-
-            // A deadly wide gap — the ONLY way across is the portal.
-            L.Portals.Add(new PortalPair(2.3f, -2.2f, 8.5f, -2.2f));
-
-            // Section 3: portal landing (safe room), then a spike, then fake floor.
-            L.Platforms.Add(new Rect2(9.5f, -3f, 4f, 0.6f));
-            L.Traps.Add(new TrapSpec(TrapType.LateSpike, 11f, -2.4f, 1.0f, 1.2f));
-            L.Traps.Add(new TrapSpec(TrapType.FakeFloor, 12.5f, -3f, 2f, 0.6f));
-
-            L.Platforms.Add(new Rect2(15.5f, -3f, 3f, 0.6f));
-            L.Traps.Add(new TrapSpec(TrapType.Crusher, 15.5f, -1.0f, 1.8f, 1.4f));
-            L.Traps.Add(new TrapSpec(TrapType.SpikeStatic, 14.4f, -2.5f, 0.7f, 0.7f));
-            L.Decos.Add(new Deco(15.5f, -0.5f, 0.4f, 0.4f, Theme.Coin));
-
-            // Section 4: the fake finish. Bright door kills; drop into the gap.
-            L.Platforms.Add(new Rect2(20f, -3f, 3f, 0.6f));
-            L.Traps.Add(new TrapSpec(TrapType.FakeExit, 21f, -2f, 1f, 2f));
-            L.Traps.Add(new TrapSpec(TrapType.RealExit, 17.7f, -5f, 1.3f, 1.2f));
-            return L;
+            var b = new B();
+            b.Plat(3.5f);
+            b.Gap(2.5f);
+            float p2 = b.Plat(4f); b.Dart(p2 - 1f); b.Spike(p2 + 1f);
+            b.Gap(2.5f);
+            float p3 = b.Plat(3.5f); b.Faller(p3);
+            b.Gap(2.5f);
+            float p4 = b.Plat(3.5f); b.Crusher(p4);
+            return b.Finish();
         }
 
-        // -------------------- LEVEL 3 (incoming: darts, fallers, saw) --------------------
-        public static Level Three()
+        // 4 — invisible deaths.
+        static Level L4()
         {
-            var L = new Level { Spawn = new Vector2(-10f, -2f) };
-            L.CamMinX = -1.5f; L.CamMaxX = 12f;
-
-            L.Platforms.Add(new Rect2(-9.5f, -3f, 3f, 0.6f));   // start
-            L.Traps.Add(new TrapSpec(TrapType.Dart, -9f, -2.3f, 1.4f, 1.2f)); // dart flies at you
-
-            L.Platforms.Add(new Rect2(-4.5f, -3f, 4f, 0.6f));   // -6.5..-2.5
-            L.Traps.Add(new TrapSpec(TrapType.Faller, -5f, -2.3f, 1.4f, 1.2f)); // block drops
-            L.Traps.Add(new TrapSpec(TrapType.Surprise, -3f, -2.2f, 0.8f, 1.0f)); // invisible death
-
-            L.Platforms.Add(new Rect2(0f, -3f, 3f, 0.6f));      // -1.5..1.5
-            L.Traps.Add(new TrapSpec(TrapType.Saw, 0f, -2.2f, 0.9f, 0.9f)); // sliding saw
-
-            Finish(L, 2.5f);
-            return L;
+            var b = new B();
+            b.Plat(3.5f);
+            b.FakeFloor(2f);
+            float p2 = b.Plat(4f); b.Surprise(p2);
+            b.Gap(2.5f);
+            float p3 = b.Plat(3.5f); b.Spike(p3);
+            b.Gap(2.5f);
+            float p4 = b.Plat(3.5f); b.Faller(p4);
+            return b.Finish();
         }
 
-        // -------------------- LEVEL 4 (cruelty: reverse, warp-back, spring) -----------
-        public static Level Four()
+        // 5 — saw + a bait spring into hidden spikes.
+        static Level L5()
         {
-            var L = new Level { Spawn = new Vector2(-10f, -2f) };
-            L.CamMinX = -1.5f; L.CamMaxX = 14f;
+            var b = new B();
+            b.Plat(3.5f);
+            b.Gap(2.5f);
+            float p2 = b.Plat(4f); b.Saw(p2);
+            b.Gap(2.5f);
+            float p3 = b.Plat(4f); b.Spring(p3 - 1f);
+            b.Gap(2.5f);
+            float p4 = b.Plat(3.5f); b.Spike(p4);
+            return b.Finish();
+        }
 
-            L.Platforms.Add(new Rect2(-9.5f, -3f, 3f, 0.6f));   // start
-            L.Traps.Add(new TrapSpec(TrapType.Reverse, -8.5f, -2.3f, 1.5f, 1.2f)); // controls flip
+        // 6 — reverse controls (wait it out, then go).
+        static Level L6()
+        {
+            var b = new B();
+            float p1 = b.Plat(4f); b.Reverse(p1 + 1f);
+            b.Gap(2.5f);
+            float p2 = b.Plat(3.5f); b.Spike(p2);
+            b.Gap(2.5f);
+            float p3 = b.Plat(3.5f); b.LateSpike(p3);
+            b.Gap(2.5f);
+            float p4 = b.Plat(3.5f); b.Crusher(p4);
+            return b.Finish();
+        }
 
-            L.Platforms.Add(new Rect2(-4.5f, -3f, 4f, 0.6f));   // -6.5..-2.5
-            L.Traps.Add(new TrapSpec(TrapType.Dart, -6f, -2.3f, 1.2f, 1.2f));
-            L.Traps.Add(new TrapSpec(TrapType.Faller, -3.5f, -2.3f, 1.4f, 1.2f));
+        // 7 — warp-back rage + combos.
+        static Level L7()
+        {
+            var b = new B();
+            b.Plat(3.5f);
+            b.Gap(2.5f);
+            float p2 = b.Plat(4f); b.Spike(p2 - 1f); b.WarpBack(p2 + 1f);
+            b.Gap(2.5f);
+            float p3 = b.Plat(3.5f); b.Faller(p3);
+            b.Gap(2.5f);
+            float p4 = b.Plat(3.5f); b.Saw(p4);
+            return b.Finish();
+        }
 
-            // A tempting spring on the next platform launches you into a hidden death.
-            L.Platforms.Add(new Rect2(0f, -3f, 3f, 0.6f));      // -1.5..1.5
-            L.Traps.Add(new TrapSpec(TrapType.Spring, -0.8f, -2.55f, 1.0f, 0.5f));
-            L.Traps.Add(new TrapSpec(TrapType.Surprise, -0.8f, -0.4f, 1.4f, 1.4f)); // above the spring
-            L.Traps.Add(new TrapSpec(TrapType.WarpBack, 1.1f, -2.3f, 0.8f, 1.2f));  // yanked to start
+        // 8 — spike gauntlet.
+        static Level L8()
+        {
+            var b = new B();
+            b.Plat(3.5f);
+            b.Gap(2.5f);
+            float p2 = b.Plat(5f); b.Spike(p2 - 1.2f); b.Spike(p2 + 1.2f);
+            b.Gap(2.5f);
+            float p3 = b.Plat(4f); b.Faller(p3 - 1f); b.Dart(p3 + 1f);
+            b.Gap(2.5f);
+            float p4 = b.Plat(3.5f); b.Crusher(p4);
+            return b.Finish();
+        }
 
-            L.Platforms.Add(new Rect2(4f, -3f, 3f, 0.6f));      // 2.5..5.5
-            L.Traps.Add(new TrapSpec(TrapType.Saw, 4f, -2.2f, 0.9f, 0.9f));
+        // 9 — everything mixed.
+        static Level L9()
+        {
+            var b = new B();
+            float p1 = b.Plat(4f); b.Reverse(p1 + 1f);
+            b.FakeFloor(2f);
+            float p2 = b.Plat(4f); b.Surprise(p2);
+            b.Gap(2.5f);
+            float p3 = b.Plat(4f); b.Saw(p3);
+            b.Gap(2.5f);
+            float p4 = b.Plat(4f); b.Spike(p4 - 1f); b.WarpBack(p4 + 1f);
+            return b.Finish();
+        }
 
-            Finish(L, 6.5f);
-            return L;
+        // 10 — brutal finale.
+        static Level L10()
+        {
+            var b = new B();
+            b.Plat(3.5f);
+            b.Gap(2.8f);
+            float p2 = b.Plat(5f); b.Spike(p2 - 1.5f); b.LateSpike(p2 + 0.7f);
+            b.Gap(2.8f);
+            float p3 = b.Plat(4f); b.Dart(p3 - 1f); b.Faller(p3 + 1f);
+            b.Gap(2.8f);
+            float p4 = b.Plat(4f); b.Saw(p4);
+            b.FakeFloor(2f);
+            float p5 = b.Plat(3.5f); b.Surprise(p5);
+            return b.Finish();
         }
     }
 }
