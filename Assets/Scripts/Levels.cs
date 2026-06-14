@@ -55,7 +55,7 @@ namespace TrustIssues
         public void Saw(float x) => T(TrapType.Saw, x, -2.2f, 0.9f, 0.9f);
         public void Reverse(float x) => T(TrapType.Reverse, x, -2.3f, 1.5f, 1.2f);
         public void WarpBack(float x) => T(TrapType.WarpBack, x, -2.3f, 0.8f, 1.2f);
-        public void Crusher(float x) { T(TrapType.Crusher, x, -1f, 1.6f, 1.4f); L.Decos.Add(new Deco(x, -0.6f, 0.35f, 0.35f, Theme.Coin)); }
+        public void Crusher(float x) => T(TrapType.Crusher, x, -1f, 1.6f, 1.4f); // no coin tell — jump up here and you're crushed
         public void Spring(float x) { T(TrapType.Spring, x, -2.55f, 1.0f, 0.5f); T(TrapType.Surprise, x, -0.4f, 1.4f, 1.4f); }
 
         public Level Finish()
@@ -73,7 +73,7 @@ namespace TrustIssues
 
     public static class Levels
     {
-        public static int Count => 10;
+        public static int Count => 15;
 
         public static Level Get(int index)
         {
@@ -82,7 +82,8 @@ namespace TrustIssues
                 case 0: return L1(); case 1: return L2(); case 2: return L3();
                 case 3: return L4(); case 4: return L5(); case 5: return L6();
                 case 6: return L7(); case 7: return L8(); case 8: return L9();
-                default: return L10();
+                case 9: return L10(); case 10: return L11(); case 11: return L12();
+                case 12: return L13(); case 13: return L14(); default: return L15();
             }
         }
 
@@ -223,6 +224,76 @@ namespace TrustIssues
             float p4 = b.Plat(4f); b.Saw(p4);
             b.FakeFloor(2f);
             float p5 = b.Plat(3.5f); b.Surprise(p5);
+            return b.Finish();
+        }
+
+        // 11 — dart gauntlet (the shooting one you like).
+        static Level L11()
+        {
+            var b = new B();
+            b.Plat(3.5f);
+            b.Gap(2.5f);
+            float p2 = b.Plat(4f); b.Dart(p2 - 1f); b.Spike(p2 + 1.2f);
+            b.Gap(2.5f);
+            float p3 = b.Plat(4f); b.Dart(p3); b.Faller(p3 + 1.5f);
+            b.Gap(2.5f);
+            float p4 = b.Plat(3.5f); b.LateSpike(p4);
+            return b.Finish();
+        }
+
+        // 12 — saws, a bait spring, and a dart.
+        static Level L12()
+        {
+            var b = new B();
+            b.Plat(3.5f);
+            b.Gap(2.5f);
+            float p2 = b.Plat(4f); b.Saw(p2);
+            b.Gap(2.5f);
+            float p3 = b.Plat(4f); b.Spring(p3 - 1f);
+            b.Gap(2.5f);
+            float p4 = b.Plat(4f); b.Dart(p4 - 1f); b.Spike(p4 + 1f);
+            return b.Finish();
+        }
+
+        // 13 — invisible deaths between darts.
+        static Level L13()
+        {
+            var b = new B();
+            b.Plat(3.5f);
+            b.FakeFloor(2f);
+            float p2 = b.Plat(4f); b.Surprise(p2 - 1f); b.Dart(p2 + 1f);
+            b.Gap(2.5f);
+            float p3 = b.Plat(4f); b.Faller(p3);
+            b.Gap(2.5f);
+            float p4 = b.Plat(3.5f); b.Spike(p4);
+            return b.Finish();
+        }
+
+        // 14 — reverse controls + warp-back + dart.
+        static Level L14()
+        {
+            var b = new B();
+            float p1 = b.Plat(4f); b.Reverse(p1 + 1f);
+            b.Gap(2.5f);
+            float p2 = b.Plat(4f); b.Dart(p2 - 1f); b.WarpBack(p2 + 1f);
+            b.Gap(2.5f);
+            float p3 = b.Plat(4f); b.Saw(p3);
+            b.Gap(2.5f);
+            float p4 = b.Plat(3.5f); b.Faller(p4);
+            return b.Finish();
+        }
+
+        // 15 — the brutal finale (darts everywhere).
+        static Level L15()
+        {
+            var b = new B();
+            b.Plat(3.5f);
+            b.Gap(2.8f);
+            float p2 = b.Plat(5f); b.Dart(p2 - 1.5f); b.Spike(p2); b.Dart(p2 + 1.5f);
+            b.Gap(2.8f);
+            float p3 = b.Plat(4f); b.Faller(p3 - 1f); b.Saw(p3 + 1f);
+            b.FakeFloor(2f);
+            float p4 = b.Plat(4f); b.Surprise(p4 - 1f); b.LateSpike(p4 + 1f);
             return b.Finish();
         }
     }

@@ -33,6 +33,8 @@ namespace TrustIssues
         BoxCollider2D _col;
         bool _armed = true;
         Transform _spike;
+        Transform _faller;
+        Vector3 _fallerHome;
 
         public void Init(TrapType t) { type = t; }
 
@@ -43,6 +45,21 @@ namespace TrustIssues
             _sr = GetComponent<SpriteRenderer>();
             _col = GetComponent<BoxCollider2D>();
             _origin = transform.position;
+
+            // A faller is a VISIBLE rock-head hovering above; it slams down with a
+            // brief telegraph so you can sprint through (dodgeable, not a cheap kill).
+            if (type == TrapType.Faller)
+            {
+                var sp = Assets.Sprite("rockhead");
+                var pos = transform.position + Vector3.up * 3.5f;
+                var go = sp != null
+                    ? Theme.SpriteBox("RockHead", transform, pos, new Vector2(1.5f, 1.5f), sp, 4)
+                    : Theme.Box("RockHead", transform, pos, new Vector2(1.4f, 1.4f), Theme.Trick, 4);
+                var col = go.AddComponent<BoxCollider2D>(); col.isTrigger = true;
+                var kz = go.AddComponent<KillZone>(); kz.msg = "From above!";
+                _faller = go.transform;
+                _fallerHome = _faller.position;
+            }
         }
 
         void Update()
@@ -115,7 +132,7 @@ namespace TrustIssues
                     if (_armed) { _armed = false; StartCoroutine(FireDart()); }
                     break;
                 case TrapType.Faller:
-                    if (_armed) { _armed = false; StartCoroutine(DropFaller()); }
+                    if (_armed) StartCoroutine(DropReactive());
                     break;
                 case TrapType.Spring:
                     LaunchPlayer(other);
@@ -147,23 +164,36 @@ namespace TrustIssues
         }
 
         // An off-screen block slams down on the spot you're standing.
-        IEnumerator DropFaller()
+        // The hovering rock-head shakes (telegraph), slams down, waits, retracts.
+        // Sprint through during the shake to survive; dawdle and you're flat.
+        IEnumerator DropReactive()
         {
-            var sp = Assets.Sprite("rockhead");
-            var spawn = transform.position + Vector3.up * 5f;
-            GameObject blk = sp != null
-                ? Theme.SpriteBox("Faller", transform.parent, spawn, new Vector2(1.5f, 1.5f), sp, 4)
-                : Theme.Box("Faller", transform.parent, spawn, new Vector2(1.4f, 1.4f), Theme.Trick, 4);
-            var kz = blk.AddComponent<KillZone>(); kz.msg = "From above!";
-            var col = blk.AddComponent<BoxCollider2D>(); col.isTrigger = true;
-            Vector3 from = blk.transform.position, to = transform.position;
-            float t = 0f;
-            while (t < 0.12f && blk != null)
+            _armed = false;
+            float e = 0f;
+            while (e < 0.25f)
             {
-                t += Time.deltaTime;
-                blk.transform.position = Vector3.Lerp(from, to, t / 0.16f);
+                e += Time.deltaTime;
+                if (_faller != null) _faller.position = _fallerHome + (Vector3)(Random.insideUnitCircle * 0.06f);
                 yield return null;
             }
+            Vector3 to = new Vector3(_fallerHome.x, transform.position.y, 0f);
+            e = 0f;
+            while (e < 0.1f)
+            {
+                e += Time.deltaTime;
+                if (_faller != null) _faller.position = Vector3.Lerp(_fallerHome, to, e / 0.1f);
+                yield return null;
+            }
+            yield return new WaitForSeconds(0.35f);
+            e = 0f;
+            while (e < 0.3f)
+            {
+                e += Time.deltaTime;
+                if (_faller != null) _faller.position = Vector3.Lerp(to, _fallerHome, e / 0.3f);
+                yield return null;
+            }
+            if (_faller != null) _faller.position = _fallerHome;
+            _armed = true;
         }
 
         void LaunchPlayer(Collider2D other)
