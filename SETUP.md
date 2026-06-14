@@ -1,95 +1,59 @@
-# WordBloom — Setup Guide
+# Trust Issues — Setup Guide
 
-A cozy, level-based word game (Word Cookies / Wordscapes style): spell words from
-a wheel of letters to fill the board, beat the level, and grow your streak. This
-guide gets it running on your machine. Take it one step at a time — you can't
-break anything.
+A troll/rage platformer. This gets it running. You can't break anything.
 
----
+## Step 1 — Open the project
 
-## Step 1 — Install Unity (one time)
+You already have Unity 6 installed and this folder open. If not: Unity Hub →
+**Add** → **Add project from disk** → choose
+`C:\Users\Shabbir\Desktop\Github\Game`, then open it.
 
-1. Go to **https://unity.com/download** and install **Unity Hub**.
-2. Open Unity Hub → **Installs** tab → **Install Editor** → pick the latest
-   **LTS** version (a green "LTS" label). LTS = the stable one.
-3. When it asks which **modules** to add, tick **Android Build Support**
-   (we'll need it later to put the game on a phone). You can add it later too.
-4. Create a free **Unity account** when prompted and sign in. Choose the
-   **Personal** (free) plan — it's free until you earn $200,000/year.
+## Step 2 — Press Play
 
-> This whole step happens on your computer. I never need your login or any keys.
+1. The game **builds itself on Play** — no GameObject to create, nothing to wire
+   up (it uses an auto-boot script).
+2. If your old WordBloom scene is still open with a `WordBloom`/`Game` object in
+   the Hierarchy, just delete that object (right-click → Delete). Not required,
+   but keeps things clean.
+3. Press the **▶ Play** button.
 
----
+You should see a dark screen titled **TRUST ISSUES**, the bright platforms, and
+**Beanie** (the yellow blob) on the left.
 
-## Step 2 — Open this project
+## Step 3 — Play Level 1
 
-1. In Unity Hub → **Projects** tab → **Add** → **Add project from disk**.
-2. Choose this folder:
-   `C:\Users\Shabbir\Desktop\Github\Game`
-3. If Hub warns the project was made with a different version, click
-   **"Open with [your installed version]"** — that's fine.
-4. The first open takes a few minutes while Unity builds its `Library/` folder.
-   That's normal and only happens once. (We never commit `Library/` — see
-   `.gitignore`.)
+- **Move:** `A`/`D` or `←`/`→`
+- **Jump:** `Space` or `W`
+- **Restart:** `R`
 
----
+Goal: reach the **green** exit. But the level lies to you:
+- the floor **collapses**, spikes **pop up**, a block **crushes** you if you grab
+  the coins, and the bright **purple door is a trap**.
+- Every trap has a faint **tell** — once you die to it, you'll know next time.
+- The **real exit is green**, hidden by *dropping into the gap* before the door.
 
-## Step 3 — Wire up the one GameObject (30 seconds, one time)
-
-The game builds its whole screen from code, so there is only **one** thing to set up:
-
-1. In the **Project** window (bottom), open `Assets/Scenes`. If there's no scene,
-   make one: top menu **File → New Scene → Basic (Built-in)**, then
-   **File → Save As…** and save it as `Assets/Scenes/Main.unity`.
-2. In the **Hierarchy** window (left), right-click → **Create Empty**.
-   Rename it to `Game`.
-3. With `Game` selected, in the **Inspector** (right) click **Add Component**,
-   type **Game**, and select the **Game** script.
-4. Press the big **▶ Play** button at the top.
-
-You should see the **WordBloom** home screen with a **PLAY** button. Tap it to
-start Level 1: tap letters on the wheel to spell a word, then **ENTER**. Found
-words fill the board; finish them all to clear the level.
-
-> Tip: in the Game view, set the aspect ratio dropdown to a **portrait phone**
-> ratio (e.g. 9:16) so it looks like a phone.
-
----
+Your **death counter** (top-left) is the bragging-rights stat we'll let players
+share later.
 
 ## Step 4 — Tell me what happened
 
-- If it works: tell me, and we'll start making it prettier and adding features.
-- If you see **red errors** in the **Console** window (menu **Window → General →
-  Console**), copy the text and paste it to me. I'll fix it.
-
----
+- If it plays: tell me what **feels** off — jump too floaty? a trap feel unfair
+  (died with no warning)? too easy/hard? That feedback is how we make it *good*.
+- If you see **red errors** in the **Console** (Window → General → Console), copy
+  them to me and I'll fix immediately.
 
 ## What's in the project
 
 | File | What it does |
 |------|--------------|
-| `Assets/Scripts/Brand.cs` | The game's identity: name, colours, fonts, UI + animation helpers. |
-| `Assets/Scripts/Levels.cs` | Hand-authored levels (wheel letters + words to find). |
-| `Assets/Scripts/WordPuzzle.cs` | Pure level logic (found words, bonus, hints). No Unity code. |
-| `Assets/Scripts/Game.cs` | Builds the Home + gameplay screens, wheel input, animations, coins, save. |
-| `Packages/manifest.json` | Tells Unity which built-in packages we use. |
-| `.gitignore` | Keeps Unity's auto-generated junk out of git. |
+| `Assets/Scripts/Theme.cs` | Look + the primitive/UI factory (builds everything from one white sprite — no art needed yet). |
+| `Assets/Scripts/PlayerController.cs` | Beanie's movement: coyote time, jump buffer, snappy gravity, squash & stretch. |
+| `Assets/Scripts/Trap.cs` | The traps (fake floor, late spikes, crusher, fake/real exit) + a reusable KillZone. |
+| `Assets/Scripts/Levels.cs` | Level 1 as data (platforms, traps, tells, bait). |
+| `Assets/Scripts/Juice.cs` | Screen shake + comedic death lines. |
+| `Assets/Scripts/GameRoot.cs` | Auto-boot, builds the level, death/respawn/win, death counter, HUD. |
 
-## What works right now
+## Next up
 
-- Home screen with animated title + **PLAY**
-- Word-Cookies-style gameplay: tap the letter wheel, **ENTER** to submit
-- Answer tiles that pop in when you find a word; wrong words shake
-- **Bonus words** earn coins; **Hint** spends coins to reveal a letter
-- **Level-complete** celebration with stars, then **NEXT**
-- Progress + coins **saved** between sessions (10 hand-made levels to start)
-
-## Ideas we'll add next (in rough order)
-
-- Real art + sound (juice) via asset packs — the biggest "feel" upgrade
-- TextMeshPro for crisper text and nicer fonts
-- A **level map / journey** screen instead of a plain level number
-- A **daily streak** + daily puzzle (the habit hook)
-- A friendly **share-with-family** results card (the social/growth hook)
-- Auto-generated levels from a big dictionary (hundreds of levels)
-- Settings: even-bigger text, read-aloud (accessibility)
+Real art + sound (the big "feel" jump), 5–10 more levels with new traps, a
+"share your death count" button, and a WebGL build to send to testers/streamers.

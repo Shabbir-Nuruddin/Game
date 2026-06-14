@@ -1,29 +1,35 @@
-# WordBloom 🌱
+# Trust Issues 😈
 
-A cozy, **level-based word game** — Word Cookies / Wordscapes style. Spell words
-from a wheel of letters to fill the board, beat the level, earn coins, and grow.
-Built in Unity (C#).
+A short, funny, **brutally-unfair troll platformer** — in the spirit of *Level
+Devil*, *Trap Adventure*, and *Fever*. The floor collapses, the spikes pop up
+late, the obvious door kills you, and dying *is* the entertainment. Built in
+Unity 6 (C#).
 
-## The idea
+## Why this game
 
-Word games are one of the most-played, longest-retained mobile genres — and the
-audience skews toward players the big studios under-serve (older and casual
-players who want something *warm and relaxing*, not loud and stressful).
-WordBloom aims for that feel: cozy art direction, big readable letters, no
-timers, gentle encouragement — while still having the **progression and journey**
-(levels, coins, hints, streaks) that keep people coming back daily.
+Troll/rage games go viral because watching someone confidently jump into a
+surprise anvil is internet gold — streamers and TikTokers spread them for free,
+and they sell on Steam for a few dollars. The plan: a **free WebGL build on
+itch.io** for virality, then a **paid Steam** version with more levels.
 
-We sell **enjoyment and a daily habit** — not "brain training." We make no
-medical or cognitive claims.
+The design follows the genre's real rules:
+- **Invert the golden path** — the inviting route is the trap.
+- **Fair tells** — every trap has a subtle hint, so after one death you blame
+  yourself and feel *smart* dodging it next time.
+- **Fast, funny failure** — instant respawn, slapstick squish, cheeky death lines.
+- **Staggered reveals** — each death teaches you one new trap.
+
+Meet **Beanie**, the little yellow blob who absolutely should not trust this level.
 
 ## Status
 
-🚧 **Playable prototype.** Real systems are in: home screen, a Word-Cookies-style
-letter wheel, animated answer tiles, bonus words, coins, hints, a level-complete
-celebration, saved progress, and 10 hand-made levels. Still to come: real art &
-sound, a level-map journey, daily streaks, and a share-with-family card.
+🚧 **Playable Level 1.** Real platformer feel (coyote time, jump buffer, snappy
+gravity), four trap types (collapsing floor, late spikes, a crusher, a fake exit),
+a real hidden exit, screen shake, comedic deaths, and a **death counter** (the
+shareable bragging-rights hook). Still to come: real art/sound, more levels, a
+share button, and a Steam build.
 
 ## Getting started
 
-See **[SETUP.md](SETUP.md)** — install Unity, open this folder, attach one script,
-press Play.
+See **[SETUP.md](SETUP.md)** — open the folder in Unity and press Play. The game
+builds itself; there's nothing to wire up.
