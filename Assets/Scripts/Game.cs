@@ -32,6 +32,21 @@ namespace WordBloom
 
         const int HintCost = 25;
 
+        /// <summary>
+        /// Auto-start: Unity runs this the moment you press Play, so you don't
+        /// have to create a GameObject or attach anything by hand. If a Game
+        /// already exists in the scene we leave it alone.
+        /// </summary>
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+        static void AutoBoot()
+        {
+            if (FindFirstObjectByType<Game>() == null)
+            {
+                var go = new GameObject("WordBloom");
+                go.AddComponent<Game>();
+            }
+        }
+
         void Start()
         {
             _level = PlayerPrefs.GetInt("wb_level", 0);
