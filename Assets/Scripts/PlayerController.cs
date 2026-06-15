@@ -26,9 +26,10 @@ namespace TrustIssues
         public Sprite[] idleFrames, runFrames;   // multi-frame animation (preferred)
         public Sprite batSprite;                 // shown while flying (bat form)
 
-        // Bat flight (jetpack-style): hold to rise, drains the meter, refills on ground.
+        // Bat glide: only works in the AIR (jump first), drains fast, refills slowly.
+        // It's a short hop to extend a jump / cross one gap — NOT a fly-over-the-level.
         public float flightMeter = 1f;           // 0..1, read by the HUD
-        public float flyRise = 5.5f, flyDrain = 0.55f, flyRefill = 0.7f;
+        public float flyRise = 4.3f, flyDrain = 0.85f, flyRefill = 0.45f;
         bool _flying;
 
         Rigidbody2D _rb;
@@ -88,7 +89,7 @@ namespace TrustIssues
 
             // Bat flight: hold Shift (or the on-screen FLY) to rise; drains meter.
             bool flyHeld = Input.GetKey(KeyCode.LeftShift) || TouchInput.FlyHeld;
-            _flying = flyHeld && flightMeter > 0f;
+            _flying = flyHeld && flightMeter > 0f && !_grounded; // must be airborne (no ground hover)
             if (_flying) flightMeter = Mathf.Max(0f, flightMeter - flyDrain * Time.deltaTime);
             else if (_grounded) flightMeter = Mathf.Min(1f, flightMeter + flyRefill * Time.deltaTime);
 

@@ -432,7 +432,7 @@ namespace TrustIssues
             Audio.Play("click");
             _mode = Mode.Daily;
             BeginRun(0);
-            ShowHint("DAILY RUN — same level for everyone today. Fewest deaths wins!");
+            ShowHint("BLOOD MOON — same run for everyone tonight.  3 lives.  Jump, then hold SHIFT/FLY to glide as a bat.");
         }
 
         void StartEndless()
@@ -441,7 +441,7 @@ namespace TrustIssues
             _mode = Mode.Endless;
             _endlessSeed = new System.Random().Next(1, 1000000);
             BeginRun(0);
-            ShowHint("ENDLESS — how deep can you go?");
+            ShowHint("ENDLESS NIGHT — 3 lives, +1 per floor.  Jump, then hold SHIFT/FLY to glide.  How deep can you go?");
         }
 
         // Common setup for any run. A new run starts the death count fresh;
@@ -890,13 +890,22 @@ namespace TrustIssues
 
             var panel = Overlay(new Color(0.05f, 0f, 0.02f, 0.85f), out var root);
             Theme.Label(root, "YOU PERISHED", 100, Theme.Player,
-                new Vector2(0.5f, 0.5f), new Vector2(0, 170), new Vector2(1400, 150));
+                new Vector2(0.5f, 0.5f), new Vector2(0, 200), new Vector2(1400, 150));
             string reached = _mode == Mode.Endless ? $"reached floor {_levelIndex + 1}"
                                                     : $"fell on night {_levelIndex + 1}/{DailyLen}";
             Theme.Label(root, reached + $"   •   {_deaths} deaths", 50, Color.white,
-                new Vector2(0.5f, 0.5f), new Vector2(0, 50), new Vector2(1400, 70));
+                new Vector2(0.5f, 0.5f), new Vector2(0, 90), new Vector2(1400, 70));
+
+            string share = _mode == Mode.Endless
+                ? $"“I reached FLOOR {_levelIndex + 1} of Endless Night in Trust Issues \U0001F987 — beat that”"
+                : $"“I only reached night {_levelIndex + 1} of tonight's Blood Moon \U0001F987”";
+            Theme.Label(root, share, 30, Theme.Coin,
+                new Vector2(0.5f, 0.5f), new Vector2(0, -10), new Vector2(1500, 60));
+            Theme.Label(root, "(screenshot & share your run)", 24, new Color(1, 1, 1, 0.45f),
+                new Vector2(0.5f, 0.5f), new Vector2(0, -55), new Vector2(1200, 40));
+
             Theme.Button(root, "BACK TO THE CASTLE", new Color(0.28f, 0.24f, 0.32f), Color.white, 44,
-                new Vector2(0.5f, 0.5f), new Vector2(0, -130), new Vector2(640, 120),
+                new Vector2(0.5f, 0.5f), new Vector2(0, -160), new Vector2(640, 120),
                 () => { Destroy(panel); ShowMenu(); });
         }
 
@@ -955,13 +964,23 @@ namespace TrustIssues
         IEnumerator WinRoutine()
         {
             PlayerPrefs.SetInt("ti_level", 0); PlayerPrefs.Save();
-            var panel = Overlay(new Color(0, 0, 0, 0.8f), out var root);
-            Theme.Label(root, "YOU BEAT IT!", 110, Theme.Exit,
-                new Vector2(0.5f, 0.5f), new Vector2(0, 170), new Vector2(1400, 160));
-            Theme.Label(root, $"Beanie died {_deaths} time" + (_deaths == 1 ? "" : "s") + " \U0001F480",
-                64, Theme.Player, new Vector2(0.5f, 0.5f), new Vector2(0, 30), new Vector2(1400, 90));
+            var panel = Overlay(new Color(0, 0, 0, 0.85f), out var root);
+            bool daily = _mode == Mode.Daily;
+            Theme.Label(root, daily ? "YOU SURVIVED THE NIGHT" : "YOU ESCAPED THE CASTLE", daily ? 80 : 90, Theme.Exit,
+                new Vector2(0.5f, 0.5f), new Vector2(0, 200), new Vector2(1600, 160));
+            Theme.Label(root, $"died {_deaths} time" + (_deaths == 1 ? "" : "s") + " \U0001FA78",
+                60, Theme.Player, new Vector2(0.5f, 0.5f), new Vector2(0, 90), new Vector2(1400, 90));
+
+            string share = daily
+                ? $"“I cleared tonight's Blood Moon in Trust Issues with {_deaths} deaths \U0001F987 — beat that”"
+                : $"“I escaped the castle in Trust Issues — {_deaths} deaths \U0001F987”";
+            Theme.Label(root, share, 30, Theme.Coin,
+                new Vector2(0.5f, 0.5f), new Vector2(0, -10), new Vector2(1600, 60));
+            Theme.Label(root, "(screenshot & share)", 24, new Color(1, 1, 1, 0.45f),
+                new Vector2(0.5f, 0.5f), new Vector2(0, -55), new Vector2(1200, 40));
+
             Theme.Button(root, "MAIN MENU", Theme.Trick, Theme.Ink, 50,
-                new Vector2(0.5f, 0.5f), new Vector2(0, -150), new Vector2(460, 120),
+                new Vector2(0.5f, 0.5f), new Vector2(0, -160), new Vector2(460, 120),
                 () => { Destroy(panel); Destroy(_levelRoot.gameObject); ShowMenu(); });
             yield break;
         }
