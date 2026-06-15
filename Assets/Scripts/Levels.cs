@@ -50,6 +50,7 @@ namespace TrustIssues
         public void Spike(float x) => T(TrapType.SpikeStatic, x, -2.4f, 0.7f, 0.7f);
         public void ArrowRain(float x) => T(TrapType.ArrowRain, x, -3f, 0.5f, 0.5f);
         public void Checkpoint(float x) => T(TrapType.Checkpoint, x, -2f, 1f, 1.6f);
+        public void BreakWall(float x) => T(TrapType.BreakBlock, x, -0.7f, 0.7f, 4f); // shoot to pass
         public void LateSpike(float x) => T(TrapType.LateSpike, x, -2.4f, 1.0f, 1.2f);
         public void Dart(float x) => T(TrapType.Dart, x, -2.3f, 1.0f, 1.2f);
         public void Faller(float x) => T(TrapType.Faller, x, -2.3f, 1.2f, 1.2f);
@@ -145,17 +146,17 @@ namespace TrustIssues
             return b.Finish();
         }
 
-        // 5 — saw + a bait spring into hidden spikes.
+        // 5 — meet the blaster: shoot the candy wall, then saw + bait spring.
         static Level L5()
         {
             var b = new B();
             b.Plat(3.5f);
             b.Gap(2.5f);
+            float pw = b.Plat(4.5f); b.BreakWall(pw + 0.7f);  // SHOOT this candy wall
+            b.Gap(2.5f);
             float p2 = b.Plat(4f); b.Saw(p2);
             b.Gap(2.5f);
             float p3 = b.Plat(4f); b.Spring(p3 - 1f);
-            b.Gap(2.5f);
-            float p4 = b.Plat(3.5f); b.Spike(p4);
             return b.Finish();
         }
 
@@ -245,15 +246,15 @@ namespace TrustIssues
             return b.Finish();
         }
 
-        // 12 — saws, a bait spring, and a dart.
+        // 12 — blast a wall, dodge saws and darts.
         static Level L12()
         {
             var b = new B();
             b.Plat(3.5f);
             b.Gap(2.5f);
-            float p2 = b.Plat(4f); b.Saw(p2);
+            float pw = b.Plat(4f); b.BreakWall(pw + 0.6f);
             b.Gap(2.5f);
-            float p3 = b.Plat(4f); b.Spring(p3 - 1f);
+            float p2 = b.Plat(4f); b.Saw(p2);
             b.Gap(2.5f);
             float p4 = b.Plat(4f); b.Dart(p4 - 1f); b.Spike(p4 + 1f);
             return b.Finish();

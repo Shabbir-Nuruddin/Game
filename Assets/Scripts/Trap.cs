@@ -19,7 +19,8 @@ namespace TrustIssues
         Reverse,    // flips your controls for a few seconds
         SpikeStatic,// an always-visible spike you must jump over
         ArrowRain,  // spikes drop from the ceiling on a timer — time your run
-        Checkpoint  // touch it and you respawn here instead of the start
+        Checkpoint, // touch it and you respawn here instead of the start
+        BreakBlock  // a solid candy wall you must SHOOT to get past
     }
 
     /// <summary>

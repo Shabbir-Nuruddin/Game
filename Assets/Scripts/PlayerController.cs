@@ -52,6 +52,16 @@ namespace TrustIssues
 
         public void Freeze() { _frozen = true; _rb.linearVelocity = Vector2.zero; _rb.simulated = false; }
 
+        void Fire()
+        {
+            if (_frozen) return;
+            var go = Theme.Box("Bullet", null,
+                transform.position + Vector3.right * (_facing * 0.6f),
+                new Vector2(0.34f, 0.16f), Theme.Player, 7);
+            go.AddComponent<Bullet>().Init(_facing);
+            Audio.Play("jump", 0.25f);
+        }
+
         void Update()
         {
             if (_frozen) return;
@@ -69,6 +79,10 @@ namespace TrustIssues
             // On-screen touch controls (phone): override/add to keyboard.
             if (TouchInput.X != 0f) _inputX = TouchInput.X;
             if (TouchInput.ConsumeJump()) _buffer = jumpBuffer;
+
+            // Blaster.
+            if (Input.GetKeyDown(KeyCode.F) || Input.GetKeyDown(KeyCode.J) || TouchInput.ConsumeFire())
+                Fire();
 
             // Reverse-controls troll: flip horizontal input for a few seconds.
             if (_reverseTimer > 0f) { _reverseTimer -= Time.deltaTime; _inputX = -_inputX; }

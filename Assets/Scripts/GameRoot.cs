@@ -145,6 +145,7 @@ namespace TrustIssues
             MakeTouch("‹", -1, new Vector2(0f, 0f), new Vector2(170, 170), new Vector2(210, 210));
             MakeTouch("›", 1, new Vector2(0f, 0f), new Vector2(410, 170), new Vector2(210, 210));
             MakeTouch("JUMP", 0, new Vector2(1f, 0f), new Vector2(-200, 170), new Vector2(260, 260));
+            MakeTouch("FIRE", 2, new Vector2(1f, 0f), new Vector2(-470, 210), new Vector2(190, 190));
             _touchPanel.SetActive(false);
         }
 
@@ -244,38 +245,66 @@ namespace TrustIssues
                 new Vector2(0.5f, 0f), new Vector2(0, 50), new Vector2(260, 90), ShowMenu);
         }
 
-        // A grid of every level so players can jump in anywhere (great for testing
-        // and for sharing — and it shows the total level count).
+        // A CANDY MAP: levels are sweets along a snaking trail, not a boring grid.
         void ShowLevelSelect()
         {
             Audio.Play("click");
             _state = State.Menu;
             if (_menuPanel != null) Destroy(_menuPanel);
-            _menuPanel = Overlay(new Color(Theme.Sky.r, Theme.Sky.g, Theme.Sky.b, 0.6f), out var root);
+            _menuPanel = Overlay(new Color(Theme.Sky.r, Theme.Sky.g, Theme.Sky.b, 0.7f), out var root);
 
-            Theme.Label(root, "SELECT LEVEL", 90, Theme.Player,
-                new Vector2(0.5f, 0.5f), new Vector2(0, 400), new Vector2(1400, 120));
-            Theme.Label(root, $"{Levels.Count} levels of pain", 38, new Color(1, 1, 1, 0.6f),
-                new Vector2(0.5f, 0.5f), new Vector2(0, 310), new Vector2(1200, 60));
+            Theme.Label(root, "CANDY MAP", 90, Theme.Player,
+                new Vector2(0.5f, 0.5f), new Vector2(0, 440), new Vector2(1400, 120));
+            Theme.Label(root, $"{Levels.Count} levels — pick your poison", 36, new Color(1, 1, 1, 0.6f),
+                new Vector2(0.5f, 0.5f), new Vector2(0, 360), new Vector2(1300, 60));
 
-            const int cols = 5;
-            float bw = 180, bh = 130, gx = 34, gy = 28;
-            int rows = Mathf.CeilToInt(Levels.Count / (float)cols);
-            float startX = -((cols - 1) * (bw + gx)) / 2f;
-            float startY = 150f + (rows - 1) * (bh + gy) / 2f;
-
+            int cols = 5;
+            float spX = 360f, spY = 195f, startX = -((cols - 1) * spX) / 2f, startY = 240f;
+            var pos = new Vector2[Levels.Count];
             for (int i = 0; i < Levels.Count; i++)
             {
-                int r = i / cols, c = i % cols, lvl = i;
-                float x = startX + c * (bw + gx);
-                float y = startY - r * (bh + gy);
-                Theme.Button(root, (i + 1).ToString(), Theme.Trick, Theme.Ink, 56,
-                    new Vector2(0.5f, 0.5f), new Vector2(x, y), new Vector2(bw, bh),
-                    () => StartGame(lvl));
+                int r = i / cols, c = i % cols;
+                if (r % 2 == 1) c = cols - 1 - c;     // snake the path
+                pos[i] = new Vector2(startX + c * spX, startY - r * spY);
+            }
+
+            // dotted candy trail between nodes
+            for (int i = 0; i < Levels.Count - 1; i++)
+                for (int d = 1; d <= 3; d++)
+                {
+                    var p = Vector2.Lerp(pos[i], pos[i + 1], d / 4f);
+                    var dot = new GameObject("Dot", typeof(RectTransform));
+                    dot.transform.SetParent(root, false);
+                    var di = dot.AddComponent<Image>();
+                    di.color = new Color(1, 1, 1, 0.22f);
+                    var drt = di.rectTransform;
+                    drt.anchorMin = drt.anchorMax = new Vector2(0.5f, 0.5f);
+                    drt.pivot = new Vector2(0.5f, 0.5f);
+                    drt.anchoredPosition = p; drt.sizeDelta = new Vector2(20, 20);
+                }
+
+            string[] candies = { "candy_lolly", "candy_cherry", "candy_red", "coin", "portal" };
+            for (int i = 0; i < Levels.Count; i++)
+            {
+                int lvl = i;
+                var sp = Assets.Sprite(candies[i % candies.Length]);
+                var go = new GameObject("Node" + (i + 1), typeof(RectTransform));
+                go.transform.SetParent(root, false);
+                var img = go.AddComponent<Image>();
+                if (sp != null) { img.sprite = sp; img.color = Color.white; img.preserveAspect = true; }
+                else img.color = Theme.Trick;
+                var rt = img.rectTransform;
+                rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
+                rt.pivot = new Vector2(0.5f, 0.5f);
+                rt.anchoredPosition = pos[i]; rt.sizeDelta = new Vector2(150, 150);
+                var btn = go.AddComponent<Button>(); btn.targetGraphic = img;
+                btn.onClick.AddListener(() => StartGame(lvl));
+                Theme.Label(go.transform, (i + 1).ToString(), 50, Theme.Ink,
+                    new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(150, 150));
             }
 
             Theme.Button(root, "‹ BACK", new Color(1, 1, 1, 0.25f), Color.white, 44,
-                new Vector2(0.5f, 0f), new Vector2(0, 50), new Vector2(360, 100), ShowMenu);
+                new Vector2(0.5f, 0f), new Vector2(0, 40), new Vector2(360, 100), ShowMenu);
         }
 
         void MenuCandy(Transform root, string sprite, Vector2 pos, float size, float rot)
@@ -389,6 +418,7 @@ namespace TrustIssues
             _state = State.Play;
             BuildLevel();
             if (levelIndex == 0) ShowHint("A / D  or  ← →  to move    •    SPACE to jump");
+            if (levelIndex == 4) ShowHint("Candy wall blocking you?  Press  F  (or FIRE) to blast it!");
         }
 
         // ==================== LEVEL ====================
@@ -520,6 +550,14 @@ namespace TrustIssues
                     Theme.Box("Flag", go.transform, t.pos + new Vector2(0.32f, 0.5f),
                         new Vector2(0.5f, 0.34f), Theme.Exit, 3);
                     go.AddComponent<Trap>().Init(TrapType.Checkpoint);
+                    break;
+                }
+                case TrapType.BreakBlock:
+                {
+                    // A solid candy wall you must SHOOT (lavender = "breakable").
+                    var go = Theme.Box("BreakBlock", _levelRoot, t.pos, t.size, Theme.Trick, 2);
+                    Theme.AddSolid(go);
+                    go.AddComponent<Breakable>();
                     break;
                 }
                 case TrapType.Spring:
