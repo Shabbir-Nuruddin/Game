@@ -20,6 +20,9 @@ namespace TrustIssues
             var rb = gameObject.AddComponent<Rigidbody2D>();
             rb.bodyType = RigidbodyType2D.Kinematic;
             rb.gravityScale = 0f;
+            // REQUIRED: kinematic bodies don't report triggers vs static colliders
+            // (the candy walls) without this — was why Level 5 couldn't be cleared.
+            rb.useFullKinematicContacts = true;
         }
 
         void Update()

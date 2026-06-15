@@ -80,10 +80,6 @@ namespace TrustIssues
             if (TouchInput.X != 0f) _inputX = TouchInput.X;
             if (TouchInput.ConsumeJump()) _buffer = jumpBuffer;
 
-            // Blaster.
-            if (Input.GetKeyDown(KeyCode.F) || Input.GetKeyDown(KeyCode.J) || TouchInput.ConsumeFire())
-                Fire();
-
             // Reverse-controls troll: flip horizontal input for a few seconds.
             if (_reverseTimer > 0f) { _reverseTimer -= Time.deltaTime; _inputX = -_inputX; }
 

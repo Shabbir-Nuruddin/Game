@@ -146,17 +146,17 @@ namespace TrustIssues
             return b.Finish();
         }
 
-        // 5 — meet the blaster: shoot the candy wall, then saw + bait spring.
+        // 5 — saws and spikes, fairly spaced.
         static Level L5()
         {
             var b = new B();
             b.Plat(3.5f);
             b.Gap(2.5f);
-            float pw = b.Plat(4.5f); b.BreakWall(pw + 0.7f);  // SHOOT this candy wall
-            b.Gap(2.5f);
             float p2 = b.Plat(4f); b.Saw(p2);
             b.Gap(2.5f);
-            float p3 = b.Plat(4f); b.Spring(p3 - 1f);
+            float p3 = b.Plat(4f); b.Spike(p3);
+            b.Gap(2.5f);
+            float p4 = b.Plat(4f); b.LateSpike(p4);
             return b.Finish();
         }
 
@@ -246,17 +246,17 @@ namespace TrustIssues
             return b.Finish();
         }
 
-        // 12 — blast a wall, dodge saws and darts.
+        // 12 — saws and darts.
         static Level L12()
         {
             var b = new B();
             b.Plat(3.5f);
             b.Gap(2.5f);
-            float pw = b.Plat(4f); b.BreakWall(pw + 0.6f);
-            b.Gap(2.5f);
             float p2 = b.Plat(4f); b.Saw(p2);
             b.Gap(2.5f);
-            float p4 = b.Plat(4f); b.Dart(p4 - 1f); b.Spike(p4 + 1f);
+            float p3 = b.Plat(4f); b.Dart(p3);
+            b.Gap(2.5f);
+            float p4 = b.Plat(4f); b.Spike(p4);
             return b.Finish();
         }
 

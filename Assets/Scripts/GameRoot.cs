@@ -40,9 +40,12 @@ namespace TrustIssues
                 new GameObject("TrustIssues").AddComponent<GameRoot>();
         }
 
+        bool _isMobile;
+
         void Awake()
         {
             I = this;
+            _isMobile = Application.isMobilePlatform || Input.touchSupported;
             Time.timeScale = 1f;
             SetupCamera();
             BuildBackdrop();
@@ -145,7 +148,6 @@ namespace TrustIssues
             MakeTouch("‹", -1, new Vector2(0f, 0f), new Vector2(170, 170), new Vector2(210, 210));
             MakeTouch("›", 1, new Vector2(0f, 0f), new Vector2(410, 170), new Vector2(210, 210));
             MakeTouch("JUMP", 0, new Vector2(1f, 0f), new Vector2(-200, 170), new Vector2(260, 260));
-            MakeTouch("FIRE", 2, new Vector2(1f, 0f), new Vector2(-470, 210), new Vector2(190, 190));
             _touchPanel.SetActive(false);
         }
 
@@ -410,15 +412,13 @@ namespace TrustIssues
             Audio.Play("click");
             if (_menuPanel != null) Destroy(_menuPanel);
             _levelIndex = levelIndex;
-            _deaths = 0;
             _hasCheckpoint = false;
-            _hud.text = "DEATHS  0";
+            _hud.text = "DEATHS  " + _deaths;            // keep the running total
             _hud.gameObject.SetActive(true);
-            if (_touchPanel != null) _touchPanel.SetActive(true);
+            if (_touchPanel != null) _touchPanel.SetActive(_isMobile); // phone only
             _state = State.Play;
             BuildLevel();
             if (levelIndex == 0) ShowHint("A / D  or  ← →  to move    •    SPACE to jump");
-            if (levelIndex == 4) ShowHint("Candy wall blocking you?  Press  F  (or FIRE) to blast it!");
         }
 
         // ==================== LEVEL ====================
