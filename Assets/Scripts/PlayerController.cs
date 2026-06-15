@@ -96,35 +96,35 @@ namespace TrustIssues
             if (_inputX > 0.01f) _facing = 1f;
             else if (_inputX < -0.01f) _facing = -1f;
             float vy = _rb.linearVelocity.y;
-            float stretch = Mathf.Clamp(vy * 0.02f, -0.18f, 0.25f);
+            // Squash/stretch ONLY in the air. On the ground the body sits at its
+            // base scale, so standing still doesn't wobble.
+            float stretch = _grounded ? 0f : Mathf.Clamp(vy * 0.02f, -0.18f, 0.25f);
             var target = new Vector3(_facing * _baseX * (1f - stretch), _baseY * (1f + stretch), 1f);
             _visual.localScale = Vector3.Lerp(_visual.localScale, target, 14f * Time.deltaTime);
 
-            // Animation: jump pose in the air, else cycle run/idle frames.
+            // Animation: jump pose in the air, run cycle while moving, and a single
+            // STILL frame when standing (no idle fidgeting).
+            bool moving = Mathf.Abs(_inputX) > 0.01f;
             if (bodyRenderer != null)
             {
                 if (!_grounded && jumpSprite != null)
-                {
                     bodyRenderer.sprite = jumpSprite;
-                }
-                else
+                else if (moving && runFrames != null && runFrames.Length > 0)
                 {
-                    var set = Mathf.Abs(_inputX) > 0.01f ? runFrames : idleFrames;
-                    if (set != null && set.Length > 0)
+                    _animTimer += Time.deltaTime;
+                    bodyRenderer.sprite = runFrames[Mathf.FloorToInt(_animTimer * 14f) % runFrames.Length];
+                }
+                else if (idleFrames != null && idleFrames.Length > 0)
+                    bodyRenderer.sprite = idleFrames[0]; // stand still
+                else if (idleSprite != null) // single-frame fallback
+                {
+                    if (moving)
                     {
                         _animTimer += Time.deltaTime;
-                        bodyRenderer.sprite = set[Mathf.FloorToInt(_animTimer * 14f) % set.Length];
+                        bodyRenderer.sprite = (Mathf.FloorToInt(_animTimer * 10f) % 2 == 0)
+                            ? idleSprite : (walkSprite != null ? walkSprite : idleSprite);
                     }
-                    else if (idleSprite != null) // single-frame fallback
-                    {
-                        if (Mathf.Abs(_inputX) > 0.01f)
-                        {
-                            _animTimer += Time.deltaTime;
-                            bodyRenderer.sprite = (Mathf.FloorToInt(_animTimer * 10f) % 2 == 0)
-                                ? idleSprite : (walkSprite != null ? walkSprite : idleSprite);
-                        }
-                        else bodyRenderer.sprite = idleSprite;
-                    }
+                    else bodyRenderer.sprite = idleSprite;
                 }
             }
         }
