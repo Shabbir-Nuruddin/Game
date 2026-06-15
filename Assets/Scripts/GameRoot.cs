@@ -31,7 +31,7 @@ namespace TrustIssues
         const float CamY = -1.2f;
 
         Text _hud, _toast;
-        GameObject _menuPanel, _pausePanel;
+        GameObject _menuPanel, _pausePanel, _touchPanel;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void AutoBoot()
@@ -111,6 +111,36 @@ namespace TrustIssues
                 TextAnchor.MiddleLeft);
             _toast = Theme.Label(Theme.Canvas.transform, "", 60, Theme.Player,
                 new Vector2(0.5f, 0.5f), new Vector2(0, 150), new Vector2(1400, 100));
+            BuildTouchControls();
+        }
+
+        // On-screen buttons for phones (also work with the mouse). Hidden in menus.
+        void BuildTouchControls()
+        {
+            _touchPanel = new GameObject("Touch", typeof(RectTransform));
+            _touchPanel.transform.SetParent(Theme.Canvas.transform, false);
+            var rt = _touchPanel.GetComponent<RectTransform>();
+            rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
+            rt.offsetMin = rt.offsetMax = Vector2.zero;
+
+            MakeTouch("‹", -1, new Vector2(0f, 0f), new Vector2(170, 170), new Vector2(210, 210));
+            MakeTouch("›", 1, new Vector2(0f, 0f), new Vector2(410, 170), new Vector2(210, 210));
+            MakeTouch("JUMP", 0, new Vector2(1f, 0f), new Vector2(-200, 170), new Vector2(260, 260));
+            _touchPanel.SetActive(false);
+        }
+
+        void MakeTouch(string label, int dir, Vector2 anchor, Vector2 pos, Vector2 size)
+        {
+            var go = new GameObject("Touch_" + label, typeof(RectTransform));
+            go.transform.SetParent(_touchPanel.transform, false);
+            var img = go.AddComponent<Image>();
+            img.color = new Color(1f, 1f, 1f, 0.16f);
+            var rt = img.rectTransform;
+            rt.anchorMin = rt.anchorMax = anchor; rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.anchoredPosition = pos; rt.sizeDelta = size;
+            go.AddComponent<TouchButton>().dir = dir;
+            var t = Theme.Label(go.transform, label, dir == 0 ? 44 : 90, new Color(1, 1, 1, 0.85f),
+                new Vector2(0.5f, 0.5f), Vector2.zero, size);
         }
 
         // ==================== MAIN MENU ====================
@@ -120,6 +150,7 @@ namespace TrustIssues
             Time.timeScale = 1f;
             Audio.Music("music", 0.3f);
             _hud.gameObject.SetActive(false);
+            if (_touchPanel != null) { _touchPanel.SetActive(false); TouchInput.Clear(); }
             _cam.transform.position = new Vector3(-1.5f, CamY, -10f);
 
             // Soft plum wash over the gradient (keeps the candy mood).
@@ -335,6 +366,7 @@ namespace TrustIssues
             _hasCheckpoint = false;
             _hud.text = "DEATHS  0";
             _hud.gameObject.SetActive(true);
+            if (_touchPanel != null) _touchPanel.SetActive(true);
             _state = State.Play;
             BuildLevel();
             if (levelIndex == 0) ShowHint("A / D  or  ← →  to move    •    SPACE to jump");
@@ -387,6 +419,17 @@ namespace TrustIssues
             }
         }
 
+        // A trigger sized to the actual sprite (× scale), not a full grid cell —
+        // so kill hitboxes match what you see.
+        BoxCollider2D FitTrigger(GameObject go, float scale)
+        {
+            var col = go.AddComponent<BoxCollider2D>();
+            col.isTrigger = true;
+            var sr = go.GetComponent<SpriteRenderer>();
+            if (sr != null && sr.sprite != null) col.size = sr.sprite.bounds.size * scale;
+            return col;
+        }
+
         void BuildTrap(TrapSpec t)
         {
             switch (t.type)
@@ -421,7 +464,7 @@ namespace TrustIssues
                         ? Theme.SpriteBox("FakeExit", _levelRoot, t.pos, new Vector2(1.7f, 2.1f), sp, 2)
                         : Theme.Box("FakeExit", _levelRoot, t.pos, t.size, Theme.Trick, 2);
                     if (sp != null) go.GetComponent<SpriteRenderer>().color = new Color(1f, 0.45f, 0.5f);
-                    Theme.AddTrigger(go, Vector2.one);
+                    FitTrigger(go, 0.7f);
                     go.AddComponent<Trap>().Init(TrapType.FakeExit);
                     break;
                 }
@@ -432,7 +475,7 @@ namespace TrustIssues
                         ? Theme.SpriteBox("RealExit", _levelRoot, t.pos, new Vector2(1.5f, 1.5f), sp, 2)
                         : Theme.Box("RealExit", _levelRoot, t.pos, t.size, Theme.Exit, 2);
                     // natural gold trophy = the real goal (no muddy tint)
-                    Theme.AddTrigger(go, Vector2.one);
+                    FitTrigger(go, 0.85f);
                     go.AddComponent<Trap>().Init(TrapType.RealExit);
                     break;
                 }
@@ -466,7 +509,7 @@ namespace TrustIssues
                     GameObject go = sp != null
                         ? Theme.SpriteBox("Spring", _levelRoot, t.pos, new Vector2(t.size.x, 0.7f), sp, 3)
                         : Theme.Box("Spring", _levelRoot, t.pos, t.size, Theme.Coin, 3);
-                    Theme.AddTrigger(go, Vector2.one);
+                    FitTrigger(go, 0.8f);
                     go.AddComponent<Trap>().Init(TrapType.Spring);
                     break;
                 }
@@ -476,7 +519,7 @@ namespace TrustIssues
                     GameObject go = sp != null
                         ? Theme.SpriteBox("Saw", _levelRoot, t.pos, new Vector2(1.1f, 1.1f), sp, 3)
                         : Theme.Box("Saw", _levelRoot, t.pos, t.size, Theme.Danger, 3);
-                    Theme.AddTrigger(go, Vector2.one);
+                    FitTrigger(go, 0.5f); // forgiving hitbox (was a full grid cell)
                     var kz = go.AddComponent<KillZone>(); kz.msg = "Sliced.";
                     go.AddComponent<Trap>().Init(TrapType.Saw);
                     break;

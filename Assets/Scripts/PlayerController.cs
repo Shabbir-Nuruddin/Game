@@ -66,6 +66,10 @@ namespace TrustIssues
 
             if (Input.GetKeyDown(KeyCode.R)) GameRoot.I?.Die("Do-over!");
 
+            // On-screen touch controls (phone): override/add to keyboard.
+            if (TouchInput.X != 0f) _inputX = TouchInput.X;
+            if (TouchInput.ConsumeJump()) _buffer = jumpBuffer;
+
             // Reverse-controls troll: flip horizontal input for a few seconds.
             if (_reverseTimer > 0f) { _reverseTimer -= Time.deltaTime; _inputX = -_inputX; }
 
