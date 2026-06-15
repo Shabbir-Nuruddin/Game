@@ -58,8 +58,9 @@ namespace TrustIssues
                 var go = sp != null
                     ? Theme.SpriteBox("RockHead", transform, pos, new Vector2(1.5f, 1.5f), sp, 4)
                     : Theme.Box("RockHead", transform, pos, new Vector2(1.4f, 1.4f), Theme.Trick, 4);
+                if (sp != null) go.GetComponent<SpriteRenderer>().color = new Color(0.5f, 0.45f, 0.5f); // stone boulder
                 var col = go.AddComponent<BoxCollider2D>(); col.isTrigger = true;
-                var kz = go.AddComponent<KillZone>(); kz.msg = "From above!";
+                var kz = go.AddComponent<KillZone>(); kz.msg = "Crushed by the falling stone.";
                 _faller = go.transform;
                 _fallerHome = _faller.position;
             }
@@ -255,8 +256,9 @@ namespace TrustIssues
             GameObject go = sp != null
                 ? Theme.SpriteBox("Spikes", transform.parent, pos, new Vector2(1f, 1f), sp, 3)
                 : Theme.Box("Spikes", transform.parent, pos, new Vector2(0.7f, 0.9f), Theme.Danger, 3);
+            if (sp != null) go.GetComponent<SpriteRenderer>().color = Theme.Danger; // blood spikes
             var kz = go.AddComponent<KillZone>();
-            kz.msg = "The spikes said hi.";
+            kz.msg = "Impaled.";
             var col = go.AddComponent<BoxCollider2D>();
             col.isTrigger = true;
             _spike = go.transform;

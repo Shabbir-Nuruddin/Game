@@ -77,39 +77,28 @@ namespace TrustIssues
         // the view as it scrolls.
         void BuildBackdrop()
         {
+            // Solid black night behind everything.
             var sky = new GameObject("Sky");
             sky.transform.SetParent(_cam.transform, false);
             sky.transform.localPosition = new Vector3(0f, 0f, 20f);
-            sky.transform.localScale = new Vector3(34f, 16f, 1f);
+            sky.transform.localScale = new Vector3(40f, 22f, 1f);
             var sr = sky.AddComponent<SpriteRenderer>();
-            sr.sprite = Theme.Gradient(Theme.SkyLow, Theme.Sky);
-            sr.sortingOrder = -20;
+            sr.sprite = Theme.Square; sr.color = Theme.Sky; sr.sortingOrder = -20;
 
-            var shape = new Color(1f, 1f, 1f, 0.04f);
-            MakeBackShape(new Vector2(-7f, 4.5f), new Vector2(7f, 7f), shape);
-            MakeBackShape(new Vector2(6f, 3.5f), new Vector2(9f, 9f), shape);
-
-            // Faint giant candy floating in the background for theme.
-            BgCandy("candy_lolly", new Vector2(-6f, 2f), 5f);
-            BgCandy("candy_cherry", new Vector2(7f, 2.5f), 4f);
-            BgCandy("candy_cane", new Vector2(0f, -3.5f), 4.5f);
-        }
-
-        void BgCandy(string name, Vector2 local, float size)
-        {
-            var sp = Assets.Sprite(name);
-            if (sp == null) return;
-            var go = Theme.SpriteBox("BgCandy", _cam.transform, Vector3.zero,
-                new Vector2(size, size), sp, -16);
-            go.transform.localPosition = new Vector3(local.x, local.y, 18f);
-            var sr = go.GetComponent<SpriteRenderer>();
-            var c = sr.color; c.a = 0.08f; sr.color = c;
-        }
-
-        void MakeBackShape(Vector2 local, Vector2 size, Color c)
-        {
-            var go = Theme.Box("Blob", _cam.transform, Vector2.zero, size, c, -15);
-            go.transform.localPosition = new Vector3(local.x, local.y, 18f);
+            // The vampire forest image, stretched to fill the view (parented to
+            // the camera so it scrolls with you). Dimmed so it reads as backdrop.
+            var bg = Assets.Sprite("bg_vampire");
+            if (bg != null)
+            {
+                var go = new GameObject("BG");
+                go.transform.SetParent(_cam.transform, false);
+                go.transform.localPosition = new Vector3(0f, 1.5f, 19f);
+                var bsr = go.AddComponent<SpriteRenderer>();
+                bsr.sprite = bg; bsr.sortingOrder = -18;
+                bsr.color = new Color(0.7f, 0.65f, 0.75f, 1f); // dim it
+                var b = bg.bounds.size;
+                go.transform.localScale = new Vector3(24f / b.x, 16f / b.y, 1f);
+            }
         }
 
         void BuildHUD()
@@ -180,45 +169,37 @@ namespace TrustIssues
             if (_touchPanel != null) { _touchPanel.SetActive(false); TouchInput.Clear(); }
             _cam.transform.position = new Vector3(-1.5f, CamY, -10f);
 
-            // Soft plum wash over the gradient (keeps the candy mood).
-            _menuPanel = Overlay(new Color(Theme.Sky.r, Theme.Sky.g, Theme.Sky.b, 0.5f), out var root);
+            // Dark wash over the vampire backdrop so text stays readable.
+            _menuPanel = Overlay(new Color(0.04f, 0.02f, 0.05f, 0.68f), out var root);
 
-            // Floating candy decorations.
-            MenuCandy(root, "candy_cherry", new Vector2(-720, 300), 130, -15);
-            MenuCandy(root, "candy_lolly",  new Vector2(720, 330), 150, 18);
-            MenuCandy(root, "candy_cane",   new Vector2(-770, -250), 160, -12);
-            MenuCandy(root, "candy_red",    new Vector2(740, -280), 120, 14);
-            MenuCandy(root, "coin",         new Vector2(-560, 60), 90, 0);
-            MenuCandy(root, "portal",       new Vector2(580, 30), 110, 10);
-
-            // Title with a lavender drop-shadow, in candy pink.
-            Theme.Label(root, Theme.Title, 150, Theme.Trick,
-                new Vector2(0.5f, 0.5f), new Vector2(8, 222), new Vector2(1600, 200));
+            // Title — blood red with a near-black shadow.
+            Theme.Label(root, Theme.Title, 150, Theme.Ink,
+                new Vector2(0.5f, 0.5f), new Vector2(7, 323), new Vector2(1600, 200));
             var title = Theme.Label(root, Theme.Title, 150, Theme.Player,
-                new Vector2(0.5f, 0.5f), new Vector2(0, 230), new Vector2(1600, 200));
+                new Vector2(0.5f, 0.5f), new Vector2(0, 330), new Vector2(1600, 200));
             StartCoroutine(Pulse(title.transform));
 
-            Theme.Label(root, "a cute little nightmare \U0001F36C", 46,
-                new Color(1f, 0.86f, 0.92f, 0.9f), new Vector2(0.5f, 0.5f),
-                new Vector2(0, 110), new Vector2(1400, 70));
+            Theme.Label(root, "the castle wants your blood \U0001FA78", 40,
+                new Color(0.85f, 0.7f, 0.72f, 0.9f), new Vector2(0.5f, 0.5f),
+                new Vector2(0, 210), new Vector2(1500, 60));
 
-            // DAILY RUN — the retention hook (same level for everyone today).
-            Theme.Button(root, "DAILY RUN", Theme.Exit, Theme.Ink, 52,
-                new Vector2(0.5f, 0.5f), new Vector2(0, 55), new Vector2(520, 110), StartDaily);
+            // BLOOD MOON — the daily retention hook.
+            Theme.Button(root, "BLOOD MOON", new Color(0.6f, 0.08f, 0.12f), Color.white, 50,
+                new Vector2(0.5f, 0.5f), new Vector2(0, 95), new Vector2(540, 90), StartDaily);
             int dBest = PlayerPrefs.GetInt("daily_" + DailySeed(), -1);
-            Theme.Label(root, dBest >= 0 ? $"today's best: {dBest} deaths" : "you haven't survived today yet",
-                28, new Color(1, 1, 1, 0.55f), new Vector2(0.5f, 0.5f), new Vector2(0, -5), new Vector2(900, 40));
+            Theme.Label(root, dBest >= 0 ? $"tonight's best: {dBest} deaths" : "you haven't survived tonight",
+                26, new Color(1, 1, 1, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0, 30), new Vector2(900, 36));
 
-            Theme.Button(root, "ENDLESS", Theme.Trick, Theme.Ink, 50,
-                new Vector2(0.5f, 0.5f), new Vector2(0, -100), new Vector2(520, 110), StartEndless);
-            Theme.Label(root, $"best depth: {PlayerPrefs.GetInt("best_endless", 0)}",
-                28, new Color(1, 1, 1, 0.55f), new Vector2(0.5f, 0.5f), new Vector2(0, -160), new Vector2(900, 40));
+            Theme.Button(root, "ENDLESS NIGHT", Theme.Trick, Color.white, 46,
+                new Vector2(0.5f, 0.5f), new Vector2(0, -55), new Vector2(540, 90), StartEndless);
+            Theme.Label(root, $"deepest floor: {PlayerPrefs.GetInt("best_endless", 0)}",
+                26, new Color(1, 1, 1, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0, -118), new Vector2(900, 36));
 
-            Theme.Button(root, "LEVELS", Theme.Player, Theme.Ink, 46,
-                new Vector2(0.5f, 0.5f), new Vector2(0, -250), new Vector2(520, 100), ShowLevelSelect);
+            Theme.Button(root, "THE CASTLE", new Color(0.28f, 0.24f, 0.32f), Color.white, 44,
+                new Vector2(0.5f, 0.5f), new Vector2(0, -205), new Vector2(540, 85), ShowLevelSelect);
 
-            Theme.Label(root, "don't trust the floor.", 30,
-                new Color(1, 1, 1, 0.4f), new Vector2(0.5f, 0f),
+            Theme.Label(root, "trust no shadow.", 28,
+                new Color(1, 1, 1, 0.35f), new Vector2(0.5f, 0f),
                 new Vector2(0, 45), new Vector2(1400, 50));
         }
 
@@ -461,7 +442,7 @@ namespace TrustIssues
             switch (_mode)
             {
                 case Mode.Daily:   return Levels.Generate(DailySeed() * 31 + _levelIndex * 7919, 2 + _levelIndex);
-                case Mode.Endless: return Levels.Generate(_endlessSeed + _levelIndex * 7919, _levelIndex);
+                case Mode.Endless: return Levels.Generate(_endlessSeed + _levelIndex * 7919, _levelIndex + 2);
                 default:           return Levels.Get(_levelIndex);
             }
         }
@@ -496,8 +477,8 @@ namespace TrustIssues
         void UpdateHud()
         {
             if (_hud == null) return;
-            string left = _mode == Mode.Endless ? $"DEPTH {_levelIndex + 1}    "
-                        : _mode == Mode.Daily ? $"DAILY {_levelIndex + 1}/{DailyLen}    " : "";
+            string left = _mode == Mode.Endless ? $"FLOOR {_levelIndex + 1}    "
+                        : _mode == Mode.Daily ? $"NIGHT {_levelIndex + 1}/{DailyLen}    " : "";
             _hud.text = left + "DEATHS " + _deaths;
         }
 
@@ -593,8 +574,9 @@ namespace TrustIssues
                     GameObject go = sp != null
                         ? Theme.SpriteBox("Spikes", _levelRoot, t.pos, t.size, sp, 3)
                         : Theme.Box("Spikes", _levelRoot, t.pos, t.size, Theme.Danger, 3);
+                    if (sp != null) go.GetComponent<SpriteRenderer>().color = Theme.Danger; // blood
                     var c = go.AddComponent<BoxCollider2D>(); c.isTrigger = true;
-                    var kz = go.AddComponent<KillZone>(); kz.msg = "Spikes. Obviously.";
+                    var kz = go.AddComponent<KillZone>(); kz.msg = "Impaled.";
                     break;
                 }
                 case TrapType.Checkpoint:
@@ -635,8 +617,9 @@ namespace TrustIssues
                     GameObject go = sp != null
                         ? Theme.SpriteBox("Saw", _levelRoot, t.pos, new Vector2(1.1f, 1.1f), sp, 3)
                         : Theme.Box("Saw", _levelRoot, t.pos, t.size, Theme.Danger, 3);
+                    if (sp != null) go.GetComponent<SpriteRenderer>().color = Theme.Danger; // bloody blade
                     FitTrigger(go, 0.5f); // forgiving hitbox (was a full grid cell)
-                    var kz = go.AddComponent<KillZone>(); kz.msg = "Sliced.";
+                    var kz = go.AddComponent<KillZone>(); kz.msg = "Shredded.";
                     go.AddComponent<Trap>().Init(TrapType.Saw);
                     break;
                 }
@@ -681,15 +664,17 @@ namespace TrustIssues
             var col = go.AddComponent<BoxCollider2D>();
             col.size = new Vector2(0.7f, 0.9f);
 
-            // Prefer the animated Pink Man (sliced from sheets); then a single
-            // beanie sprite; then a pink box with eyes — so it always runs.
+            // Vampire character (individual frames) -> Pink Man -> beanie -> box.
             SpriteRenderer bodySr = null;
             Transform vis;
+            var vIdle = Assets.Sprite("vamp_idle");
+            var vRun = LoadFrames("vamp_run", 5);
             var pmIdle = Assets.Sheet("pinkman_idle", 32);
             var pmRun = Assets.Sheet("pinkman_run", 32);
             var pmJump = Assets.Sheet("pinkman_jump", 32);
             var beanie = Assets.Sprite("beanie_idle");
-            Sprite firstFrame = (pmIdle != null && pmIdle.Length > 0) ? pmIdle[0] : beanie;
+            Sprite firstFrame = vIdle != null ? vIdle
+                : (pmIdle != null && pmIdle.Length > 0) ? pmIdle[0] : beanie;
 
             if (firstFrame != null)
             {
@@ -700,7 +685,7 @@ namespace TrustIssues
                 bodySr.sprite = firstFrame;
                 bodySr.sortingOrder = 5;
                 float h = firstFrame.bounds.size.y;
-                float s = h > 0.0001f ? 1.3f / h : 1f;
+                float s = h > 0.0001f ? 1.35f / h : 1f;
                 b.transform.localScale = new Vector3(s, s, 1f);
                 vis = b.transform;
             }
@@ -709,10 +694,6 @@ namespace TrustIssues
                 var b = Theme.Box("Body", go.transform, _level.Spawn, new Vector2(0.8f, 0.9f),
                     Theme.Player, 5);
                 b.transform.localPosition = Vector3.zero;
-                Theme.Box("EyeL", b.transform, Vector2.zero, new Vector2(0.16f, 0.22f), Theme.Ink, 6)
-                    .transform.localPosition = new Vector3(-0.16f, 0.12f, 0);
-                Theme.Box("EyeR", b.transform, Vector2.zero, new Vector2(0.16f, 0.22f), Theme.Ink, 6)
-                    .transform.localPosition = new Vector3(0.18f, 0.12f, 0);
                 vis = b.transform;
             }
 
@@ -721,7 +702,13 @@ namespace TrustIssues
             if (bodySr != null)
             {
                 _player.bodyRenderer = bodySr;
-                if (pmIdle != null && pmIdle.Length > 0)
+                if (vIdle != null)
+                {
+                    _player.idleFrames = new[] { vIdle };
+                    _player.runFrames = (vRun != null && vRun.Length > 0) ? vRun : new[] { vIdle };
+                    _player.jumpSprite = vIdle;
+                }
+                else if (pmIdle != null && pmIdle.Length > 0)
                 {
                     _player.idleFrames = pmIdle;
                     _player.runFrames = pmRun;
@@ -734,6 +721,18 @@ namespace TrustIssues
                     _player.jumpSprite = Assets.Sprite("beanie_walk");
                 }
             }
+        }
+
+        // Loads "<prefix>1".."<prefix>N" as a frame array (skips missing).
+        static Sprite[] LoadFrames(string prefix, int n)
+        {
+            var list = new System.Collections.Generic.List<Sprite>();
+            for (int i = 1; i <= n; i++)
+            {
+                var s = Assets.Sprite(prefix + i);
+                if (s != null) list.Add(s);
+            }
+            return list.Count > 0 ? list.ToArray() : null;
         }
 
         // ==================== camera & loop ====================
@@ -866,7 +865,9 @@ namespace TrustIssues
         IEnumerator NextLevelFlash()
         {
             _state = State.Win; // block input briefly
-            if (_toast != null) _toast.text = $"LEVEL {_levelIndex + 1}";
+            if (_toast != null)
+                _toast.text = _mode == Mode.Endless ? $"FLOOR {_levelIndex + 1}"
+                            : _mode == Mode.Daily ? $"NIGHT {_levelIndex + 1}" : $"LEVEL {_levelIndex + 1}";
             yield return new WaitForSecondsRealtime(0.9f);
             if (_toast != null) _toast.text = "";
             Destroy(_levelRoot.gameObject);

@@ -13,20 +13,20 @@ namespace TrustIssues
     {
         // Working title + mascot name (swappable).
         public const string Title = "TRUST ISSUES";
-        public const string Mascot = "Beanie";
+        public const string Mascot = "the Heir";
 
-        // Palette — "Candy Troll": cute pastel exterior, brutal gameplay.
-        public static readonly Color Sky      = Hex("2B2440"); // plum night
-        public static readonly Color SkyLow   = Hex("3A3158");
-        public static readonly Color Platform = Hex("FFF3E6"); // cream ground
-        public static readonly Color PlatEdge = Hex("E6D8C8");
-        public static readonly Color Player   = Hex("FF8FB1"); // Beanie pink
-        public static readonly Color Danger   = Hex("FF5D73"); // spikes / kill (coral)
-        public static readonly Color Trick    = Hex("B388FF"); // fake/portal lavender
-        public static readonly Color Coin      = Hex("FFD66B");
-        public static readonly Color Exit      = Hex("5BE0A3"); // real exit mint
-        public static readonly Color Ink       = Hex("2A2438");
-        public static readonly Color Tell      = new Color(0, 0, 0, 0.16f); // subtle hint
+        // Palette — VAMPIRE: black night, blood red, candle gold.
+        public static readonly Color Sky      = Hex("0E0A12"); // near-black night
+        public static readonly Color SkyLow   = Hex("1C1020"); // dark maroon
+        public static readonly Color Platform = Hex("443F4E"); // castle stone
+        public static readonly Color PlatEdge = Hex("7A1622"); // blood-red top
+        public static readonly Color Player   = Hex("E23B3B"); // blood red (text/title)
+        public static readonly Color Danger   = Hex("FF2E2E"); // hazards (blood)
+        public static readonly Color Trick    = Hex("7A2BB0"); // portals (necro purple)
+        public static readonly Color Coin      = Hex("E0B33A"); // candle gold
+        public static readonly Color Exit      = Hex("E0B33A"); // the goal (gold glow)
+        public static readonly Color Ink       = Hex("0B0810"); // near-black text
+        public static readonly Color Tell      = new Color(0, 0, 0, 0.18f);
 
         static Sprite _square;
         public static Sprite Square

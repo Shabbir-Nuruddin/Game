@@ -63,11 +63,9 @@ namespace TrustIssues
 
         public Level Finish()
         {
-            float pre = Plat(3.5f);
-            Gap(1.6f);
-            float endc = Plat(3.5f);
-            T(TrapType.FakeExit, endc + 0.6f, -2f, 1f, 2f);
-            T(TrapType.RealExit, (pre + endc) / 2f, -5f, 1.3f, 1.2f);
+            Gap(2.5f);
+            float endc = Plat(4f);
+            T(TrapType.RealExit, endc, -2f, 1.4f, 1.8f); // the one clear goal
             L.CamMinX = -1.5f;
             L.CamMaxX = Mathf.Max(-1.5f, cur - 10f);
             return L;
@@ -104,13 +102,15 @@ namespace TrustIssues
             var b = new B();
             b.Plat(3.7f); // safe start
 
-            int segments = Mathf.Clamp(4 + difficulty, 4, 9);
+            int segments = Mathf.Clamp(5 + difficulty, 5, 11);
             for (int i = 0; i < segments; i++)
             {
-                if (difficulty >= 1 && rng.Next(100) < 22) b.FakeFloor(2f);
-                else b.Gap(2.3f + (float)rng.NextDouble() * 0.5f);
+                if (difficulty >= 1 && rng.Next(100) < 18 + difficulty * 3) b.FakeFloor(2f);
+                else b.Gap(2.4f + (float)rng.NextDouble() * 0.5f);
                 float p = b.Plat(3.6f + (float)rng.NextDouble() * 1.3f);
                 PlaceHazard(b, pool[rng.Next(pool.Count)], p);
+                if (difficulty >= 4 && rng.Next(100) < 28)        // a second hazard, deeper in
+                    PlaceHazard(b, pool[rng.Next(pool.Count)], p + 1.2f);
             }
             b.Gap(2.4f);
             return b.Finish();
