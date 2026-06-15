@@ -20,7 +20,8 @@ namespace TrustIssues
         SpikeStatic,// an always-visible spike you must jump over
         ArrowRain,  // spikes drop from the ceiling on a timer — time your run
         Checkpoint, // touch it and you respawn here instead of the start
-        BreakBlock  // a solid candy wall you must SHOOT to get past
+        BreakBlock, // a solid candy wall you must SHOOT to get past
+        GrowSpike   // a blood spike that grows (lethal) and shrinks (safe) on a loop
     }
 
     /// <summary>
@@ -42,12 +43,14 @@ namespace TrustIssues
         public void Init(TrapType t) { type = t; }
 
         Vector3 _origin;
+        Vector3 _growBaseScale = Vector3.one;
 
         void Start()
         {
             _sr = GetComponent<SpriteRenderer>();
             _col = GetComponent<BoxCollider2D>();
             _origin = transform.position;
+            if (type == TrapType.GrowSpike) _growBaseScale = transform.localScale;
 
             // A faller is a VISIBLE rock-head hovering above; it slams down with a
             // brief telegraph so you can sprint through (dodgeable, not a cheap kill).
@@ -105,6 +108,14 @@ namespace TrustIssues
             if (type == TrapType.Saw)
                 transform.position = new Vector3(
                     _origin.x + Mathf.Sin(Time.time * 2.5f) * 2.5f, _origin.y, 0f);
+
+            // A growing spike: pulses tall (lethal) then short (safe to cross).
+            else if (type == TrapType.GrowSpike)
+            {
+                float k = 0.2f + 0.8f * (0.5f + 0.5f * Mathf.Sin(Time.time * 1.8f + _origin.x));
+                transform.localScale = new Vector3(_growBaseScale.x, _growBaseScale.y * k, 1f);
+                if (_col != null) _col.enabled = k > 0.62f; // only deadly when grown
+            }
         }
 
         // ---- solid traps (FakeFloor) use collision; the rest are triggers ----

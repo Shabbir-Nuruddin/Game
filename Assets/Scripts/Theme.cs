@@ -54,6 +54,33 @@ namespace TrustIssues
             return c;
         }
 
+        // A code-generated bat silhouette (used for the player's bat/fly form).
+        static Sprite _bat;
+        public static Sprite Bat
+        {
+            get
+            {
+                if (_bat != null) return _bat;
+                string[] rows =
+                {
+                    "..X.....X..",
+                    ".XXX...XXX.",
+                    "XXXXX.XXXXX",
+                    "XXXXXXXXXXX",
+                    ".XX.XXX.XX.",
+                };
+                int w = rows[0].Length, h = rows.Length;
+                var tex = new Texture2D(w, h) { filterMode = FilterMode.Point };
+                var body = Hex("C2304A"); var clear = new Color(0, 0, 0, 0);
+                for (int y = 0; y < h; y++)
+                    for (int x = 0; x < w; x++)
+                        tex.SetPixel(x, h - 1 - y, rows[y][x] == 'X' ? body : clear);
+                tex.Apply();
+                _bat = Sprite.Create(tex, new Rect(0, 0, w, h), new Vector2(0.5f, 0.5f), w);
+                return _bat;
+            }
+        }
+
         static Sprite _grad;
         /// <summary>A soft vertical gradient sprite for backdrops (1 world unit).</summary>
         public static Sprite Gradient(Color top, Color bottom)

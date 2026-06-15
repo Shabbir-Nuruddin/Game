@@ -24,6 +24,12 @@ namespace TrustIssues
         public SpriteRenderer bodyRenderer;
         public Sprite idleSprite, walkSprite, jumpSprite;
         public Sprite[] idleFrames, runFrames;   // multi-frame animation (preferred)
+        public Sprite batSprite;                 // shown while flying (bat form)
+
+        // Bat flight (jetpack-style): hold to rise, drains the meter, refills on ground.
+        public float flightMeter = 1f;           // 0..1, read by the HUD
+        public float flyRise = 5.5f, flyDrain = 0.55f, flyRefill = 0.7f;
+        bool _flying;
 
         Rigidbody2D _rb;
         BoxCollider2D _col;
@@ -80,6 +86,12 @@ namespace TrustIssues
             if (TouchInput.X != 0f) _inputX = TouchInput.X;
             if (TouchInput.ConsumeJump()) _buffer = jumpBuffer;
 
+            // Bat flight: hold Shift (or the on-screen FLY) to rise; drains meter.
+            bool flyHeld = Input.GetKey(KeyCode.LeftShift) || TouchInput.FlyHeld;
+            _flying = flyHeld && flightMeter > 0f;
+            if (_flying) flightMeter = Mathf.Max(0f, flightMeter - flyDrain * Time.deltaTime);
+            else if (_grounded) flightMeter = Mathf.Min(1f, flightMeter + flyRefill * Time.deltaTime);
+
             // Reverse-controls troll: flip horizontal input for a few seconds.
             if (_reverseTimer > 0f) { _reverseTimer -= Time.deltaTime; _inputX = -_inputX; }
 
@@ -103,7 +115,9 @@ namespace TrustIssues
             bool moving = Mathf.Abs(_inputX) > 0.01f;
             if (bodyRenderer != null)
             {
-                if (!_grounded && jumpSprite != null)
+                if (_flying && batSprite != null)
+                    bodyRenderer.sprite = batSprite;          // bat form
+                else if (!_grounded && jumpSprite != null)
                     bodyRenderer.sprite = jumpSprite;
                 else if (moving && runFrames != null && runFrames.Length > 0)
                 {
@@ -148,6 +162,8 @@ namespace TrustIssues
                 _buffer = 0f; _coyote = 0f;
                 Audio.Play("jump", 0.5f);
             }
+
+            if (_flying) v.y = flyRise; // bat thrust overrides
 
             _rb.linearVelocity = v;
             _rb.gravityScale = _rb.linearVelocity.y > 0.1f ? riseGravity : fallGravity;

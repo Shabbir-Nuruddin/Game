@@ -32,6 +32,8 @@ namespace TrustIssues
         Mode _mode = Mode.Curated;
         int _endlessSeed;
         const int DailyLen = 5;
+        int _hearts;          // lives in Endless/Daily; -1 = infinite (Curated)
+        Image _flyBar;        // flight-meter fill
         float _camMin = -1.5f, _camMax = -1.5f;
         const float CamY = -1.2f;
 
@@ -108,6 +110,25 @@ namespace TrustIssues
                 TextAnchor.MiddleLeft);
             _toast = Theme.Label(Theme.Canvas.transform, "", 60, Theme.Player,
                 new Vector2(0.5f, 0.5f), new Vector2(0, 150), new Vector2(1400, 100));
+
+            // Bat-flight meter (top-left under the deaths line).
+            var barBg = new GameObject("FlyBarBg", typeof(RectTransform));
+            barBg.transform.SetParent(Theme.Canvas.transform, false);
+            var bgi = barBg.AddComponent<Image>(); bgi.color = new Color(0, 0, 0, 0.5f);
+            var brt = bgi.rectTransform;
+            brt.anchorMin = brt.anchorMax = new Vector2(0f, 1f); brt.pivot = new Vector2(0f, 1f);
+            brt.anchoredPosition = new Vector2(40, -110); brt.sizeDelta = new Vector2(340, 26);
+            Theme.Label(barBg.transform, "BAT", 22, new Color(1, 1, 1, 0.7f),
+                new Vector2(0f, 0.5f), new Vector2(-44, 0), new Vector2(70, 30));
+            var fill = new GameObject("FlyBarFill", typeof(RectTransform));
+            fill.transform.SetParent(barBg.transform, false);
+            _flyBar = fill.AddComponent<Image>(); _flyBar.color = Theme.Player;
+            var frt = _flyBar.rectTransform;
+            frt.anchorMin = frt.anchorMax = new Vector2(0f, 0.5f);
+            frt.pivot = new Vector2(0f, 0.5f);
+            frt.anchoredPosition = new Vector2(2, 0);
+            frt.sizeDelta = new Vector2(336, 22);
+
             BuildTouchControls();
             BuildRotatePanel();
         }
@@ -142,6 +163,7 @@ namespace TrustIssues
             MakeTouch("‹", -1, new Vector2(0f, 0f), new Vector2(170, 170), new Vector2(210, 210));
             MakeTouch("›", 1, new Vector2(0f, 0f), new Vector2(410, 170), new Vector2(210, 210));
             MakeTouch("JUMP", 0, new Vector2(1f, 0f), new Vector2(-200, 170), new Vector2(260, 260));
+            MakeTouch("FLY", 3, new Vector2(1f, 0f), new Vector2(-470, 220), new Vector2(190, 190));
             _touchPanel.SetActive(false);
         }
 
@@ -325,13 +347,16 @@ namespace TrustIssues
 
         // A spray of red bits flung from the death spot (parented to GameRoot so
         // it survives the level rebuild on respawn). Bloody-candy payoff.
+        static readonly Color Blood = Theme.Hex("8E0E18");
         void GoreBurst(Vector3 pos)
         {
-            for (int i = 0; i < 14; i++)
+            for (int i = 0; i < 26; i++)
             {
-                var g = Theme.Box("Gore", transform, pos, new Vector2(0.18f, 0.18f), Theme.Danger, 8);
+                float sz = Random.Range(0.14f, 0.34f);
+                var col = Random.value < 0.5f ? Blood : Theme.Danger;
+                var g = Theme.Box("Gore", transform, pos, new Vector2(sz, sz), col, 8);
                 StartCoroutine(GoreBit(g.transform,
-                    new Vector2(Random.Range(-5f, 5f), Random.Range(3f, 8f))));
+                    new Vector2(Random.Range(-7f, 7f), Random.Range(3f, 10f))));
             }
         }
 
@@ -427,7 +452,7 @@ namespace TrustIssues
             _levelIndex = levelIndex;
             _hasCheckpoint = false;
             _deaths = 0;
-            _hud.text = "DEATHS  0";
+            _hearts = _mode == Mode.Curated ? -1 : 3; // Curated = infinite retries
             _hud.gameObject.SetActive(true);
             if (_touchPanel != null) _touchPanel.SetActive(_isMobile); // phone only
             _state = State.Play;
@@ -479,7 +504,8 @@ namespace TrustIssues
             if (_hud == null) return;
             string left = _mode == Mode.Endless ? $"FLOOR {_levelIndex + 1}    "
                         : _mode == Mode.Daily ? $"NIGHT {_levelIndex + 1}/{DailyLen}    " : "";
-            _hud.text = left + "DEATHS " + _deaths;
+            string hearts = _hearts >= 0 ? "    " + new string('♥', Mathf.Max(0, _hearts)) : "";
+            _hud.text = left + "DEATHS " + _deaths + hearts;
         }
 
         // A platform: candy tile (tiled) if the sprite is present, else a cream box.
@@ -559,13 +585,17 @@ namespace TrustIssues
                 }
                 case TrapType.RealExit:
                 {
-                    var sp = Assets.Sprite("door");
-                    GameObject go = sp != null
-                        ? Theme.SpriteBox("RealExit", _levelRoot, t.pos, new Vector2(1.5f, 1.5f), sp, 2)
-                        : Theme.Box("RealExit", _levelRoot, t.pos, t.size, Theme.Exit, 2);
-                    // natural gold trophy = the real goal (no muddy tint)
-                    FitTrigger(go, 0.85f);
+                    // A code-built coffin with a glowing gold cross = the one goal.
+                    var go = new GameObject("RealExit");
+                    go.transform.SetParent(_levelRoot, false);
+                    go.transform.position = t.pos;
+                    var col = go.AddComponent<BoxCollider2D>();
+                    col.isTrigger = true; col.size = new Vector2(1.1f, 1.7f);
                     go.AddComponent<Trap>().Init(TrapType.RealExit);
+                    Theme.Box("CoffinBack", _levelRoot, t.pos, new Vector2(1.4f, 2.05f), Theme.Hex("140C08"), 1);
+                    Theme.Box("Coffin", _levelRoot, t.pos, new Vector2(1.15f, 1.9f), Theme.Hex("3A2418"), 2);
+                    Theme.Box("CrossV", _levelRoot, t.pos + new Vector2(0, 0.1f), new Vector2(0.18f, 0.95f), Theme.Exit, 3);
+                    Theme.Box("CrossH", _levelRoot, t.pos + new Vector2(0, 0.45f), new Vector2(0.62f, 0.18f), Theme.Exit, 3);
                     break;
                 }
                 case TrapType.SpikeStatic:
@@ -577,6 +607,18 @@ namespace TrustIssues
                     if (sp != null) go.GetComponent<SpriteRenderer>().color = Theme.Danger; // blood
                     var c = go.AddComponent<BoxCollider2D>(); c.isTrigger = true;
                     var kz = go.AddComponent<KillZone>(); kz.msg = "Impaled.";
+                    break;
+                }
+                case TrapType.GrowSpike:
+                {
+                    var sp = Assets.Sprite("spike");
+                    GameObject go = sp != null
+                        ? Theme.SpriteBox("GrowSpike", _levelRoot, t.pos, t.size, sp, 3)
+                        : Theme.Box("GrowSpike", _levelRoot, t.pos, t.size, Theme.Danger, 3);
+                    if (sp != null) go.GetComponent<SpriteRenderer>().color = Theme.Danger;
+                    var c = go.AddComponent<BoxCollider2D>(); c.isTrigger = true;
+                    var kz = go.AddComponent<KillZone>(); kz.msg = "Skewered.";
+                    go.AddComponent<Trap>().Init(TrapType.GrowSpike);
                     break;
                 }
                 case TrapType.Checkpoint:
@@ -702,6 +744,7 @@ namespace TrustIssues
             if (bodySr != null)
             {
                 _player.bodyRenderer = bodySr;
+                _player.batSprite = Theme.Bat;
                 if (vIdle != null)
                 {
                     _player.idleFrames = new[] { vIdle };
@@ -775,6 +818,16 @@ namespace TrustIssues
             if (_state == State.Play && _player != null && !_dying &&
                 _player.transform.position.y < -9f)
                 Die("Gravity wins again.");
+
+            if (_flyBar != null)
+            {
+                var barObj = _flyBar.transform.parent.gameObject;
+                bool show = _state == State.Play && _player != null;
+                if (barObj.activeSelf != show) barObj.SetActive(show);
+                if (show)
+                    _flyBar.rectTransform.sizeDelta =
+                        new Vector2(336f * Mathf.Clamp01(_player.flightMeter), 22f);
+            }
         }
 
         // ==================== death / respawn ====================
@@ -807,6 +860,7 @@ namespace TrustIssues
             if (_state != State.Play || _dying) return;
             _dying = true;
             _deaths++;
+            if (_hearts > 0) _hearts--;     // lose a heart (Endless/Daily); Curated = -1 (infinite)
             Audio.Play("death", 0.9f);
             FlashRed();
             UpdateHud();
@@ -822,7 +876,28 @@ namespace TrustIssues
             yield return new WaitForSecondsRealtime(0.2f);
             if (_toast != null) _toast.text = "";
             Destroy(_levelRoot.gameObject);
-            BuildLevel();
+            if (_hearts == 0) RunOver();   // out of hearts -> the run ends
+            else BuildLevel();
+        }
+
+        // Out of hearts in Endless/Daily — end the run and show the result.
+        void RunOver()
+        {
+            _state = State.Win;
+            if (_mode == Mode.Endless && _levelIndex > PlayerPrefs.GetInt("best_endless", 0))
+            { PlayerPrefs.SetInt("best_endless", _levelIndex); PlayerPrefs.Save(); }
+            Audio.Play("death", 0.7f);
+
+            var panel = Overlay(new Color(0.05f, 0f, 0.02f, 0.85f), out var root);
+            Theme.Label(root, "YOU PERISHED", 100, Theme.Player,
+                new Vector2(0.5f, 0.5f), new Vector2(0, 170), new Vector2(1400, 150));
+            string reached = _mode == Mode.Endless ? $"reached floor {_levelIndex + 1}"
+                                                    : $"fell on night {_levelIndex + 1}/{DailyLen}";
+            Theme.Label(root, reached + $"   •   {_deaths} deaths", 50, Color.white,
+                new Vector2(0.5f, 0.5f), new Vector2(0, 50), new Vector2(1400, 70));
+            Theme.Button(root, "BACK TO THE CASTLE", new Color(0.28f, 0.24f, 0.32f), Color.white, 44,
+                new Vector2(0.5f, 0.5f), new Vector2(0, -130), new Vector2(640, 120),
+                () => { Destroy(panel); ShowMenu(); });
         }
 
         // ==================== level progression / win ====================
@@ -831,6 +906,7 @@ namespace TrustIssues
             if (_state != State.Play) return;
             if (_player != null) _player.Freeze();
             Audio.Play("levelup", 0.7f);
+            if (_hearts >= 0) _hearts = Mathf.Min(5, _hearts + 1); // bank a heart per floor
 
             if (_mode == Mode.Endless)
             {

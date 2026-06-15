@@ -48,6 +48,7 @@ namespace TrustIssues
 
         void T(TrapType t, float x, float y, float w, float h) => L.Traps.Add(new TrapSpec(t, x, y, w, h));
         public void Spike(float x) => T(TrapType.SpikeStatic, x, -2.4f, 0.7f, 0.7f);
+        public void GrowSpike(float x) => T(TrapType.GrowSpike, x, -2.0f, 0.7f, 1.4f);
         public void ArrowRain(float x) => T(TrapType.ArrowRain, x, -3f, 0.5f, 0.5f);
         public void Checkpoint(float x) => T(TrapType.Checkpoint, x, -2f, 1f, 1.6f);
         public void BreakWall(float x) => T(TrapType.BreakBlock, x, -0.7f, 0.7f, 4f); // shoot to pass
@@ -120,7 +121,7 @@ namespace TrustIssues
         {
             var l = new List<TrapType> { TrapType.SpikeStatic, TrapType.SpikeStatic };
             if (d >= 1) l.Add(TrapType.LateSpike);
-            if (d >= 2) { l.Add(TrapType.Dart); l.Add(TrapType.Crusher); }
+            if (d >= 2) { l.Add(TrapType.Dart); l.Add(TrapType.Crusher); l.Add(TrapType.GrowSpike); }
             if (d >= 3) l.Add(TrapType.Faller);
             if (d >= 4) { l.Add(TrapType.Saw); l.Add(TrapType.Surprise); }
             if (d >= 5) l.Add(TrapType.ArrowRain);
@@ -138,6 +139,7 @@ namespace TrustIssues
                 case TrapType.Saw: b.Saw(p); break;
                 case TrapType.ArrowRain: b.ArrowRain(p); break;
                 case TrapType.Surprise: b.Surprise(p); break;
+                case TrapType.GrowSpike: b.GrowSpike(p); break;
                 default: b.Spike(p); break;
             }
         }
@@ -216,7 +218,7 @@ namespace TrustIssues
             var b = new B();
             float p1 = b.Plat(4f); b.Reverse(p1 + 1f);
             b.Gap(2.5f);
-            float p2 = b.Plat(3.5f); b.Spike(p2);
+            float p2 = b.Plat(4f); b.GrowSpike(p2);   // pulsing blood spike
             b.Gap(2.5f);
             float p3 = b.Plat(3.5f); b.LateSpike(p3);
             b.Gap(2.5f);
