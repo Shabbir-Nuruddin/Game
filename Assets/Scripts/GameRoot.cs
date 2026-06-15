@@ -27,6 +27,11 @@ namespace TrustIssues
         bool _dying;
         Vector3 _checkpoint;
         bool _hasCheckpoint;
+
+        enum Mode { Curated, Endless, Daily }
+        Mode _mode = Mode.Curated;
+        int _endlessSeed;
+        const int DailyLen = 5;
         float _camMin = -1.5f, _camMax = -1.5f;
         const float CamY = -1.2f;
 
@@ -197,23 +202,24 @@ namespace TrustIssues
                 new Color(1f, 0.86f, 0.92f, 0.9f), new Vector2(0.5f, 0.5f),
                 new Vector2(0, 110), new Vector2(1400, 70));
 
-            Theme.Button(root, "NEW GAME", Theme.Player, Theme.Ink, 54,
-                new Vector2(0.5f, 0.5f), new Vector2(0, 20), new Vector2(480, 120),
-                ShowStory);
+            // DAILY RUN — the retention hook (same level for everyone today).
+            Theme.Button(root, "DAILY RUN", Theme.Exit, Theme.Ink, 52,
+                new Vector2(0.5f, 0.5f), new Vector2(0, 55), new Vector2(520, 110), StartDaily);
+            int dBest = PlayerPrefs.GetInt("daily_" + DailySeed(), -1);
+            Theme.Label(root, dBest >= 0 ? $"today's best: {dBest} deaths" : "you haven't survived today yet",
+                28, new Color(1, 1, 1, 0.55f), new Vector2(0.5f, 0.5f), new Vector2(0, -5), new Vector2(900, 40));
 
-            Theme.Button(root, $"LEVELS ({Levels.Count})", Theme.Trick, Theme.Ink, 48,
-                new Vector2(0.5f, 0.5f), new Vector2(0, -120), new Vector2(480, 110),
-                ShowLevelSelect);
+            Theme.Button(root, "ENDLESS", Theme.Trick, Theme.Ink, 50,
+                new Vector2(0.5f, 0.5f), new Vector2(0, -100), new Vector2(520, 110), StartEndless);
+            Theme.Label(root, $"best depth: {PlayerPrefs.GetInt("best_endless", 0)}",
+                28, new Color(1, 1, 1, 0.55f), new Vector2(0.5f, 0.5f), new Vector2(0, -160), new Vector2(900, 40));
 
-            int saved = PlayerPrefs.GetInt("ti_level", 0);
-            if (saved > 0)
-                Theme.Button(root, $"CONTINUE • Lvl {saved + 1}", new Color(1, 1, 1, 0.25f), Color.white, 42,
-                    new Vector2(0.5f, 0.5f), new Vector2(0, -250), new Vector2(480, 100),
-                    () => StartGame(saved));
+            Theme.Button(root, "LEVELS", Theme.Player, Theme.Ink, 46,
+                new Vector2(0.5f, 0.5f), new Vector2(0, -250), new Vector2(520, 100), ShowLevelSelect);
 
-            Theme.Label(root, "don't trust the floor.", 32,
+            Theme.Label(root, "don't trust the floor.", 30,
                 new Color(1, 1, 1, 0.4f), new Vector2(0.5f, 0f),
-                new Vector2(0, 50), new Vector2(1400, 50));
+                new Vector2(0, 45), new Vector2(1400, 50));
         }
 
         // Short, darkly-funny premise shown before a new game.
@@ -410,22 +416,66 @@ namespace TrustIssues
         void StartGame(int levelIndex)
         {
             Audio.Play("click");
+            _mode = Mode.Curated;
+            BeginRun(levelIndex);
+            if (levelIndex == 0) ShowHint("A / D  or  ← →  to move    •    SPACE to jump");
+        }
+
+        void StartDaily()
+        {
+            Audio.Play("click");
+            _mode = Mode.Daily;
+            BeginRun(0);
+            ShowHint("DAILY RUN — same level for everyone today. Fewest deaths wins!");
+        }
+
+        void StartEndless()
+        {
+            Audio.Play("click");
+            _mode = Mode.Endless;
+            _endlessSeed = new System.Random().Next(1, 1000000);
+            BeginRun(0);
+            ShowHint("ENDLESS — how deep can you go?");
+        }
+
+        // Common setup for any run. A new run starts the death count fresh;
+        // restarting/respawning within a run keeps it.
+        void BeginRun(int levelIndex)
+        {
             if (_menuPanel != null) Destroy(_menuPanel);
             _levelIndex = levelIndex;
             _hasCheckpoint = false;
-            _hud.text = "DEATHS  " + _deaths;            // keep the running total
+            _deaths = 0;
+            _hud.text = "DEATHS  0";
             _hud.gameObject.SetActive(true);
             if (_touchPanel != null) _touchPanel.SetActive(_isMobile); // phone only
             _state = State.Play;
             BuildLevel();
-            if (levelIndex == 0) ShowHint("A / D  or  ← →  to move    •    SPACE to jump");
         }
 
         // ==================== LEVEL ====================
+        // Which level to build, per mode. Generated levels are deterministic per
+        // (seed, index), so retrying a level after death is identical.
+        Level CurrentLevel()
+        {
+            switch (_mode)
+            {
+                case Mode.Daily:   return Levels.Generate(DailySeed() * 31 + _levelIndex * 7919, 2 + _levelIndex);
+                case Mode.Endless: return Levels.Generate(_endlessSeed + _levelIndex * 7919, _levelIndex);
+                default:           return Levels.Get(_levelIndex);
+            }
+        }
+
+        static int DailySeed()
+        {
+            var d = System.DateTime.UtcNow.Date;
+            return d.Year * 10000 + d.Month * 100 + d.Day;
+        }
+
         void BuildLevel()
         {
             _dying = false;
-            _level = Levels.Get(_levelIndex);
+            _level = CurrentLevel();
             _camMin = _level.CamMinX; _camMax = _level.CamMaxX;
             _levelRoot = new GameObject("Level").transform;
 
@@ -440,6 +490,15 @@ namespace TrustIssues
 
             SpawnPlayer();
             SnapCamera();
+            UpdateHud();
+        }
+
+        void UpdateHud()
+        {
+            if (_hud == null) return;
+            string left = _mode == Mode.Endless ? $"DEPTH {_levelIndex + 1}    "
+                        : _mode == Mode.Daily ? $"DAILY {_levelIndex + 1}/{DailyLen}    " : "";
+            _hud.text = left + "DEATHS " + _deaths;
         }
 
         // A platform: candy tile (tiled) if the sprite is present, else a cream box.
@@ -751,7 +810,7 @@ namespace TrustIssues
             _deaths++;
             Audio.Play("death", 0.9f);
             FlashRed();
-            if (_hud != null) _hud.text = "DEATHS  " + _deaths;
+            UpdateHud();
             StartCoroutine(DieRoutine(msg ?? Juice.DeathLine()));
         }
 
@@ -772,20 +831,36 @@ namespace TrustIssues
         {
             if (_state != State.Play) return;
             if (_player != null) _player.Freeze();
+            Audio.Play("levelup", 0.7f);
 
+            if (_mode == Mode.Endless)
+            {
+                _levelIndex++;
+                if (_levelIndex > PlayerPrefs.GetInt("best_endless", 0))
+                { PlayerPrefs.SetInt("best_endless", _levelIndex); PlayerPrefs.Save(); }
+                StartCoroutine(NextLevelFlash());
+                return;
+            }
+            if (_mode == Mode.Daily)
+            {
+                if (_levelIndex + 1 < DailyLen) { _levelIndex++; StartCoroutine(NextLevelFlash()); }
+                else
+                {
+                    string key = "daily_" + DailySeed();
+                    if (_deaths < PlayerPrefs.GetInt(key, int.MaxValue))
+                    { PlayerPrefs.SetInt(key, _deaths); PlayerPrefs.Save(); }
+                    _state = State.Win; Audio.Play("win", 0.7f); StartCoroutine(WinRoutine());
+                }
+                return;
+            }
+            // Curated
             if (_levelIndex + 1 < Levels.Count)
             {
                 _levelIndex++;
                 PlayerPrefs.SetInt("ti_level", _levelIndex); PlayerPrefs.Save();
-                Audio.Play("levelup", 0.7f);
                 StartCoroutine(NextLevelFlash());
             }
-            else
-            {
-                _state = State.Win;
-                Audio.Play("win", 0.7f);
-                StartCoroutine(WinRoutine());
-            }
+            else { _state = State.Win; Audio.Play("win", 0.7f); StartCoroutine(WinRoutine()); }
         }
 
         IEnumerator NextLevelFlash()

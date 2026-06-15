@@ -92,6 +92,56 @@ namespace TrustIssues
             }
         }
 
+        // ---- Procedural generator (powers Endless + Daily) ----
+        // Uses the same B builder, so every generated level is guaranteed
+        // beatable (jumpable gaps, one spaced hazard per platform). Difficulty
+        // grows the hazard variety and length.
+        public static Level Generate(int seed, int difficulty)
+        {
+            var rng = new System.Random(seed);
+            difficulty = Mathf.Max(0, difficulty);
+            var pool = HazardPool(difficulty);
+            var b = new B();
+            b.Plat(3.7f); // safe start
+
+            int segments = Mathf.Clamp(4 + difficulty, 4, 9);
+            for (int i = 0; i < segments; i++)
+            {
+                if (difficulty >= 1 && rng.Next(100) < 22) b.FakeFloor(2f);
+                else b.Gap(2.3f + (float)rng.NextDouble() * 0.5f);
+                float p = b.Plat(3.6f + (float)rng.NextDouble() * 1.3f);
+                PlaceHazard(b, pool[rng.Next(pool.Count)], p);
+            }
+            b.Gap(2.4f);
+            return b.Finish();
+        }
+
+        static List<TrapType> HazardPool(int d)
+        {
+            var l = new List<TrapType> { TrapType.SpikeStatic, TrapType.SpikeStatic };
+            if (d >= 1) l.Add(TrapType.LateSpike);
+            if (d >= 2) { l.Add(TrapType.Dart); l.Add(TrapType.Crusher); }
+            if (d >= 3) l.Add(TrapType.Faller);
+            if (d >= 4) { l.Add(TrapType.Saw); l.Add(TrapType.Surprise); }
+            if (d >= 5) l.Add(TrapType.ArrowRain);
+            return l;
+        }
+
+        static void PlaceHazard(B b, TrapType t, float p)
+        {
+            switch (t)
+            {
+                case TrapType.LateSpike: b.LateSpike(p); break;
+                case TrapType.Dart: b.Dart(p); break;
+                case TrapType.Faller: b.Faller(p); break;
+                case TrapType.Crusher: b.Crusher(p); break;
+                case TrapType.Saw: b.Saw(p); break;
+                case TrapType.ArrowRain: b.ArrowRain(p); break;
+                case TrapType.Surprise: b.Surprise(p); break;
+                default: b.Spike(p); break;
+            }
+        }
+
         // 1 — intro: fake floor, one spike, one crusher.
         static Level L1()
         {
