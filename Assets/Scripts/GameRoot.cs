@@ -31,7 +31,7 @@ namespace TrustIssues
         const float CamY = -1.2f;
 
         Text _hud, _toast;
-        GameObject _menuPanel, _pausePanel, _touchPanel;
+        GameObject _menuPanel, _pausePanel, _touchPanel, _rotatePanel;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void AutoBoot()
@@ -112,6 +112,25 @@ namespace TrustIssues
             _toast = Theme.Label(Theme.Canvas.transform, "", 60, Theme.Player,
                 new Vector2(0.5f, 0.5f), new Vector2(0, 150), new Vector2(1400, 100));
             BuildTouchControls();
+            BuildRotatePanel();
+        }
+
+        // Phone: ask the player to hold the phone sideways (landscape) — this is
+        // a side-scroller, so portrait is unplayable. Desktop never sees this.
+        void BuildRotatePanel()
+        {
+            _rotatePanel = new GameObject("Rotate", typeof(RectTransform));
+            _rotatePanel.transform.SetParent(Theme.Canvas.transform, false);
+            var img = _rotatePanel.AddComponent<Image>();
+            img.color = new Color(Theme.Sky.r, Theme.Sky.g, Theme.Sky.b, 0.98f);
+            var rt = _rotatePanel.GetComponent<RectTransform>();
+            rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
+            rt.offsetMin = rt.offsetMax = Vector2.zero;
+            Theme.Label(_rotatePanel.transform, "↻", 220, Theme.Player,
+                new Vector2(0.5f, 0.5f), new Vector2(0, 120), new Vector2(400, 300));
+            Theme.Label(_rotatePanel.transform, "Rotate your phone\nto landscape", 56, Color.white,
+                new Vector2(0.5f, 0.5f), new Vector2(0, -150), new Vector2(1400, 250));
+            _rotatePanel.SetActive(false);
         }
 
         // On-screen buttons for phones (also work with the mouse). Hidden in menus.
@@ -641,6 +660,18 @@ namespace TrustIssues
 
         void Update()
         {
+            // On phones, force landscape with a rotate prompt (desktop is exempt).
+            if (Input.touchSupported || Application.isMobilePlatform)
+            {
+                bool portrait = Screen.height > Screen.width;
+                if (_rotatePanel != null && _rotatePanel.activeSelf != portrait)
+                {
+                    _rotatePanel.SetActive(portrait);
+                    if (portrait) { _rotatePanel.transform.SetAsLastSibling(); Time.timeScale = 0f; }
+                    else if (_state == State.Play) Time.timeScale = 1f;
+                }
+            }
+
             if ((_state == State.Play || _state == State.Paused) &&
                 (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.P)))
                 TogglePause();
