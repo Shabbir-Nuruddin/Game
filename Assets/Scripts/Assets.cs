@@ -46,6 +46,37 @@ namespace TrustIssues
             return frames;
         }
 
+        static readonly Dictionary<string, Sprite[]> _grids = new();
+
+        /// <summary>
+        /// Slices ONE ROW of a square-framed GRID sheet (rows = directions, top
+        /// to bottom; columns = animation frames). Used for the 4-direction
+        /// vampire pack. Like Sheet, it slices via Sprite.Create so the texture
+        /// never needs to be CPU-readable.
+        /// </summary>
+        public static Sprite[] Grid(string name, int frame, int rowFromTop)
+        {
+            string key = name + "#" + rowFromTop;
+            if (_grids.TryGetValue(key, out var cached)) return cached;
+            var tex = Resources.Load<Texture2D>("art/" + name);
+            Sprite[] frames = null;
+            if (tex != null && frame > 0)
+            {
+                tex.filterMode = FilterMode.Point;
+                int cols = Mathf.Max(1, tex.width / frame);
+                int rows = Mathf.Max(1, tex.height / frame);
+                int r = Mathf.Clamp(rowFromTop, 0, rows - 1);
+                int y = tex.height - (r + 1) * frame; // texture origin is bottom-left
+                frames = new Sprite[cols];
+                for (int i = 0; i < cols; i++)
+                    frames[i] = UnityEngine.Sprite.Create(tex,
+                        new Rect(i * frame, y, frame, frame),
+                        new Vector2(0.5f, 0.5f), frame);
+            }
+            _grids[key] = frames;
+            return frames;
+        }
+
         public static AudioClip Clip(string name)
         {
             if (_clips.TryGetValue(name, out var c)) return c;
@@ -59,6 +90,14 @@ namespace TrustIssues
     public static class Audio
     {
         static AudioSource _sfx, _music;
+        static bool _muted;        // master mute (HUD button) — silences everything
+        static bool _musicMuted;   // per-channel toggles from the Settings screen
+        static bool _sfxMuted;
+
+        // The curated SFX/music are mastered louder than this game needs, so a
+        // global trim keeps everything in the "present but not painful" range.
+        const float MasterSfx = 0.55f;
+        const float MasterMusic = 0.6f;
 
         static void Ensure()
         {
@@ -72,13 +111,59 @@ namespace TrustIssues
             // Force 2D so clips are always audible regardless of position/listener.
             _sfx.spatialBlend = _music.spatialBlend = 0f;
             _sfx.volume = _music.volume = 1f;
+            _muted      = PlayerPrefs.GetInt("muted", 0) == 1;
+            _musicMuted = PlayerPrefs.GetInt("music_muted", 0) == 1;
+            _sfxMuted   = PlayerPrefs.GetInt("sfx_muted", 0) == 1;
+            ApplyMutes();
+        }
+
+        // A channel is silent if the master mute is on OR its own toggle is off.
+        static void ApplyMutes()
+        {
+            if (_sfx != null)   _sfx.mute   = _muted || _sfxMuted;
+            if (_music != null) _music.mute = _muted || _musicMuted;
+        }
+
+        // Master mute (the in-game HUD ♪/✕ button) — silences both channels.
+        public static bool Muted
+        {
+            get { return _muted; }
+            set
+            {
+                _muted = value;
+                PlayerPrefs.SetInt("muted", value ? 1 : 0); PlayerPrefs.Save();
+                ApplyMutes();
+            }
+        }
+
+        // Per-channel toggles surfaced on the Settings screen.
+        public static bool MusicMuted
+        {
+            get { return _musicMuted; }
+            set
+            {
+                _musicMuted = value;
+                PlayerPrefs.SetInt("music_muted", value ? 1 : 0); PlayerPrefs.Save();
+                ApplyMutes();
+            }
+        }
+
+        public static bool SfxMuted
+        {
+            get { return _sfxMuted; }
+            set
+            {
+                _sfxMuted = value;
+                PlayerPrefs.SetInt("sfx_muted", value ? 1 : 0); PlayerPrefs.Save();
+                ApplyMutes();
+            }
         }
 
         public static void Play(string name, float volume = 1f)
         {
             Ensure();
             var c = Assets.Clip(name);
-            if (c != null) _sfx.PlayOneShot(c, volume);
+            if (c != null) _sfx.PlayOneShot(c, volume * MasterSfx);
         }
 
         public static void Music(string name, float volume = 0.35f)
@@ -87,7 +172,7 @@ namespace TrustIssues
             var c = Assets.Clip(name);
             if (c == null) { _music.Stop(); return; }
             if (_music.clip == c && _music.isPlaying) return;
-            _music.clip = c; _music.volume = volume; _music.Play();
+            _music.clip = c; _music.volume = volume * MasterMusic; _music.Play();
         }
 
         public static void StopMusic() { if (_music != null) _music.Stop(); }

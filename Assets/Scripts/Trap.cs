@@ -33,6 +33,8 @@ namespace TrustIssues
     public class Trap : MonoBehaviour
     {
         public TrapType type;
+        public Sprite[] frames;   // optional spin/animation frames (e.g. the saw)
+        float _animTimer;
         SpriteRenderer _sr;
         BoxCollider2D _col;
         bool _armed = true;
@@ -44,13 +46,24 @@ namespace TrustIssues
 
         Vector3 _origin;
         Vector3 _growBaseScale = Vector3.one;
+        float _growBottomY;   // platform surface the spike erupts from
+        float _growFullH;     // full world height when raised
 
         void Start()
         {
             _sr = GetComponent<SpriteRenderer>();
             _col = GetComponent<BoxCollider2D>();
             _origin = transform.position;
-            if (type == TrapType.GrowSpike) _growBaseScale = transform.localScale;
+            if (type == TrapType.GrowSpike)
+            {
+                _growBaseScale = transform.localScale;
+                // Anchor the BASE to the platform so the spike erupts upward and
+                // sinks back DOWN — instead of shrinking toward its own centre
+                // (which looked like a harmless flicker).
+                float spriteH = (_sr != null && _sr.sprite != null) ? _sr.sprite.bounds.size.y : 1f;
+                _growFullH = spriteH * _growBaseScale.y;
+                _growBottomY = _origin.y - _growFullH / 2f;
+            }
 
             // A faller is a VISIBLE rock-head hovering above; it slams down with a
             // brief telegraph so you can sprint through (dodgeable, not a cheap kill).
@@ -84,6 +97,7 @@ namespace TrustIssues
                     ? Theme.SpriteBox("RainDart", transform, spawn, new Vector2(0.5f, 0.8f), sp, 4)
                     : Theme.Box("RainDart", transform, spawn, new Vector2(0.3f, 0.7f), Theme.Danger, 4);
                 var col = go.AddComponent<BoxCollider2D>(); col.isTrigger = true;
+                col.size *= 0.8f; // reliable spike hitbox
                 var kz = go.AddComponent<KillZone>(); kz.msg = "Look up next time.";
                 StartCoroutine(FallDart(go.transform));
                 yield return new WaitForSeconds(1.3f);
@@ -104,17 +118,33 @@ namespace TrustIssues
 
         void Update()
         {
-            // A saw slides back and forth across its track.
+            // A saw slides back and forth across its track AND spins.
             if (type == TrapType.Saw)
+            {
                 transform.position = new Vector3(
                     _origin.x + Mathf.Sin(Time.time * 2.5f) * 2.5f, _origin.y, 0f);
+                if (frames != null && frames.Length > 0 && _sr != null)
+                {
+                    _animTimer += Time.deltaTime;
+                    _sr.sprite = frames[Mathf.FloorToInt(_animTimer * 24f) % frames.Length];
+                }
+            }
 
-            // A growing spike: pulses tall (lethal) then short (safe to cross).
+            // A growing spike: erupts tall (lethal) then sinks short (safe to
+            // cross). Anchored at the base so it visibly rises OUT of the floor.
             else if (type == TrapType.GrowSpike)
             {
-                float k = 0.2f + 0.8f * (0.5f + 0.5f * Mathf.Sin(Time.time * 1.8f + _origin.x));
-                transform.localScale = new Vector3(_growBaseScale.x, _growBaseScale.y * k, 1f);
-                if (_col != null) _col.enabled = k > 0.62f; // only deadly when grown
+                float k = 0.5f + 0.5f * Mathf.Sin(Time.time * 2.2f + _origin.x); // 0..1
+                float h = Mathf.Max(0.08f, k);                                    // never fully gone
+                transform.localScale = new Vector3(_growBaseScale.x, _growBaseScale.y * h, 1f);
+                float curH = _growFullH * h;
+                transform.position = new Vector3(_origin.x, _growBottomY + curH / 2f, 0f);
+                bool lethal = k > 0.55f;
+                if (_col != null) _col.enabled = lethal;       // only deadly when grown
+                // Brighten as it rises so the lethal phase reads at a glance.
+                if (_sr != null)
+                    _sr.color = lethal ? Theme.Danger
+                                       : new Color(0.55f, 0.12f, 0.14f, 1f); // dim while safe
             }
         }
 
@@ -174,7 +204,7 @@ namespace TrustIssues
                     if (_armed) { _armed = false; GameRoot.I?.ReachExit(); }
                     break;
                 case TrapType.Surprise:
-                    GameRoot.I?.Die("You did everything right. You still died.");
+                    GameRoot.I?.Die("Caught in a sunbeam. Vampires burn.");
                     break;
                 case TrapType.Dart:
                     if (_armed) { _armed = false; StartCoroutine(FireDart()); }
@@ -272,6 +302,7 @@ namespace TrustIssues
             kz.msg = "Impaled.";
             var col = go.AddComponent<BoxCollider2D>();
             col.isTrigger = true;
+            col.size *= 0.8f; // reliable spike hitbox
             _spike = go.transform;
 
             float e = 0f; Vector3 from = _spike.position;
@@ -303,6 +334,33 @@ namespace TrustIssues
             }
             GameRoot.I?.Die("Should've stayed low.");
         }
+    }
+
+    /// <summary>
+    /// Softly pulses a SpriteRenderer's alpha. Used to give the otherwise-
+    /// INVISIBLE sensor traps a faint, breathing tell — visible if you're
+    /// paying attention, easy to miss if you're not. Cosmetic.
+    /// </summary>
+    public class FaintPulse : MonoBehaviour
+    {
+        public float min = 0.10f, max = 0.34f, speed = 2.4f;
+        SpriteRenderer _sr;
+        Color _base;
+        void Start() { _sr = GetComponent<SpriteRenderer>(); if (_sr != null) _base = _sr.color; }
+        void Update()
+        {
+            if (_sr == null) return;
+            var c = _base;
+            c.a = Mathf.Lerp(min, max, 0.5f + 0.5f * Mathf.Sin(Time.time * speed));
+            _sr.color = c;
+        }
+    }
+
+    /// <summary>Spins a transform (used for hanging saw blades). Cosmetic.</summary>
+    public class Spinner : MonoBehaviour
+    {
+        public float speed = 320f;
+        void Update() => transform.Rotate(0f, 0f, speed * Time.deltaTime);
     }
 
     /// <summary>Kills the player on contact (trigger or collision). Reusable.</summary>

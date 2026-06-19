@@ -71,13 +71,100 @@ namespace TrustIssues
                 };
                 int w = rows[0].Length, h = rows.Length;
                 var tex = new Texture2D(w, h) { filterMode = FilterMode.Point };
-                var body = Hex("C2304A"); var clear = new Color(0, 0, 0, 0);
+                var body = Hex("1A1420"); var clear = new Color(0, 0, 0, 0);
                 for (int y = 0; y < h; y++)
                     for (int x = 0; x < w; x++)
                         tex.SetPixel(x, h - 1 - y, rows[y][x] == 'X' ? body : clear);
                 tex.Apply();
                 _bat = Sprite.Create(tex, new Rect(0, 0, w, h), new Vector2(0.5f, 0.5f), w);
                 return _bat;
+            }
+        }
+
+        // A tileable castle-stone block (dark slate with mortar lines + subtle
+        // grain). Replaces the off-theme pink candy tile on every floor. Tiled
+        // by the platform builder; the blood-red lip is a SEPARATE strip on top
+        // so it shows once, not on every repeat.
+        static Sprite _stone;
+        public static Sprite StoneTile
+        {
+            get
+            {
+                if (_stone != null) return _stone;
+                const int W = 16, H = 16;
+                var tex = new Texture2D(W, H) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Repeat };
+                var baseCol  = Hex("3A3340"); // castle stone
+                var mortar   = Hex("231D2A"); // dark seams between bricks
+                var light    = Hex("47404F"); // top-lit face of each brick
+                var rng = new System.Random(7);
+                for (int y = 0; y < H; y++)
+                    for (int x = 0; x < W; x++)
+                    {
+                        // Running-bond brick: 8-wide bricks, offset every 8 rows.
+                        bool seam = (y % 8 == 0) || (((x + (y / 8) * 4) % 8) == 0);
+                        Color c = seam ? mortar : (y % 8 >= 6 ? mortar : (y % 8 <= 1 ? light : baseCol));
+                        // subtle per-pixel grain so it doesn't read as flat
+                        float n = (float)(rng.NextDouble() - 0.5) * 0.06f;
+                        c = new Color(Mathf.Clamp01(c.r + n), Mathf.Clamp01(c.g + n), Mathf.Clamp01(c.b + n), 1f);
+                        tex.SetPixel(x, y, c);
+                    }
+                tex.Apply();
+                _stone = Sprite.Create(tex, new Rect(0, 0, W, H), new Vector2(0.5f, 0.5f), W);
+                return _stone;
+            }
+        }
+
+        // A round "blood seal" medallion: dark stone centre with a blood-red rim,
+        // used for level-select nodes so they read as gothic, not candy.
+        static Sprite _disc;
+        public static Sprite Disc
+        {
+            get
+            {
+                if (_disc != null) return _disc;
+                const int S = 72;
+                float c = (S - 1) / 2f, R = 34f, inner = 27f;
+                var tex = new Texture2D(S, S) { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
+                var centre = Hex("241B2E"); var rim = Hex("8E1420"); var clear = new Color(0, 0, 0, 0);
+                for (int y = 0; y < S; y++)
+                    for (int x = 0; x < S; x++)
+                    {
+                        float d = Mathf.Sqrt((x - c) * (x - c) + (y - c) * (y - c));
+                        Color col = d <= inner ? centre : rim;
+                        // soft 1.5px alpha falloff at the outer edge so it isn't jagged
+                        col.a *= Mathf.Clamp01((R - d) / 1.5f);
+                        if (d > R) col = clear;
+                        tex.SetPixel(x, y, col);
+                    }
+                tex.Apply();
+                _disc = Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), S);
+                return _disc;
+            }
+        }
+
+        // A filled "blood moon": a warm red-orange orb that fades to a soft glow
+        // at the rim. Used purely as a menu-backdrop element. White at the core so
+        // an Image tint controls the exact hue.
+        static Sprite _moon;
+        public static Sprite Moon
+        {
+            get
+            {
+                if (_moon != null) return _moon;
+                const int S = 128;
+                float c = (S - 1) / 2f, core = S * 0.34f, glow = S * 0.5f;
+                var tex = new Texture2D(S, S) { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
+                for (int y = 0; y < S; y++)
+                    for (int x = 0; x < S; x++)
+                    {
+                        float d = Mathf.Sqrt((x - c) * (x - c) + (y - c) * (y - c));
+                        // solid core, then a soft halo that fades to nothing.
+                        float a = d <= core ? 1f : Mathf.Clamp01((glow - d) / (glow - core)) * 0.5f;
+                        tex.SetPixel(x, y, new Color(1f, 1f, 1f, a));
+                    }
+                tex.Apply();
+                _moon = Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), S);
+                return _moon;
             }
         }
 

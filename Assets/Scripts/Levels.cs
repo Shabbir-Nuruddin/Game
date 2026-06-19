@@ -284,17 +284,20 @@ namespace TrustIssues
             return b.Finish();
         }
 
-        // 11 — dart gauntlet (the shooting one you like).
+        // 11 — dart gauntlet, eased: wide platforms, ONE hazard each, a mid
+        // checkpoint, and shorter gaps so a slip doesn't mean starting over.
         static Level L11()
         {
             var b = new B();
-            b.Plat(3.5f);
-            b.Gap(2.5f);
-            float p2 = b.Plat(4f); b.Dart(p2 - 1f); b.Spike(p2 + 1.2f);
-            b.Gap(2.5f);
-            float p3 = b.Plat(4f); b.Dart(p3); b.Faller(p3 + 1.5f);
-            b.Gap(2.5f);
-            float p4 = b.Plat(3.5f); b.LateSpike(p4);
+            b.Plat(4f);
+            b.Gap(2.3f);
+            float p2 = b.Plat(4.5f); b.Dart(p2);                 // one dart, room to read it
+            b.Gap(2.3f);
+            float p3 = b.Plat(4.8f); b.Checkpoint(p3 - 1.5f); b.Spike(p3 + 1.2f); // respawn here
+            b.Gap(2.3f);
+            float p4 = b.Plat(4.5f); b.Dart(p4);
+            b.Gap(2.3f);
+            float p5 = b.Plat(4f); b.LateSpike(p5);
             return b.Finish();
         }
 

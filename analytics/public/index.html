@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Trust Issues — Analytics</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <header>
+    <h1>🧛 TRUST ISSUES <span>— live analytics</span></h1>
+    <div class="bar">
+      <span id="status" class="status">loading…</span>
+      <button id="refresh">Refresh</button>
+    </div>
+  </header>
+
+  <section class="kpis" id="kpis"></section>
+
+  <section class="grid">
+    <div class="card">
+      <h2>Mode popularity</h2>
+      <canvas id="modes"></canvas>
+    </div>
+    <div class="card">
+      <h2>Drop-off funnel (how far players get)</h2>
+      <canvas id="funnel"></canvas>
+    </div>
+    <div class="card wide">
+      <h2>Deaths per level</h2>
+      <canvas id="deaths"></canvas>
+    </div>
+    <div class="card wide">
+      <h2>Time spent per level (avg seconds)</h2>
+      <canvas id="time"></canvas>
+    </div>
+    <div class="card">
+      <h2>What kills players</h2>
+      <canvas id="causes"></canvas>
+    </div>
+    <div class="card">
+      <h2>Sessions per day</h2>
+      <canvas id="daily"></canvas>
+    </div>
+    <div class="card wide">
+      <h2>Recent events</h2>
+      <div class="tablewrap"><table id="recent"><tbody></tbody></table></div>
+    </div>
+  </section>
+
+  <footer>Anonymous gameplay telemetry · auto-refreshes every 30s</footer>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en-us">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>{{{ PRODUCT_NAME }}}</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #0E0A12;            /* vampire night, matches the in-game sky */
+    }
+    /* The canvas always fills the whole frame (itch.io embed, browser tab, or
+       fullscreen) and keeps the game's 16:10 feel via object-fit on the wrapper. */
+    #unity-container {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #unity-canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      background: #0E0A12;
+    }
+    /* Loading bar */
+    #unity-loading-bar {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      color: #E23B3B;
+      font-family: Arial, Helvetica, sans-serif;
+      letter-spacing: 2px;
+    }
+    #unity-progress-track {
+      margin: 14px auto 0;
+      width: 240px;
+      height: 10px;
+      background: #2a1420;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    #unity-progress-fill {
+      width: 0%;
+      height: 100%;
+      background: #7A1622;
+    }
+    /* Fullscreen button — bottom-right, fades unless hovered. */
+    #unity-fullscreen-button {
+      position: absolute;
+      right: 12px;
+      bottom: 12px;
+      width: 40px;
+      height: 40px;
+      cursor: pointer;
+      border: 0;
+      border-radius: 8px;
+      background: rgba(122, 22, 34, 0.55);
+      opacity: 0.5;
+      transition: opacity 0.15s;
+      z-index: 5;
+    }
+    #unity-fullscreen-button:hover { opacity: 1; }
+    #unity-fullscreen-button::before {
+      content: "";
+      position: absolute;
+      inset: 11px;
+      border: 2px solid #fff;
+      border-radius: 2px;
+      box-sizing: border-box;
+    }
+    #unity-warning { position: absolute; left: 50%; top: 8px; transform: translateX(-50%); }
+  </style>
+</head>
+<body>
+  <div id="unity-container">
+    <canvas id="unity-canvas" tabindex="-1"></canvas>
+    <div id="unity-loading-bar">
+      <div>TRUST ISSUES</div>
+      <div id="unity-progress-track"><div id="unity-progress-fill"></div></div>
+    </div>
+    <div id="unity-warning"></div>
+    <button id="unity-fullscreen-button" title="Fullscreen"></button>
+  </div>
+
+  <script>
+    var canvas = document.querySelector("#unity-canvas");
+    var loadingBar = document.querySelector("#unity-loading-bar");
+    var progressFill = document.querySelector("#unity-progress-fill");
+    var fullscreenButton = document.querySelector("#unity-fullscreen-button");
+
+    function unityShowBanner(msg, type) {
+      var warning = document.querySelector("#unity-warning");
+      if (type === "error") warning.style.color = "#E23B3B";
+      warning.innerHTML = msg;
+    }
+
+    var buildUrl = "Build";
+    var config = {
+      dataUrl: buildUrl + "/{{{ DATA_FILENAME }}}",
+      frameworkUrl: buildUrl + "/{{{ FRAMEWORK_FILENAME }}}",
+      codeUrl: buildUrl + "/{{{ CODE_FILENAME }}}",
+#if MEMORY_FILENAME
+      memoryUrl: buildUrl + "/{{{ MEMORY_FILENAME }}}",
+#endif
+#if SYMBOLS_FILENAME
+      symbolsUrl: buildUrl + "/{{{ SYMBOLS_FILENAME }}}",
+#endif
+      streamingAssetsUrl: "StreamingAssets",
+      companyName: {{{ JSON.stringify(COMPANY_NAME) }}},
+      productName: {{{ JSON.stringify(PRODUCT_NAME) }}},
+      productVersion: {{{ JSON.stringify(PRODUCT_VERSION) }}},
+      showBanner: unityShowBanner,
+    };
+
+    // Keep the drawing buffer matched to the on-screen size so the view never
+    // looks cut off or stretched, on any window/embed/fullscreen size.
+    function resize() {
+      var dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.floor(canvas.clientWidth * dpr);
+      canvas.height = Math.floor(canvas.clientHeight * dpr);
+    }
+    window.addEventListener("resize", resize);
+
+    var script = document.createElement("script");
+    script.src = buildUrl + "/{{{ LOADER_FILENAME }}}";
+    script.onload = function () {
+      createUnityInstance(canvas, config, function (progress) {
+        progressFill.style.width = (100 * progress) + "%";
+      }).then(function (unityInstance) {
+        loadingBar.style.display = "none";
+        resize();
+        fullscreenButton.onclick = function () {
+          unityInstance.SetFullscreen(1);
+        };
+      }).catch(function (message) {
+        unityShowBanner(message, "error");
+      });
+    };
+    document.body.appendChild(script);
+    resize();
+  </script>
+</body>
+</html>

@@ -29,3 +29,14 @@ sysinfo.txt
 *.apk
 *.aab
 *.unitypackage
+
+# Large third-party asset packs + SDK — kept local, re-import as needed.
+# The game loads its runtime assets from Assets/Resources (which IS committed).
+/Assets/Art/
+/Assets/Art.meta
+/Assets/Photon/
+/Assets/Photon.meta
+
+# Node dependencies / secrets for the analytics server
+node_modules/
+.env

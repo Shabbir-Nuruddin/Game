@@ -24,12 +24,14 @@ namespace TrustIssues
         public SpriteRenderer bodyRenderer;
         public Sprite idleSprite, walkSprite, jumpSprite;
         public Sprite[] idleFrames, runFrames;   // multi-frame animation (preferred)
+        public Sprite[] deathFrames;             // played once on death (optional)
         public Sprite batSprite;                 // shown while flying (bat form)
 
         // Bat glide: only works in the AIR (jump first), drains fast, refills slowly.
         // It's a short hop to extend a jump / cross one gap — NOT a fly-over-the-level.
         public float flightMeter = 1f;           // 0..1, read by the HUD
-        public float flyRise = 4.3f, flyDrain = 0.85f, flyRefill = 0.45f;
+        public float glideFall = 2.2f, flyDrain = 0.95f, flyRefill = 0.45f;
+        public bool canFly = true;               // off in The Castle (pure precision mode)
         bool _flying;
 
         Rigidbody2D _rb;
@@ -43,6 +45,10 @@ namespace TrustIssues
         float _reverseTimer;
 
         public void SetReversed(float duration) { _reverseTimer = duration; }
+
+        // Which way the character is visually facing (+1 right, -1 left). Read by
+        // the netcode so a remote ghost mirrors the real player's facing.
+        public float Facing => _facing;
 
         void Awake()
         {
@@ -58,6 +64,23 @@ namespace TrustIssues
         }
 
         public void Freeze() { _frozen = true; _rb.linearVelocity = Vector2.zero; _rb.simulated = false; }
+
+        // Plays the death frames once (called by GameRoot on death). Runs as a
+        // coroutine so it works even though the controller is frozen.
+        public void PlayDeath()
+        {
+            if (deathFrames != null && deathFrames.Length > 0 && bodyRenderer != null)
+                StartCoroutine(DeathAnim());
+        }
+
+        System.Collections.IEnumerator DeathAnim()
+        {
+            foreach (var f in deathFrames)
+            {
+                bodyRenderer.sprite = f;
+                yield return new WaitForSecondsRealtime(0.04f);
+            }
+        }
 
         void Fire()
         {
@@ -87,8 +110,8 @@ namespace TrustIssues
             if (TouchInput.X != 0f) _inputX = TouchInput.X;
             if (TouchInput.ConsumeJump()) _buffer = jumpBuffer;
 
-            // Bat flight: hold Shift (or the on-screen FLY) to rise; drains meter.
-            bool flyHeld = Input.GetKey(KeyCode.LeftShift) || TouchInput.FlyHeld;
+            // Bat flight: hold Shift (or the on-screen FLY) to glide; drains meter.
+            bool flyHeld = canFly && (Input.GetKey(KeyCode.LeftShift) || TouchInput.FlyHeld);
             _flying = flyHeld && flightMeter > 0f && !_grounded; // must be airborne (no ground hover)
             if (_flying) flightMeter = Mathf.Max(0f, flightMeter - flyDrain * Time.deltaTime);
             else if (_grounded) flightMeter = Mathf.Min(1f, flightMeter + flyRefill * Time.deltaTime);
@@ -105,11 +128,23 @@ namespace TrustIssues
             if (_inputX > 0.01f) _facing = 1f;
             else if (_inputX < -0.01f) _facing = -1f;
             float vy = _rb.linearVelocity.y;
-            // Squash/stretch ONLY in the air. On the ground the body sits at its
-            // base scale, so standing still doesn't wobble.
-            float stretch = _grounded ? 0f : Mathf.Clamp(vy * 0.02f, -0.18f, 0.25f);
-            var target = new Vector3(_facing * _baseX * (1f - stretch), _baseY * (1f + stretch), 1f);
-            _visual.localScale = Vector3.Lerp(_visual.localScale, target, 14f * Time.deltaTime);
+            // Bat form is a SEPARATE sprite with its own bounds, so it must be
+            // scaled to itself (~0.6u tall) — NOT left at the vampire's base scale,
+            // which made it a giant blob. Snap to bat scale while flying.
+            if (_flying && batSprite != null)
+            {
+                float bh = batSprite.bounds.size.y;
+                float s = bh > 0.0001f ? 0.6f / bh : _baseY;
+                _visual.localScale = new Vector3(_facing * s, s, 1f);
+            }
+            else
+            {
+                // Squash/stretch ONLY in the air. On the ground the body sits at its
+                // base scale, so standing still doesn't wobble.
+                float stretch = _grounded ? 0f : Mathf.Clamp(vy * 0.02f, -0.18f, 0.25f);
+                var target = new Vector3(_facing * _baseX * (1f - stretch), _baseY * (1f + stretch), 1f);
+                _visual.localScale = Vector3.Lerp(_visual.localScale, target, 14f * Time.deltaTime);
+            }
 
             // Animation: jump pose in the air, run cycle while moving, and a single
             // STILL frame when standing (no idle fidgeting).
@@ -126,7 +161,11 @@ namespace TrustIssues
                     bodyRenderer.sprite = runFrames[Mathf.FloorToInt(_animTimer * 14f) % runFrames.Length];
                 }
                 else if (idleFrames != null && idleFrames.Length > 0)
-                    bodyRenderer.sprite = idleFrames[0]; // stand still
+                {
+                    // Gentle idle cycle (slow) so standing still has a little life.
+                    _animTimer += Time.deltaTime;
+                    bodyRenderer.sprite = idleFrames[Mathf.FloorToInt(_animTimer * 6f) % idleFrames.Length];
+                }
                 else if (idleSprite != null) // single-frame fallback
                 {
                     if (moving)
@@ -164,7 +203,11 @@ namespace TrustIssues
                 Audio.Play("jump", 0.5f);
             }
 
-            if (_flying) v.y = flyRise; // bat thrust overrides
+            // Bat form GLIDES: it slows the fall to a gentle descent but cannot
+            // truly climb, so flight extends a jump / crosses a gap — it can't be
+            // used to fly up and over the whole level. (Was a free upward thrust,
+            // which let players cheese past every ground hazard.)
+            if (_flying && v.y < -glideFall) v.y = -glideFall;
 
             _rb.linearVelocity = v;
             _rb.gravityScale = _rb.linearVelocity.y > 0.1f ? riseGravity : fallGravity;
