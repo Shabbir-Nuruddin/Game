@@ -21,7 +21,7 @@ namespace TrustIssues
         // ====== EDIT THIS ONE LINE when you deploy ======
         // Local testing (Unity Editor):  "http://localhost:3000/collect"
         // Live (after deploying to Render): "https://<your-app>.onrender.com/collect"
-        public const string Endpoint = "http://localhost:3000/collect";
+        public const string Endpoint = "https://trust-issues-analytics.onrender.com/collect";
 
         const float FlushInterval = 5f;   // seconds between sends
         const int MaxQueue = 400;          // hard cap so a long offline run can't grow forever
