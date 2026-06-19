@@ -37,7 +37,20 @@ h1 {
   letter-spacing: 1px;
   color: var(--blood);
 }
-h1 span { color: var(--muted); font-weight: 400; font-size: 16px; letter-spacing: 0; }
+.sub { margin: 2px 0 0; color: var(--muted); font-size: 14px; }
+
+/* Section headers between metric groups */
+h2.section {
+  margin: 30px 28px 4px;
+  font-size: 13px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--gold);
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 8px;
+}
+h2.section .note { color: var(--muted); letter-spacing: 0; text-transform: none; font-weight: 400; font-style: italic; }
+.card h3 { margin: 0 0 12px; font-size: 14px; color: var(--gold); font-weight: 600; }
 
 .bar { display: flex; align-items: center; gap: 14px; }
 .status { color: var(--muted); font-size: 13px; }
@@ -61,13 +74,35 @@ button:hover { background: #99203a; }
   padding: 22px 28px 6px;
 }
 .kpi {
+  position: relative;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 12px;
   padding: 16px 18px;
 }
 .kpi .n { font-size: 30px; font-weight: 700; color: #fff; }
-.kpi .l { color: var(--muted); font-size: 13px; margin-top: 2px; }
+.kpi .l { color: var(--ink); font-size: 13px; margin-top: 2px; font-weight: 600; }
+.kpi .sub2 { color: var(--muted); font-size: 12px; margin-top: 1px; }
+.kpi .bench { color: var(--muted); font-size: 11px; margin-top: 6px; }
+/* benchmark coloring */
+.kpi.good { border-color: rgba(62,201,122,.5); }
+.kpi.good .n { color: var(--green); }
+.kpi.warn .n { color: var(--gold); }
+.kpi.bad  .n { color: var(--blood); }
+.kpi.muted { opacity: .55; }
+.kpi.muted .n { color: var(--muted); }
+
+.money-help {
+  margin: 10px 28px 4px;
+  padding: 14px 18px;
+  background: var(--panel);
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.money-help b { color: var(--ink); }
 
 .grid {
   display: grid;
@@ -83,6 +118,8 @@ button:hover { background: #99203a; }
   min-width: 0;
 }
 .card.wide { grid-column: 1 / -1; }
+/* full-width chart cards that live directly under <body> (not in the grid) */
+body > .card { margin: 14px 28px; }
 .card h2 { margin: 0 0 12px; font-size: 15px; color: var(--gold); font-weight: 600; }
 canvas { max-height: 320px; }
 

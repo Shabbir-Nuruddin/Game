@@ -9,47 +9,76 @@
 </head>
 <body>
   <header>
-    <h1>🧛 TRUST ISSUES <span>— live analytics</span></h1>
+    <div>
+      <h1>🧛 TRUST ISSUES</h1>
+      <p class="sub">Live player analytics</p>
+    </div>
     <div class="bar">
       <span id="status" class="status">loading…</span>
       <button id="refresh">Refresh</button>
     </div>
   </header>
 
-  <section class="kpis" id="kpis"></section>
+  <!-- ACTIVE USERS -->
+  <h2 class="section">Active players</h2>
+  <section class="kpis" id="kpi-active"></section>
 
+  <!-- RETENTION -->
+  <h2 class="section">Retention <span class="note">“the multiplier on everything else”</span></h2>
+  <section class="kpis" id="kpi-retention"></section>
+  <div class="card wide">
+    <h3>Retention curve — % of new players still active N days later</h3>
+    <canvas id="retentionCurve"></canvas>
+  </div>
+
+  <!-- ENGAGEMENT -->
+  <h2 class="section">Engagement</h2>
+  <section class="kpis" id="kpi-engagement"></section>
+  <div class="card wide">
+    <h3>Daily active players — new vs returning</h3>
+    <canvas id="activeDaily"></canvas>
+  </div>
+
+  <!-- GAMEPLAY -->
+  <h2 class="section">Gameplay &amp; design</h2>
   <section class="grid">
     <div class="card">
-      <h2>Mode popularity</h2>
+      <h3>Mode popularity</h3>
       <canvas id="modes"></canvas>
     </div>
     <div class="card">
-      <h2>Drop-off funnel (how far players get)</h2>
+      <h3>Drop-off funnel — how far players get</h3>
       <canvas id="funnel"></canvas>
     </div>
     <div class="card wide">
-      <h2>Deaths per level</h2>
+      <h3>Deaths per level — which levels are hardest</h3>
       <canvas id="deaths"></canvas>
     </div>
     <div class="card wide">
-      <h2>Time spent per level (avg seconds)</h2>
+      <h3>Time spent per level (avg seconds) — where players linger</h3>
       <canvas id="time"></canvas>
     </div>
     <div class="card">
-      <h2>What kills players</h2>
+      <h3>What kills players</h3>
       <canvas id="causes"></canvas>
     </div>
     <div class="card">
-      <h2>Sessions per day</h2>
-      <canvas id="daily"></canvas>
-    </div>
-    <div class="card wide">
-      <h2>Recent events</h2>
+      <h3>Recent events (live)</h3>
       <div class="tablewrap"><table id="recent"><tbody></tbody></table></div>
     </div>
   </section>
 
-  <footer>Anonymous gameplay telemetry · auto-refreshes every 30s</footer>
+  <!-- MONETIZATION (framework, not yet tracked) -->
+  <h2 class="section">Monetization <span class="note">not tracked yet — free game, no purchases/ads</span></h2>
+  <section class="kpis" id="kpi-money"></section>
+  <p class="money-help">
+    These are the revenue KPIs from the standard game-analytics framework. They light up once the
+    game has purchases, ads, or paid installs. To enable them we'd add <b>purchase</b>/<b>ad_impression</b>
+    events (for ARPU, ARPPU, conversion, LTV) and an <b>install source</b> tag (for CPI). Rule of thumb:
+    <b>LTV must exceed CPI</b> or the model breaks.
+  </p>
+
+  <footer>Anonymous gameplay telemetry · auto-refreshes every 30s · benchmarks shown are mobile free-to-play norms</footer>
   <script src="app.js"></script>
 </body>
 </html>

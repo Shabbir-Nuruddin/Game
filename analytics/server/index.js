@@ -86,22 +86,81 @@ api.use(auth);
 
 const q = (sql, params) => pool.query(sql, params).then((r) => r.rows);
 
-api.get('/overview', async (_req, res, next) => {
+// Headline KPIs: active users, engagement, totals. (Stickiness, sessions/player
+// and runs/session are simple ratios the dashboard derives from these.)
+api.get('/kpis', async (_req, res, next) => {
   try {
-    const [tot] = await q(`
+    const [r] = await q(`
+      WITH firsts AS (
+        SELECT device_id, min(received_at)::date AS d0
+        FROM events WHERE device_id IS NOT NULL GROUP BY device_id
+      ),
+      sess AS (
+        SELECT session_id, min(received_at) AS mn, max(received_at) AS mx
+        FROM events WHERE session_id IS NOT NULL GROUP BY session_id
+      )
       SELECT
-        count(DISTINCT session_id)                                        AS sessions,
-        count(DISTINCT device_id)                                         AS players,
-        count(*) FILTER (WHERE name = 'mode_start')                       AS runs,
-        count(*) FILTER (WHERE name = 'death')                            AS deaths,
-        count(DISTINCT device_id) FILTER
-          (WHERE received_at > now() - interval '1 day')                  AS dau
-      FROM events`);
-    const [len] = await q(`
-      SELECT round(avg(extract(epoch FROM (mx - mn))))::int AS avg_session_seconds
-      FROM (SELECT session_id, min(received_at) mn, max(received_at) mx
-            FROM events GROUP BY session_id) s`);
-    res.json({ ...tot, ...len });
+        (SELECT count(*) FROM firsts)::int                                              AS players,
+        (SELECT count(*) FROM firsts WHERE d0 = current_date)::int                      AS new_today,
+        (SELECT count(DISTINCT device_id) FROM events WHERE received_at::date = current_date)::int AS dau,
+        (SELECT count(DISTINCT device_id) FROM events WHERE received_at >= current_date - 6)::int  AS wau,
+        (SELECT count(DISTINCT device_id) FROM events WHERE received_at >= current_date - 29)::int AS mau,
+        (SELECT count(*) FROM sess)::int                                                AS sessions,
+        (SELECT count(*) FROM events WHERE name = 'mode_start')::int                    AS runs,
+        (SELECT count(*) FROM events WHERE name = 'death')::int                         AS deaths,
+        (SELECT round(avg(extract(epoch FROM (mx - mn))))::int FROM sess)               AS avg_session_seconds
+    `);
+    res.json(r);
+  } catch (e) { next(e); }
+});
+
+// Classic N-day retention curve: of the players whose FIRST day was >= N days ago,
+// what % were active again exactly N days after they first showed up.
+// Day 0 = 100% by definition. Empty cohorts return null (shown as "not enough data").
+api.get('/retention', async (_req, res, next) => {
+  try {
+    res.json(await q(`
+      WITH firsts AS (
+        SELECT device_id, min(received_at)::date AS d0
+        FROM events WHERE device_id IS NOT NULL GROUP BY device_id
+      ),
+      active AS (
+        SELECT DISTINCT device_id, received_at::date AS d
+        FROM events WHERE device_id IS NOT NULL
+      ),
+      days AS (SELECT generate_series(0, 30) AS x)
+      SELECT dd.x AS day,
+             count(DISTINCT f.device_id)::int AS cohort,
+             count(DISTINCT a.device_id)::int AS retained,
+             round(100.0 * count(DISTINCT a.device_id)
+                   / NULLIF(count(DISTINCT f.device_id), 0), 1) AS pct
+      FROM days dd
+      LEFT JOIN firsts f ON f.d0 <= current_date - dd.x
+      LEFT JOIN active a ON a.device_id = f.device_id AND a.d = f.d0 + dd.x
+      GROUP BY dd.x ORDER BY dd.x
+    `));
+  } catch (e) { next(e); }
+});
+
+// Daily active users split into new vs returning players (engagement trend).
+api.get('/active-daily', async (_req, res, next) => {
+  try {
+    res.json(await q(`
+      WITH firsts AS (
+        SELECT device_id, min(received_at)::date AS d0
+        FROM events WHERE device_id IS NOT NULL GROUP BY device_id
+      ),
+      daily AS (
+        SELECT received_at::date AS day, device_id
+        FROM events WHERE device_id IS NOT NULL GROUP BY 1, 2
+      )
+      SELECT to_char(d.day, 'YYYY-MM-DD') AS day,
+             count(*) FILTER (WHERE f.d0 = d.day)::int AS new_players,
+             count(*) FILTER (WHERE f.d0 < d.day)::int AS returning_players,
+             count(*)::int AS dau
+      FROM daily d JOIN firsts f ON f.device_id = d.device_id
+      GROUP BY d.day ORDER BY d.day
+    `));
   } catch (e) { next(e); }
 });
 
@@ -157,16 +216,6 @@ api.get('/death-causes', async (_req, res, next) => {
       SELECT coalesce(props->>'cause','unknown') AS cause, count(*)::int AS deaths
       FROM events WHERE name = 'death'
       GROUP BY 1 ORDER BY deaths DESC LIMIT 20`));
-  } catch (e) { next(e); }
-});
-
-api.get('/sessions-daily', async (_req, res, next) => {
-  try {
-    res.json(await q(`
-      SELECT to_char(date_trunc('day', received_at), 'YYYY-MM-DD') AS day,
-             count(DISTINCT session_id)::int AS sessions,
-             count(DISTINCT device_id)::int  AS players
-      FROM events GROUP BY 1 ORDER BY 1`));
   } catch (e) { next(e); }
 });
 
