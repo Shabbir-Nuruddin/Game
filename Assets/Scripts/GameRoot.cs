@@ -154,6 +154,20 @@ namespace TrustIssues
             sr.sprite = Theme.Square; sr.color = Theme.Sky; sr.sortingOrder = -30;
             _skySr = sr;
 
+            // THE FIX for "every background looks the same": the parallax castle art is
+            // near-black, so multiplying a theme tint over it stays near-black (no visible
+            // change). This semi-transparent COLOUR WASH sits in front of the whole
+            // backdrop (but BEHIND gameplay at order >= 0), so each mode/world reads as a
+            // clearly different colour. ApplyTheme sets its colour.
+            var wash = new GameObject("ThemeWash");
+            wash.transform.SetParent(_cam.transform, false);
+            wash.transform.localPosition = new Vector3(0f, 0f, 22f);
+            wash.transform.localScale = new Vector3(60f, 30f, 1f);
+            var wsr = wash.AddComponent<SpriteRenderer>();
+            wsr.sprite = Theme.Square; wsr.sortingOrder = -10;   // over parallax, under gameplay
+            wsr.color = ThemeWash[0];
+            _washSr = wsr;
+
             BuildAmbient();   // drifting motes so every backdrop has motion, not a still image
 
             if (Assets.Sprite("bg_castle") != null)
@@ -195,15 +209,17 @@ namespace TrustIssues
             var root = new GameObject("Ambient");
             root.transform.SetParent(_cam.transform, false);
             root.transform.localPosition = new Vector3(0f, 0f, 20f);
-            for (int i = 0; i < 34; i++)
+            // Order -9 keeps the motes IN FRONT of the colour wash (-10) so they read
+            // clearly; bigger + a touch faster so the motion is actually noticeable.
+            for (int i = 0; i < 44; i++)
             {
-                var go = Theme.Box("Mote", root.transform, Vector2.zero, new Vector2(0.08f, 0.08f), Color.white, -25);
-                float s = Random.Range(0.5f, 1.7f);
+                var go = Theme.Box("Mote", root.transform, Vector2.zero, new Vector2(0.13f, 0.13f), Color.white, -9);
+                float s = Random.Range(0.6f, 2.0f);
                 go.transform.localPosition = new Vector3(Random.Range(-17f, 17f), Random.Range(-11f, 11f), 0f);
-                go.transform.localScale = new Vector3(0.08f * s, 0.08f * s, 1f);
+                go.transform.localScale = new Vector3(0.13f * s, 0.13f * s, 1f);
                 var m = go.AddComponent<Mote>();
-                m.Init(new Vector3(Random.Range(-0.25f, 0.25f), Random.Range(0.1f, 0.5f), 0f),
-                       new Color(1f, 1f, 1f, 0.5f));
+                m.Init(new Vector3(Random.Range(-0.35f, 0.35f), Random.Range(0.15f, 0.7f), 0f),
+                       new Color(1f, 1f, 1f, 0.6f));
                 _motes.Add(m);
             }
         }
@@ -259,9 +275,23 @@ namespace TrustIssues
         };
         static readonly Color[] ThemeSky =
         {
-            Theme.Hex("0E0A12"), Theme.Hex("081018"), Theme.Hex("081208"), Theme.Hex("181006"),
-            Theme.Hex("1C040A"), Theme.Hex("0C0420"), Theme.Hex("02120F"), Theme.Hex("1A0802"),
-            Theme.Hex("0A0E14"),
+            Theme.Hex("16080E"), Theme.Hex("0A1630"), Theme.Hex("0A2010"), Theme.Hex("241806"),
+            Theme.Hex("2A0610"), Theme.Hex("160830"), Theme.Hex("042220"), Theme.Hex("2A1004"),
+            Theme.Hex("10141C"),
+        };
+        // The big visible difference between themes: a translucent colour wash over the
+        // whole backdrop (alpha baked in). Without this every backdrop reads near-black.
+        static readonly Color[] ThemeWash =
+        {
+            new Color(0.35f, 0.12f, 0.16f, 0.30f),  // castle  — crimson
+            new Color(0.12f, 0.22f, 0.48f, 0.36f),  // crypt   — cold blue
+            new Color(0.12f, 0.36f, 0.16f, 0.36f),  // swamp   — sickly green
+            new Color(0.46f, 0.32f, 0.10f, 0.34f),  // throne  — hot amber
+            new Color(0.60f, 0.07f, 0.12f, 0.40f),  // blood moon — searing red
+            new Color(0.32f, 0.12f, 0.50f, 0.36f),  // abyss   — violet
+            new Color(0.06f, 0.42f, 0.40f, 0.36f),  // void    — teal
+            new Color(0.60f, 0.20f, 0.05f, 0.38f),  // inferno — ember orange
+            new Color(0.20f, 0.24f, 0.36f, 0.32f),  // arena   — cold steel
         };
         // Drifting-mote (ember/star) colour per theme — the animated ambient layer.
         static readonly Color[] ThemeAccent =
@@ -276,6 +306,7 @@ namespace TrustIssues
         public static int WorldOf(int floorIdx) => Mathf.Clamp((floorIdx / 10) % 4, 0, 3);
 
         int _curTheme = -1;
+        SpriteRenderer _washSr;        // the themed colour wash (see BuildBackdrop)
         readonly System.Collections.Generic.List<Mote> _motes = new();
 
         // Pick the backdrop theme from the current mode/progress, then apply it.
@@ -312,6 +343,7 @@ namespace TrustIssues
                 _bgSr[i].color = new Color(b.r * t.r, b.g * t.g, b.b * t.b, b.a);
             }
             if (_skySr != null) _skySr.color = ThemeSky[idx];
+            if (_washSr != null) _washSr.color = ThemeWash[idx];   // the actually-visible colour shift
             if (_cam != null) _cam.backgroundColor = ThemeSky[idx];
             foreach (var m in _motes) if (m != null) m.Recolor(ThemeAccent[idx]);
         }
