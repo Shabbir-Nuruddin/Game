@@ -65,6 +65,64 @@ app.post('/collect', async (req, res) => {
 
 app.get('/healthz', (_req, res) => res.json({ ok: true }));
 
+// ---- Leaderboard (open, like /collect) ----------------------------------
+// The game posts JSON scores and reads back the top 20. Kept BEFORE the auth
+// gate + static handler so these stay public. value semantics: endless = higher
+// is better; daily/castle = lower (fewer deaths) is better.
+app.use('/score', cors());
+app.options('/score', cors());
+app.use('/score', express.json({ type: () => true, limit: '8kb' }));
+app.post('/score', async (req, res) => {
+  try {
+    const b = req.body || {};
+    const mode = String(b.mode || '').slice(0, 16);
+    const nick = String(b.nick || 'Heir').slice(0, 24);
+    const value = Number.parseInt(b.value, 10);
+    const day = Number.parseInt(b.day, 10) || 0;
+    if (!mode || !Number.isFinite(value)) return res.status(400).end();
+    const higherBetter = mode === 'endless';
+    await pool.query(
+      `INSERT INTO scores (mode, nick, day, value) VALUES ($1,$2,$3,$4)
+       ON CONFLICT (mode, nick, day) DO UPDATE
+         SET value = CASE WHEN $5 THEN GREATEST(scores.value, EXCLUDED.value)
+                          ELSE LEAST(scores.value, EXCLUDED.value) END,
+             updated_at = now()`,
+      [mode, nick, day, value, higherBetter],
+    );
+    res.status(204).end();
+  } catch (err) {
+    console.error('score insert failed:', err.message);
+    res.status(500).end();
+  }
+});
+
+app.use('/leaderboard', cors());
+app.get('/leaderboard', async (req, res) => {
+  try {
+    const mode = String(req.query.mode || 'daily').slice(0, 16);
+    const scope = String(req.query.scope || 'all');
+    const higherBetter = mode === 'endless';
+    const params = [mode];
+    let where = 'mode = $1';
+    if (scope === 'today') {
+      const d = new Date();
+      params.push(d.getUTCFullYear() * 10000 + (d.getUTCMonth() + 1) * 100 + d.getUTCDate());
+      where += ` AND day = $${params.length}`;
+    }
+    const rows = await pool
+      .query(
+        `SELECT nick, value FROM scores WHERE ${where}
+         ORDER BY value ${higherBetter ? 'DESC' : 'ASC'}, updated_at ASC LIMIT 20`,
+        params,
+      )
+      .then((r) => r.rows);
+    res.json({ entries: rows });
+  } catch (err) {
+    console.error('leaderboard read failed:', err.message);
+    res.json({ entries: [] }); // best-effort; never block the game
+  }
+});
+
 // ---- Auth gate for everything below (dashboard + read APIs) -------------
 function auth(req, res, next) {
   const user = process.env.DASH_USER;
