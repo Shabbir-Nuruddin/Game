@@ -21,6 +21,31 @@ namespace TrustIssues
         Transform _levelRoot;
         PlayerController _player;
         Transform _playerVisual;
+        // Where the player is right now (null between lives) — read by enemies/bosses.
+        public Transform PlayerTransform => _player != null ? _player.transform : null;
+
+        // Sun-rise pressure: dawdle past _sunThreshold seconds and daylight floods
+        // the level from behind — a lethal advancing wall. The vampire must keep ahead.
+        bool _sunRising;
+        float _sunThreshold = 999f, _sunWallX;
+        GameObject _sunWall;
+
+        // True while fighting a boss (the arena floor at _level.BossTier > 0).
+        bool InBossRoom => _level != null && _level.BossTier > 0;
+
+        // ---- core feel & loop (Round 4) ----
+        float _levelEndX;                                  // right edge of the floor (near-miss calc)
+        // Reactive "Trust Issues" traps: where the player lingered safely → on retry
+        // a late-spike appears there. Accumulates with deaths; resets per floor.
+        readonly System.Collections.Generic.Dictionary<int, float> _linger = new();
+        readonly System.Collections.Generic.List<float> _ghostTrapX = new();
+
+        // Ghost replay: race your PREVIOUS attempt on this floor.
+        readonly System.Collections.Generic.List<float> _recT = new();
+        readonly System.Collections.Generic.List<Vector3> _recP = new();
+        float[] _lastT; Vector3[] _lastP; float _recTimer;
+        bool _newBest;       // this run beat your stored best → celebrate on the result screen
+        bool _reactiveAdded; // a reactive trap was just learned → play the troll laugh next build
         Level _level;
         int _levelIndex;
         int _deaths;
@@ -33,6 +58,12 @@ namespace TrustIssues
         int _endlessSeed;
         const int DailyLen = 5;
         int _hearts;          // lives in Endless/Daily; -1 = infinite (Curated)
+        int _bossHp;          // chip-hits left in a boss arena (the rest of the game is one-shot)
+        float _bossIFrames;   // brief mercy window after taking a boss chip hit
+        int _bossGen;         // bumped each boss (re)build so stale pickup coroutines bail
+        GameObject _gunPickup;// the active weapon pickup in the arena (null while held)
+        const int BossClip = 5;   // shots granted per weapon pickup
+        int _bossIntroedTier = -1;// which boss already played its cutscene this run (skip on retries)
         Image _flyBar;        // flight-meter fill
 
         // ---- analytics ----
@@ -42,6 +73,7 @@ namespace TrustIssues
         int LevelDurationMs => Mathf.RoundToInt((Time.realtimeSinceStartup - _levelStartRealtime) * 1000f);
         float _camMin = -1.5f, _camMax = -1.5f;
         const float CamY = -1.2f;
+        const float NormalCamSize = 5.6f;   // platforming zoom; boss arenas pull back to show the whole room
 
         Text _hud, _toast;
         GameObject _menuPanel, _pausePanel, _touchPanel, _rotatePanel;
@@ -82,6 +114,8 @@ namespace TrustIssues
             // server times it out (the "no ghost" / AppOutOfFocus disconnect).
             Application.runInBackground = true;
             Time.timeScale = 1f;
+            // Toast when a new Bestiary page is revealed (drives the "gotta catch 'em all").
+            Codex.OnUnlocked = t => ShowBanner("NEW BESTIARY PAGE", $"{Codex.Title(t)} — read it in the book");
             ResetProgressOncePerVersion();
             SetupCamera();
             BuildBackdrop();
@@ -98,7 +132,7 @@ namespace TrustIssues
                 _cam = go.AddComponent<Camera>();
             }
             _cam.orthographic = true;
-            _cam.orthographicSize = 5.6f;
+            _cam.orthographicSize = NormalCamSize;
             _cam.transform.position = new Vector3(-1.5f, CamY, -10f);
             _cam.backgroundColor = Theme.Sky;
             _cam.clearFlags = CameraClearFlags.SolidColor;
@@ -118,6 +152,9 @@ namespace TrustIssues
             sky.transform.localScale = new Vector3(60f, 30f, 1f);
             var sr = sky.AddComponent<SpriteRenderer>();
             sr.sprite = Theme.Square; sr.color = Theme.Sky; sr.sortingOrder = -30;
+            _skySr = sr;
+
+            BuildAmbient();   // drifting motes so every backdrop has motion, not a still image
 
             if (Assets.Sprite("bg_castle") != null)
             {
@@ -150,6 +187,27 @@ namespace TrustIssues
             }
         }
 
+        // A drifting field of glowing motes (embers/dust) parented to the camera, so
+        // every backdrop has gentle ambient motion instead of a static image. Their
+        // colour is themed per mode/world by ApplyTheme.
+        void BuildAmbient()
+        {
+            var root = new GameObject("Ambient");
+            root.transform.SetParent(_cam.transform, false);
+            root.transform.localPosition = new Vector3(0f, 0f, 20f);
+            for (int i = 0; i < 34; i++)
+            {
+                var go = Theme.Box("Mote", root.transform, Vector2.zero, new Vector2(0.08f, 0.08f), Color.white, -25);
+                float s = Random.Range(0.5f, 1.7f);
+                go.transform.localPosition = new Vector3(Random.Range(-17f, 17f), Random.Range(-11f, 11f), 0f);
+                go.transform.localScale = new Vector3(0.08f * s, 0.08f * s, 1f);
+                var m = go.AddComponent<Mote>();
+                m.Init(new Vector3(Random.Range(-0.25f, 0.25f), Random.Range(0.1f, 0.5f), 0f),
+                       new Color(1f, 1f, 1f, 0.5f));
+                _motes.Add(m);
+            }
+        }
+
         // One parallax layer: the sprite scaled wide (keeping aspect) and tinted,
         // centred on the camera's start so depth reads from the very first frame.
         void AddParallax(string sprite, Color tint, float yCenter, int order, float follow, float alpha = 1f)
@@ -165,6 +223,97 @@ namespace TrustIssues
             go.transform.localScale = new Vector3(k, k, 1f);
             go.transform.position = new Vector3(_cam.transform.position.x, yCenter, 12f);
             _parallax.Add(go.transform, follow);
+            _bgSr.Add(sr); _bgBase.Add(sr.color);   // remembered so worlds can re-tint
+        }
+
+        // ---- Worlds: each 10-floor segment (Castle → Crypt → Swamp → Throne) gets
+        // its own colour mood by multiplying a tint over the parallax layers. Cheap,
+        // no new art, and makes every stretch (and every clip) look distinct. ----
+        readonly System.Collections.Generic.List<SpriteRenderer> _bgSr = new();
+        readonly System.Collections.Generic.List<Color> _bgBase = new();
+        SpriteRenderer _skySr;
+
+        static readonly string[] WorldNames = { "THE CASTLE", "THE CRYPT", "THE SWAMP", "THE THRONE" };
+
+        // Each MODE gets its own backdrop identity, and Castle/Endless rotate through
+        // several so the world visibly changes as you progress (not one static image):
+        //   0 Castle · 1 Crypt · 2 Swamp · 3 Throne   (Castle, by 10-floor world)
+        //   4 Blood Moon                              (Daily — its own intense look)
+        //   5 Abyss · 6 Void · 7 Inferno              (Endless — cycles, never Blood Moon)
+        //   8 Arena                                   (Versus)
+        static readonly string[] ThemeNames =
+        { "THE CASTLE", "THE CRYPT", "THE SWAMP", "THE THRONE", "BLOOD MOON", "THE ABYSS", "THE VOID", "THE INFERNO", "THE ARENA" };
+        // Tint MULTIPLIED over the (dark crimson) parallax art — strong enough that each
+        // theme reads as a different place, not a faint colour wash.
+        static readonly Color[] ThemeTint =
+        {
+            new Color(1.00f, 1.00f, 1.00f),   // castle
+            new Color(0.58f, 0.82f, 1.45f),   // crypt — cold blue
+            new Color(0.66f, 1.35f, 0.70f),   // swamp — sickly green
+            new Color(1.45f, 1.00f, 0.55f),   // throne — hot gold
+            new Color(1.60f, 0.40f, 0.46f),   // blood moon — searing red
+            new Color(1.20f, 0.55f, 1.55f),   // abyss — violet
+            new Color(0.50f, 1.25f, 1.40f),   // void — teal
+            new Color(1.70f, 0.85f, 0.40f),   // inferno — ember orange
+            new Color(1.05f, 1.08f, 1.20f),   // arena — cold steel
+        };
+        static readonly Color[] ThemeSky =
+        {
+            Theme.Hex("0E0A12"), Theme.Hex("081018"), Theme.Hex("081208"), Theme.Hex("181006"),
+            Theme.Hex("1C040A"), Theme.Hex("0C0420"), Theme.Hex("02120F"), Theme.Hex("1A0802"),
+            Theme.Hex("0A0E14"),
+        };
+        // Drifting-mote (ember/star) colour per theme — the animated ambient layer.
+        static readonly Color[] ThemeAccent =
+        {
+            new Color(0.95f, 0.30f, 0.30f, 0.55f), new Color(0.55f, 0.75f, 1.00f, 0.55f),
+            new Color(0.55f, 1.00f, 0.60f, 0.55f), new Color(1.00f, 0.78f, 0.35f, 0.55f),
+            new Color(1.00f, 0.25f, 0.28f, 0.65f), new Color(0.80f, 0.45f, 1.00f, 0.55f),
+            new Color(0.50f, 0.95f, 1.00f, 0.55f), new Color(1.00f, 0.55f, 0.20f, 0.65f),
+            new Color(0.80f, 0.85f, 1.00f, 0.50f),
+        };
+
+        public static int WorldOf(int floorIdx) => Mathf.Clamp((floorIdx / 10) % 4, 0, 3);
+
+        int _curTheme = -1;
+        readonly System.Collections.Generic.List<Mote> _motes = new();
+
+        // Pick the backdrop theme from the current mode/progress, then apply it.
+        void ThemeBackdrop()
+        {
+            int idx;
+            switch (_mode)
+            {
+                case Mode.Daily:   idx = 4; break;                         // Blood Moon
+                case Mode.Versus:  idx = 8; break;                         // Arena
+                case Mode.Endless: idx = 5 + (_levelIndex / 10) % 3; break;// Abyss → Void → Inferno
+                default:           idx = WorldOf(_levelIndex); break;      // Castle worlds
+            }
+            bool changed = idx != _curTheme;
+            ApplyTheme(idx);
+            // Announce a new region as you cross into it (Castle worlds / Endless depths),
+            // but not on the first floor, on a death-respawn, or inside a boss arena.
+            if (changed && _state == State.Play && _levelIndex > 0 && !InBossRoom &&
+                (_mode == Mode.Curated || _mode == Mode.Endless))
+                ShowBanner($"ENTERING {ThemeNames[idx]}", "the world shifts around you");
+        }
+
+        // Recolour the sky, parallax layers and ambient motes for a theme.
+        void ApplyTheme(int idx)
+        {
+            idx = Mathf.Clamp(idx, 0, ThemeTint.Length - 1);
+            if (idx == _curTheme) return;
+            _curTheme = idx;
+            var t = ThemeTint[idx];
+            for (int i = 0; i < _bgSr.Count; i++)
+            {
+                if (_bgSr[i] == null) continue;
+                var b = _bgBase[i];
+                _bgSr[i].color = new Color(b.r * t.r, b.g * t.g, b.b * t.b, b.a);
+            }
+            if (_skySr != null) _skySr.color = ThemeSky[idx];
+            if (_cam != null) _cam.backgroundColor = ThemeSky[idx];
+            foreach (var m in _motes) if (m != null) m.Recolor(ThemeAccent[idx]);
         }
 
         void BuildHUD()
@@ -240,25 +389,55 @@ namespace TrustIssues
             rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
             rt.offsetMin = rt.offsetMax = Vector2.zero;
 
-            MakeTouch("‹", -1, new Vector2(0f, 0f), new Vector2(170, 170), new Vector2(210, 210));
-            MakeTouch("›", 1, new Vector2(0f, 0f), new Vector2(410, 170), new Vector2(210, 210));
-            MakeTouch("JUMP", 0, new Vector2(1f, 0f), new Vector2(-200, 170), new Vector2(260, 260));
-            MakeTouch("FLY", 3, new Vector2(1f, 0f), new Vector2(-470, 220), new Vector2(190, 190));
+            // Movement: faint, transparent arrows bottom-left.
+            MakeTouch("‹", -1, new Vector2(0f, 0f), new Vector2(180, 180), new Vector2(210, 210), 0.16f);
+            MakeTouch("›", 1, new Vector2(0f, 0f), new Vector2(440, 180), new Vector2(210, 210), 0.16f);
+            // Action cluster bottom-right. JUMP is always there; the rest are shown
+            // contextually (bat in Blood Moon/Endless, dash if the skin grants it,
+            // SHOOT only in boss arenas) via UpdateTouchLayout().
+            MakeTouch("JUMP", 0, new Vector2(1f, 0f), new Vector2(-200, 180), new Vector2(250, 250), 0.18f);
+            _btnFly   = MakeTouch("BAT",   3, new Vector2(1f, 0f), new Vector2(-450, 180), new Vector2(170, 170), 0.20f);
+            _btnDash  = MakeTouch("DASH",  4, new Vector2(1f, 0f), new Vector2(-200, 430), new Vector2(160, 160), 0.18f);
+            _btnShoot = MakeTouch("SHOOT", 2, new Vector2(1f, 0f), new Vector2(-450, 430), new Vector2(170, 170), 0.22f);
             _touchPanel.SetActive(false);
         }
 
-        void MakeTouch(string label, int dir, Vector2 anchor, Vector2 pos, Vector2 size)
+        GameObject _btnFly, _btnDash, _btnShoot;
+
+        // On-screen controls show on real mobile browsers (isMobilePlatform already
+        // detects those on WebGL and excludes touch laptops) OR when force-enabled in
+        // Settings (handy for testing the layout on desktop).
+        bool TouchControlsOn => Application.isMobilePlatform || PlayerPrefs.GetInt("opt_touch", 0) == 1;
+
+        // Show only the action buttons that are usable right now. Called whenever a
+        // level (re)builds so the cluster matches the current mode/arena.
+        void UpdateTouchLayout()
+        {
+            if (_touchPanel == null) return;
+            bool show = TouchControlsOn && _state == State.Play;
+            _touchPanel.SetActive(show);
+            if (!show) return;
+            // BAT only in modes that allow flight; DASH only if the equipped skin grants
+            // it; SHOOT only while you actually HOLD a weapon (ammo > 0) in a boss arena.
+            if (_btnFly != null)   _btnFly.SetActive(_player != null && _player.canFly);
+            if (_btnDash != null)  _btnDash.SetActive(_player != null && _player.dashEnabled);
+            if (_btnShoot != null) _btnShoot.SetActive(_player != null && _player.canShoot && _player.ammo > 0);
+        }
+
+        GameObject MakeTouch(string label, int dir, Vector2 anchor, Vector2 pos, Vector2 size, float alpha)
         {
             var go = new GameObject("Touch_" + label, typeof(RectTransform));
             go.transform.SetParent(_touchPanel.transform, false);
             var img = go.AddComponent<Image>();
-            img.color = new Color(1f, 1f, 1f, 0.16f);
+            img.color = new Color(1f, 1f, 1f, alpha);
             var rt = img.rectTransform;
             rt.anchorMin = rt.anchorMax = anchor; rt.pivot = new Vector2(0.5f, 0.5f);
             rt.anchoredPosition = pos; rt.sizeDelta = size;
             go.AddComponent<TouchButton>().dir = dir;
-            var t = Theme.Label(go.transform, label, dir == 0 ? 44 : 90, new Color(1, 1, 1, 0.85f),
+            int fontSize = (dir == -1 || dir == 1) ? 90 : (label.Length > 3 ? 30 : 40);
+            Theme.Label(go.transform, label, fontSize, new Color(1, 1, 1, 0.9f),
                 new Vector2(0.5f, 0.5f), Vector2.zero, size);
+            return go;
         }
 
         // ==================== MAIN MENU ====================
@@ -268,9 +447,11 @@ namespace TrustIssues
             if (_mode == Mode.Versus) { Net.Leave(); ClearGhosts(); _mode = Mode.Curated; }
             _state = State.Menu;
             Time.timeScale = 1f;
+            ApplyTheme(0);               // menu always shows the Castle mood
             Audio.Music("music", 0.3f);
             _hud.gameObject.SetActive(false);
             if (_touchPanel != null) { _touchPanel.SetActive(false); TouchInput.Clear(); }
+            _cam.orthographicSize = NormalCamSize;   // reset in case we left a zoomed-out boss arena
             _cam.transform.position = new Vector3(-1.5f, CamY, -10f);
 
             // Destroy any existing menu panel FIRST — otherwise the previous
@@ -290,11 +471,16 @@ namespace TrustIssues
 
             // Title — blood red with a near-black shadow, sat up near the top so the
             // button stack has room beneath it.
-            Theme.Label(root, Theme.Title, 132, Theme.Ink,
-                new Vector2(0.5f, 0.5f), new Vector2(6, 356), new Vector2(1600, 200));
-            var title = Theme.Label(root, Theme.Title, 132, Theme.Player,
-                new Vector2(0.5f, 0.5f), new Vector2(0, 362), new Vector2(1600, 200));
+            var titleShadow = Theme.Label(root, Theme.Title, 96, Theme.Ink,
+                new Vector2(0.5f, 0.5f), new Vector2(6, 356), new Vector2(1700, 220));
+            titleShadow.font = Theme.TitleFont;
+            var title = Theme.Label(root, Theme.Title, 96, Theme.Player,
+                new Vector2(0.5f, 0.5f), new Vector2(0, 362), new Vector2(1700, 220));
+            title.font = Theme.TitleFont;
             StartCoroutine(Pulse(title.transform));
+
+            // Difficulty selector — tap to cycle Casual → Normal → Nightmare.
+            MakeDifficultyChip(root, new Vector2(0, 252), new Vector2(460, 56));
 
             // Four mode buttons — one consistent size, evenly spaced.
             var dim = new Vector2(460, 78);
@@ -307,9 +493,113 @@ namespace TrustIssues
             Theme.Button(root, "MULTIPLAYER", new Color(0.5f, 0.12f, 0.16f), Color.white, 40,
                 new Vector2(0.5f, 0.5f), new Vector2(0, -150), dim, ShowVersusLobby);
 
-            // Settings — secondary, smaller, set apart below the main stack.
-            Theme.Button(root, "SETTINGS", new Color(1, 1, 1, 0.12f), new Color(1, 1, 1, 0.85f), 30,
-                new Vector2(0.5f, 0.5f), new Vector2(0, -262), new Vector2(300, 60), ShowSettings);
+            // Secondary row — Wardrobe / Bestiary / Settings / Leaderboard.
+            var sdim = new Vector2(284, 60);
+            Theme.Button(root, "WARDROBE", new Color(1, 1, 1, 0.12f), new Color(1, 1, 1, 0.85f), 28,
+                new Vector2(0.5f, 0.5f), new Vector2(-486, -262), sdim, ShowWardrobe);
+            Theme.Button(root, $"BESTIARY {Codex.KnownCount()}/{Codex.Total}", new Color(1, 1, 1, 0.12f), new Color(1, 1, 1, 0.85f), 26,
+                new Vector2(0.5f, 0.5f), new Vector2(-162, -262), sdim, ShowCodex);
+            Theme.Button(root, "SETTINGS", new Color(1, 1, 1, 0.12f), new Color(1, 1, 1, 0.85f), 28,
+                new Vector2(0.5f, 0.5f), new Vector2(162, -262), sdim, ShowSettings);
+            Theme.Button(root, "LEADERBOARD", new Color(1, 1, 1, 0.12f), new Color(1, 1, 1, 0.85f), 26,
+                new Vector2(0.5f, 0.5f), new Vector2(486, -262), sdim, () => ShowLeaderboard("daily"));
+
+            // Daily streak — the "come back tomorrow" hook (bottom strip).
+            if (Meta.Streak > 0 && Meta.StreakAlive)
+                Theme.Label(root, $"BLOOD MOON STREAK: {Meta.Streak} DAYS — keep it alive", 28, Theme.Coin,
+                    new Vector2(0.5f, 0.5f), new Vector2(0, -338), new Vector2(1200, 46));
+        }
+
+        // A compact difficulty chip that cycles Casual → Normal → Nightmare in place,
+        // recolouring + relabelling itself. Shown on the menu and (via the same helper)
+        // the Settings screen, so the choice is always one tap away.
+        void MakeDifficultyChip(Transform root, Vector2 pos, Vector2 size)
+        {
+            Button btn = null;
+            System.Func<string> cap = () => $"DIFFICULTY:  {Diff.Name}";
+            System.Func<Color> col = () =>
+                Diff.Current == Difficulty.Casual ? new Color(0.16f, 0.40f, 0.22f)
+              : Diff.Current == Difficulty.Nightmare ? new Color(0.52f, 0.07f, 0.10f)
+              : new Color(0.30f, 0.26f, 0.34f);
+            btn = Theme.Button(root, cap(), col(), Color.white, 28,
+                new Vector2(0.5f, 0.5f), pos, size, () =>
+                {
+                    Diff.Current = (Difficulty)(((int)Diff.Current + 1) % 3);
+                    if (!Audio.Muted) Audio.Play("click", 0.6f);
+                    var img = btn.GetComponent<Image>(); if (img != null) img.color = col();
+                    var t = btn.GetComponentInChildren<Text>(); if (t != null) t.text = cap();
+                });
+        }
+
+        // ==================== TRAP CODEX (BESTIARY) ====================
+        // A persistent book of every trap. Each page is revealed the first time the
+        // trap gets you (or you trigger it), teaching how to read/beat it next time.
+        void ShowCodex()
+        {
+            Audio.Play("click");
+            _state = State.Menu;
+            if (_menuPanel != null) Destroy(_menuPanel);
+            _menuPanel = Overlay(new Color(Theme.Sky.r, Theme.Sky.g, Theme.Sky.b, 0.96f), out var root);
+
+            var title = Theme.Label(root, "VAMPIRE'S BESTIARY", 72, Theme.Player,
+                new Vector2(0.5f, 0.5f), new Vector2(0, 452), new Vector2(1600, 110));
+            if (Theme.TitleFont != null) title.font = Theme.TitleFont;
+            Theme.Label(root, $"{Codex.KnownCount()} / {Codex.Total} catalogued — die to a new trap to reveal its page",
+                26, Theme.Coin, new Vector2(0.5f, 0.5f), new Vector2(0, 388), new Vector2(1600, 44));
+
+            var entries = Codex.Entries;
+            const int cols = 5;
+            var card = new Vector2(300, 182);
+            float stepX = 320f, stepY = 190f, startX = -((cols - 1) * stepX) / 2f, startY = 272f;
+            for (int i = 0; i < entries.Length; i++)
+                BuildCodexCard(root, entries[i],
+                    new Vector2(startX + (i % cols) * stepX, startY - (i / cols) * stepY), card);
+
+            Theme.Button(root, "‹ BACK", new Color(1, 1, 1, 0.25f), Color.white, 40,
+                new Vector2(0.5f, 0f), new Vector2(0, 40), new Vector2(360, 100), ShowMenu);
+        }
+
+        void BuildCodexCard(Transform root, TrapType t, Vector2 pos, Vector2 size)
+        {
+            bool known = Codex.IsKnown(t);
+            var c = new Vector2(0.5f, 0.5f);
+            // Card background (UI Image — the menu is screen-space, not world sprites).
+            var cardGo = new GameObject("Card", typeof(RectTransform));
+            cardGo.transform.SetParent(root, false);
+            var bg = cardGo.AddComponent<Image>();
+            bg.color = known ? new Color(0.12f, 0.08f, 0.14f, 0.96f) : new Color(0.06f, 0.05f, 0.08f, 0.96f);
+            bg.raycastTarget = false;
+            var rt = bg.rectTransform;
+            rt.anchorMin = rt.anchorMax = c; rt.pivot = c;
+            rt.anchoredPosition = pos; rt.sizeDelta = size;
+            var ct = cardGo.transform;
+
+            Sprite sp = known ? Assets.Sprite(Codex.Art(t)) : null;
+            if (sp != null)
+            {
+                var img = new GameObject("Art", typeof(RectTransform)).AddComponent<Image>();
+                img.transform.SetParent(ct, false);
+                img.sprite = sp; img.preserveAspect = true; img.raycastTarget = false;
+                img.color = t == TrapType.BatSwoop ? new Color(1f, 0.3f, 0.3f) : Color.white;
+                var irt = img.rectTransform;
+                irt.anchorMin = irt.anchorMax = c; irt.pivot = c;
+                irt.anchoredPosition = new Vector2(0, 46); irt.sizeDelta = new Vector2(58, 58);
+            }
+            else
+            {
+                Theme.Label(ct, known ? "•" : "?", 56,
+                    known ? Theme.Danger : new Color(1, 1, 1, 0.22f), c,
+                    new Vector2(0, 46), new Vector2(80, 80)).raycastTarget = false;
+            }
+
+            Theme.Label(ct, known ? Codex.Title(t) : "UNDISCOVERED", 22,
+                known ? Color.white : new Color(1, 1, 1, 0.5f), c,
+                new Vector2(0, 6), new Vector2(size.x - 16, 28)).raycastTarget = false;
+            var lore = Theme.Label(ct, known ? Codex.Lore(t) : "die to this trap to reveal its page", 13,
+                known ? new Color(1, 1, 1, 0.72f) : new Color(1, 1, 1, 0.32f), c,
+                new Vector2(0, -44), new Vector2(size.x - 30, 92));
+            lore.horizontalOverflow = HorizontalWrapMode.Wrap;   // keep text INSIDE the card (no bleed across)
+            lore.raycastTarget = false;
         }
 
         // ==================== ANIMATED MENU BACKDROP ====================
@@ -444,56 +734,170 @@ namespace TrustIssues
             if (_menuPanel != null) Destroy(_menuPanel);
             _menuPanel = Overlay(new Color(Theme.Sky.r, Theme.Sky.g, Theme.Sky.b, 0.92f), out var root);
 
-            Theme.Label(root, "SETTINGS", 90, Theme.Player,
-                new Vector2(0.5f, 0.5f), new Vector2(0, 400), new Vector2(1400, 120));
+            Theme.Label(root, "SETTINGS", 86, Theme.Player,
+                new Vector2(0.5f, 0.5f), new Vector2(0, 440), new Vector2(1400, 120));
 
-            // Controls reference (the keyboard dump removed from the main menu).
+            // ---- Rebindable ability keys ----
             Theme.Label(root, "CONTROLS", 40, new Color(1, 1, 1, 0.85f),
-                new Vector2(0.5f, 0.5f), new Vector2(0, 250), new Vector2(1200, 60));
-            string[] controls =
-            {
-                "← →   or   A D       move",
-                "SPACE                jump",
-                "hold SHIFT           bat-glide  (Endless & Blood Moon)",
-                "R                    restart",
-                "ESC                  pause",
-            };
-            for (int i = 0; i < controls.Length; i++)
-                Theme.Label(root, controls[i], 32, new Color(1, 1, 1, 0.65f),
-                    new Vector2(0.5f, 0.5f), new Vector2(0, 170 - i * 56), new Vector2(1100, 48),
-                    TextAnchor.MiddleCenter);
+                new Vector2(0.5f, 0.5f), new Vector2(0, 350), new Vector2(1200, 60));
+            Theme.Label(root, "click an action, then press the new key  (Esc cancels)", 24, Theme.Coin,
+                new Vector2(0.5f, 0.5f), new Vector2(0, 305), new Vector2(1200, 40));
+            MakeRebindButton(root, new Vector2(-250, 240), "JUMP", "jump");
+            MakeRebindButton(root, new Vector2(250, 240), "SHOOT", "shoot");
+            MakeRebindButton(root, new Vector2(-250, 156), "DASH", "dash");
+            MakeRebindButton(root, new Vector2(250, 156), "BAT-GLIDE", "fly");
+            Theme.Label(root, "move:  A D / ← →        restart:  R        pause:  Esc", 26,
+                new Color(1, 1, 1, 0.6f), new Vector2(0.5f, 0.5f), new Vector2(0, 86), new Vector2(1200, 44));
 
-            // Audio toggles — independent of the master HUD mute.
+            // ---- Audio volume sliders (0–100%) — independent of the master HUD mute ----
             Theme.Label(root, "AUDIO", 40, new Color(1, 1, 1, 0.85f),
-                new Vector2(0.5f, 0.5f), new Vector2(0, -150), new Vector2(1200, 60));
-            MakeAudioToggle(root, new Vector2(-150, -250), "MUSIC",
-                () => !Audio.MusicMuted, v => Audio.MusicMuted = !v);
-            MakeAudioToggle(root, new Vector2(150, -250), "SFX",
-                () => !Audio.SfxMuted, v => Audio.SfxMuted = !v);
+                new Vector2(0.5f, 0.5f), new Vector2(0, 20), new Vector2(1200, 60));
+            MakeVolumeSlider(root, new Vector2(0, -55), "MUSIC",
+                () => Audio.MusicVol, v => Audio.MusicVol = v);
+            MakeVolumeSlider(root, new Vector2(0, -125), "SFX",
+                () => Audio.SfxVol, v => { Audio.SfxVol = v; });
+            MakeVolumeSlider(root, new Vector2(0, -195), "VOICE",
+                () => Voice.Volume, v => Voice.Volume = v);
+
+            // ---- Gameplay ----
+            MakeDifficultyChip(root, new Vector2(0, -252), new Vector2(620, 58));
+            Theme.Label(root, Diff.Blurb, 22, new Color(1, 1, 1, 0.6f),
+                new Vector2(0.5f, 0.5f), new Vector2(0, -294), new Vector2(1200, 36));
+            MakeToggle(root, new Vector2(-290, -348), "REPLAY GHOST", "opt_replay_ghost", 0);
+            MakeToggle(root, new Vector2(290, -348), "ON-SCREEN PADS", "opt_touch", 0);
+            MakeToggle(root, new Vector2(0, -414), "UNLOCK ALL FLOORS (TEST)", "opt_unlock_all", 0);
 
             Theme.Button(root, "‹ BACK", new Color(1, 1, 1, 0.25f), Color.white, 44,
                 new Vector2(0.5f, 0f), new Vector2(0, 40), new Vector2(360, 100), ShowMenu);
         }
 
-        // A labelled ON/OFF toggle backed by getter/setter delegates.
-        void MakeAudioToggle(Transform root, Vector2 pos, string name,
-            System.Func<bool> get, System.Action<bool> set)
+        // A rebind button: shows "ACTION:  Key"; click it, then press any key to set
+        // the new binding (Esc cancels). Backed by the Controls store.
+        void MakeRebindButton(Transform root, Vector2 pos, string label, string action)
         {
             Button btn = null;
-            System.Action refresh = null;
-            btn = Theme.Button(root, $"{name}: {(get() ? "ON" : "OFF")}",
-                get() ? new Color(0.4f, 0.12f, 0.16f) : new Color(0.2f, 0.2f, 0.24f),
-                Color.white, 30, new Vector2(0.5f, 0.5f), pos, new Vector2(260, 80),
-                () => { set(!get()); if (!Audio.Muted) Audio.Play("click", 0.6f); refresh(); });
-            refresh = () =>
+            System.Func<string> caption = () => $"{label}:  {Controls.Name(Controls.Get(action))}";
+            btn = Theme.Button(root, caption(), new Color(0.24f, 0.17f, 0.28f, 0.95f), Color.white, 28,
+                new Vector2(0.5f, 0.5f), pos, new Vector2(430, 74),
+                () => StartCoroutine(CaptureKey(btn, label, action, caption)));
+        }
+
+        // Listen for the next key press and bind it to `action`. Esc cancels.
+        System.Collections.IEnumerator CaptureKey(Button btn, string label, string action,
+            System.Func<string> caption)
+        {
+            var t = btn.GetComponentInChildren<Text>();
+            if (t != null) t.text = $"{label}:  press a key…";
+            yield return null;   // swallow the click frame
+            while (true)
             {
-                var label = btn.GetComponentInChildren<Text>();
-                if (label != null) label.text = $"{name}: {(get() ? "ON" : "OFF")}";
-                // Theme.Button keeps normalColor white and multiplies it with the
-                // Image colour, so just swap the Image colour to recolour the button.
-                var img = btn.GetComponent<Image>();
-                if (img != null) img.color = get() ? new Color(0.4f, 0.12f, 0.16f) : new Color(0.2f, 0.2f, 0.24f);
-            };
+                if (Input.GetKeyDown(KeyCode.Escape)) break;          // cancel, keep old binding
+                KeyCode picked = KeyCode.None;
+                foreach (KeyCode kc in System.Enum.GetValues(typeof(KeyCode)))
+                {
+                    if (kc == KeyCode.None || (int)kc >= 323) continue; // skip mouse/joystick codes
+                    if (Input.GetKeyDown(kc)) { picked = kc; break; }
+                }
+                if (picked != KeyCode.None)
+                {
+                    Controls.Set(action, picked);
+                    if (!Audio.Muted) Audio.Play("click", 0.6f);
+                    break;
+                }
+                yield return null;
+            }
+            if (t != null) t.text = caption();
+        }
+
+        // A labelled 0–100% volume slider backed by getter/setter delegates. Built
+        // from a UnityEngine.UI.Slider so it can be dragged or clicked anywhere on
+        // the track. Layout per row: [NAME]   [====track====]   [ 70% ].
+        void MakeVolumeSlider(Transform root, Vector2 pos, string name,
+            System.Func<float> get, System.Action<float> set)
+        {
+            var c = new Vector2(0.5f, 0.5f);
+            Theme.Label(root, name, 30, Color.white, c,
+                pos + new Vector2(-360, 0), new Vector2(220, 50), TextAnchor.MiddleRight);
+
+            // Track container (the Slider component lives here).
+            var sgo = new GameObject("Slider_" + name, typeof(RectTransform));
+            sgo.transform.SetParent(root, false);
+            var srt = sgo.GetComponent<RectTransform>();
+            srt.anchorMin = srt.anchorMax = c; srt.pivot = c;
+            srt.anchoredPosition = pos; srt.sizeDelta = new Vector2(440, 38);
+            var slider = sgo.AddComponent<Slider>();
+
+            // Background bar.
+            var bgImg = new GameObject("BG", typeof(RectTransform)).AddComponent<Image>();
+            bgImg.transform.SetParent(sgo.transform, false);
+            bgImg.color = new Color(0.16f, 0.14f, 0.2f, 0.95f);
+            StretchBand(bgImg.rectTransform, 0.32f);
+
+            // Fill (red, grows with value).
+            var fillArea = new GameObject("FillArea", typeof(RectTransform)).GetComponent<RectTransform>();
+            fillArea.transform.SetParent(sgo.transform, false);
+            StretchBand(fillArea, 0.32f);
+            var fillImg = new GameObject("Fill", typeof(RectTransform)).AddComponent<Image>();
+            fillImg.transform.SetParent(fillArea, false);
+            fillImg.color = Theme.Player;
+            var fr = fillImg.rectTransform;
+            fr.anchorMin = new Vector2(0, 0); fr.anchorMax = new Vector2(1, 1);
+            fr.offsetMin = fr.offsetMax = Vector2.zero;
+
+            // Handle.
+            var handleArea = new GameObject("HandleArea", typeof(RectTransform)).GetComponent<RectTransform>();
+            handleArea.transform.SetParent(sgo.transform, false);
+            handleArea.anchorMin = new Vector2(0, 0); handleArea.anchorMax = new Vector2(1, 1);
+            handleArea.offsetMin = new Vector2(14, 0); handleArea.offsetMax = new Vector2(-14, 0);
+            var handleImg = new GameObject("Handle", typeof(RectTransform)).AddComponent<Image>();
+            handleImg.transform.SetParent(handleArea, false);
+            handleImg.color = Theme.Coin;
+            var hr = handleImg.rectTransform;
+            hr.sizeDelta = new Vector2(26, 0);   // width fixed; Slider stretches it to the track height
+
+            slider.targetGraphic = handleImg;
+            slider.fillRect = fr;
+            slider.handleRect = hr;
+            slider.direction = Slider.Direction.LeftToRight;
+            slider.minValue = 0f; slider.maxValue = 1f;
+            slider.SetValueWithoutNotify(get());
+
+            var pct = Theme.Label(root, Mathf.RoundToInt(get() * 100f) + "%", 28, Theme.Coin, c,
+                pos + new Vector2(300, 0), new Vector2(120, 50), TextAnchor.MiddleLeft);
+
+            slider.onValueChanged.AddListener(v =>
+            {
+                set(v);
+                pct.text = Mathf.RoundToInt(v * 100f) + "%";
+            });
+        }
+
+        // A simple ON/OFF toggle button backed by a PlayerPrefs int (0/1). The caption
+        // shows the live state; clicking flips and persists it.
+        void MakeToggle(Transform root, Vector2 pos, string label, string prefKey, int def)
+        {
+            Button btn = null;
+            System.Func<string> caption = () =>
+                $"{label}:  {(PlayerPrefs.GetInt(prefKey, def) == 1 ? "ON" : "OFF")}";
+            btn = Theme.Button(root, caption(), new Color(0.24f, 0.17f, 0.28f, 0.95f), Color.white, 28,
+                new Vector2(0.5f, 0.5f), pos, new Vector2(560, 70), () =>
+                {
+                    int cur = PlayerPrefs.GetInt(prefKey, def);
+                    PlayerPrefs.SetInt(prefKey, cur == 1 ? 0 : 1);
+                    PlayerPrefs.Save();
+                    if (!Audio.Muted) Audio.Play("click", 0.6f);
+                    var t = btn.GetComponentInChildren<Text>();
+                    if (t != null) t.text = caption();
+                });
+        }
+
+        // Anchor a child as a horizontal band centred vertically in its parent,
+        // occupying the middle `frac` of the height (used for slider bg/fill bars).
+        static void StretchBand(RectTransform rt, float frac)
+        {
+            rt.anchorMin = new Vector2(0f, 0.5f - frac / 2f);
+            rt.anchorMax = new Vector2(1f, 0.5f + frac / 2f);
+            rt.offsetMin = rt.offsetMax = Vector2.zero;
         }
 
         // Short, darkly-funny premise shown before a new game.
@@ -535,13 +939,21 @@ namespace TrustIssues
             if (_menuPanel != null) Destroy(_menuPanel);
             _menuPanel = Overlay(new Color(Theme.Sky.r, Theme.Sky.g, Theme.Sky.b, 0.7f), out var root);
 
-            Theme.Label(root, "THE CASTLE", 90, Theme.Player,
-                new Vector2(0.5f, 0.5f), new Vector2(0, 440), new Vector2(1400, 120));
+            Theme.Label(root, "THE CASTLE", 78, Theme.Player,
+                new Vector2(0.5f, 0.5f), new Vector2(0, 440), new Vector2(1400, 120)).font = Theme.TitleFont;
             Theme.Label(root, $"{Levels.Count} floors — pick your poison", 36, new Color(0.85f, 0.7f, 0.72f, 0.7f),
                 new Vector2(0.5f, 0.5f), new Vector2(0, 360), new Vector2(1300, 60));
 
-            int cols = 5;
-            float spX = 360f, spY = 195f, startX = -((cols - 1) * spX) / 2f, startY = 240f;
+            // Adaptive grid: widen to 8 columns past 20 floors and shrink the
+            // spacing/medallions so the whole snake fits between the title and the
+            // BACK button no matter how many floors there are.
+            int cols = Levels.Count <= 20 ? 5 : 8;
+            int rows = (Levels.Count + cols - 1) / cols;
+            float spX = Mathf.Min(360f, 1640f / cols);
+            float topY = 280f, botY = -330f;          // clear of the title and BACK button
+            float spY = rows > 1 ? Mathf.Min(195f, (topY - botY) / (rows - 1)) : 0f;
+            float startX = -((cols - 1) * spX) / 2f, startY = topY;
+            float node = Mathf.Clamp(Mathf.Min(spX, spY <= 0f ? 120f : spY) * 0.62f, 70f, 120f);
             var pos = new Vector2[Levels.Count];
             for (int i = 0; i < Levels.Count; i++)
             {
@@ -562,12 +974,13 @@ namespace TrustIssues
                     var drt = di.rectTransform;
                     drt.anchorMin = drt.anchorMax = new Vector2(0.5f, 0.5f);
                     drt.pivot = new Vector2(0.5f, 0.5f);
-                    drt.anchoredPosition = p; drt.sizeDelta = new Vector2(20, 20);
+                    drt.anchoredPosition = p; drt.sizeDelta = new Vector2(node * 0.16f, node * 0.16f);
                 }
 
             // Each floor is a blood-seal medallion. Floors are LOCKED until you
             // clear the one before — locked nodes are dark and not clickable.
-            int unlocked = CastleUnlocked;
+            // The "unlock all" test toggle opens every floor (jump straight to bosses).
+            int unlocked = PlayerPrefs.GetInt("opt_unlock_all", 0) == 1 ? Levels.Count - 1 : CastleUnlocked;
             for (int i = 0; i < Levels.Count; i++)
             {
                 int lvl = i;
@@ -580,7 +993,7 @@ namespace TrustIssues
                 var rt = img.rectTransform;
                 rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
                 rt.pivot = new Vector2(0.5f, 0.5f);
-                rt.anchoredPosition = pos[i]; rt.sizeDelta = new Vector2(120, 120);
+                rt.anchoredPosition = pos[i]; rt.sizeDelta = new Vector2(node, node);
                 if (!locked)
                 {
                     var btn = go.AddComponent<Button>(); btn.targetGraphic = img;
@@ -589,9 +1002,9 @@ namespace TrustIssues
                 // Floor number — bright when unlocked, ghosted when locked (the
                 // dark disc already reads as "sealed", and this avoids relying on
                 // an emoji glyph the built-in font may not have).
-                Theme.Label(go.transform, (i + 1).ToString(), 46,
+                Theme.Label(go.transform, (i + 1).ToString(), Mathf.RoundToInt(46 * node / 120f),
                     locked ? new Color(1, 1, 1, 0.22f) : Color.white,
-                    new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(120, 120));
+                    new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(node, node));
             }
 
             Theme.Button(root, "‹ BACK", new Color(1, 1, 1, 0.25f), Color.white, 44,
@@ -689,6 +1102,37 @@ namespace TrustIssues
             if (t != null) Destroy(t.gameObject);
         }
 
+        // Public camera shake (used by the boss for hits / enrage / defeat).
+        public void ShakeCam(float amount, float dur)
+        {
+            if (_cam != null) StartCoroutine(Juice.Shake(_cam.transform, amount, dur));
+        }
+
+        // Big red full-screen pulse (boss enrage). Reuses the death-flash machinery.
+        public void ScreenFlash() => FlashRed();
+
+        // A short centred announcement (boss enrage / phases).
+        public void BossToast(string msg) { if (_toast != null) StartCoroutine(FlashToast(msg)); }
+
+        // A brief freeze-frame on impact — makes hits feel weighty (Level-Devil punch).
+        IEnumerator HitStop(float dur)
+        {
+            if (Time.timeScale <= 0f) yield break;     // don't fight an existing pause
+            Time.timeScale = 0f;
+            yield return new WaitForSecondsRealtime(dur);
+            Time.timeScale = _state == State.Paused ? 0f : 1f;
+        }
+
+        // Dramatic slow-motion (boss defeat) — savour the kill.
+        public void SlowMoBurst(float scale, float dur) => StartCoroutine(SlowMo(scale, dur));
+        IEnumerator SlowMo(float scale, float dur)
+        {
+            if (Time.timeScale <= 0f) yield break;
+            Time.timeScale = scale;
+            yield return new WaitForSecondsRealtime(dur);
+            Time.timeScale = _state == State.Paused ? 0f : 1f;
+        }
+
         void FlashRed()
         {
             var go = new GameObject("Flash", typeof(RectTransform));
@@ -720,6 +1164,19 @@ namespace TrustIssues
             StartCoroutine(FadeOutLabel(t, 2.5f));
         }
 
+        // A larger one-shot banner near the top of the screen (gothic title + a small
+        // subtitle), auto-fading. Used for the Blood Moon "tonight's date" freshness cue.
+        void ShowBanner(string title, string sub)
+        {
+            var t = Theme.Label(Theme.Canvas.transform, title, 54, Theme.Player,
+                new Vector2(0.5f, 1f), new Vector2(0, -120), new Vector2(1500, 80));
+            if (Theme.TitleFont != null) t.font = Theme.TitleFont;
+            var s = Theme.Label(Theme.Canvas.transform, sub, 28, new Color(1, 1, 1, 0.72f),
+                new Vector2(0.5f, 1f), new Vector2(0, -184), new Vector2(1400, 50));
+            StartCoroutine(FadeOutLabel(t, 3.2f));
+            StartCoroutine(FadeOutLabel(s, 3.2f));
+        }
+
         IEnumerator FadeOutLabel(Text t, float delay)
         {
             yield return new WaitForSecondsRealtime(delay);
@@ -739,17 +1196,28 @@ namespace TrustIssues
             _mode = Mode.Curated;
             BeginRun(levelIndex);
             if (levelIndex == 0)
+            {
+                string extra = Skins.Current.dash ? $"   •   {Controls.Name(Controls.Dash)} dash"
+                             : Skins.Current.airJumps > 0 ? "   •   double-jump" : "";
                 ShowHint(_isMobile
                     ? "‹ › move   •   JUMP   •   trust nothing"
-                    : "← → / A D move   •   SPACE jump   •   R restart   •   trust nothing");
+                    : $"← → / A D move   •   {Controls.Name(Controls.Jump)} jump" + extra + "   •   R restart   •   trust nothing");
+            }
         }
 
         void StartDaily()
         {
             Audio.Play("click");
             _mode = Mode.Daily;
+            Meta.RecordDailyPlay();                 // advance the daily streak + feed badges
+            if (Meta.Streak >= 3) Badges.Award("streak3");
+            if (Meta.Streak >= 7) Badges.Award("streak7");
             BeginRun(0);
-            ShowHint("BLOOD MOON — same run for everyone tonight.  3 lives.  Jump, then hold SHIFT/FLY to glide as a bat.");
+            var now = System.DateTime.UtcNow;
+            var left = now.Date.AddDays(1) - now;   // until tonight's run rotates
+            ShowBanner($"TONIGHT'S BLOOD MOON — {now:MMM d}",
+                       $"a fresh nightmare every night • resets in {(int)left.TotalHours}h {left.Minutes}m");
+            ShowHint($"BLOOD MOON — {Diff.StartHearts} lives, +1 per floor.  Jump, then hold {Controls.Name(Controls.Fly)}/FLY to glide as a bat.");
         }
 
         void StartEndless()
@@ -758,7 +1226,8 @@ namespace TrustIssues
             _mode = Mode.Endless;
             _endlessSeed = new System.Random().Next(1, 1000000);
             BeginRun(0);
-            ShowHint("ENDLESS NIGHT — 3 lives, +1 per floor.  Jump, then hold SHIFT/FLY to glide.  How deep can you go?");
+            ShowBanner("ENDLESS NIGHT", $"checkpoint every {Diff.CheckpointEvery} floors • you never truly die • how deep can you go?");
+            ShowHint($"Fall and you drop to your last checkpoint with fresh lives.  Jump, then hold {Controls.Name(Controls.Fly)}/FLY to glide.");
         }
 
         // ==================== VERSUS (multiplayer) ====================
@@ -846,8 +1315,28 @@ namespace TrustIssues
             _raceOver = false;
             _mode = Mode.Versus;
             _endlessSeed = Net.Seed;
+            _versusRound = 0; _versusWins = 0; _versusLosses = 0;   // fresh match
+            _netSendTimer = 0f;          // broadcast our position on the very next frame
             BeginRun(0);
-            ShowHint($"ROOM {Net.RoomCode}  •  race to the coffin  •  first one there wins. Jump, hold SHIFT to glide.");
+            ShowBanner($"ROOM {Net.RoomCode}", "race the coffin every round • first to the most wins • it never stops");
+            ShowHint($"Race to the coffin — winner takes the round, then a NEW track loads. Jump, hold {Controls.Name(Controls.Fly)} to glide.");
+        }
+
+        // Match score across rounds (continuous multiplayer).
+        int _versusRound, _versusWins, _versusLosses;
+
+        // Start the next race in the SAME room: a new deterministic track (seed +
+        // round), ghosts cleared, room kept open. Both clients advance one round per
+        // race, so they stay on the same layout.
+        void NextVersusRound()
+        {
+            if (_mode != Mode.Versus) return;
+            _versusRound++;
+            _raceOver = false;
+            ClearGhosts();
+            _netSendTimer = 0f;
+            BeginRun(0);
+            ShowHint($"ROUND {_versusRound + 1}  •  you {_versusWins} – {_versusLosses} rival.  Race!");
         }
 
         void HookNet()
@@ -899,8 +1388,8 @@ namespace TrustIssues
                 b.transform.SetParent(go.transform, false);
                 b.transform.localPosition = new Vector3(0f, -0.12f, 0f);
                 var sr = b.AddComponent<SpriteRenderer>();
-                sr.sprite = sp; sr.sortingOrder = 4;        // just behind the local player (5)
-                sr.color = new Color(0.6f, 0.85f, 1f, 0.55f); // spectral blue, see-through
+                sr.sprite = sp; sr.sortingOrder = 6;        // clearly visible, above platforms
+                sr.color = new Color(0.65f, 0.9f, 1f, 0.85f); // spectral blue, bright
                 float h = sp.bounds.size.y; baseScale = h > 0.0001f ? 1.35f / h : 1f;
                 b.transform.localScale = new Vector3(baseScale, baseScale, 1f);
                 vis = b.transform;
@@ -908,10 +1397,22 @@ namespace TrustIssues
             else
             {
                 var b = Theme.Box("GBody", go.transform, Vector2.zero, new Vector2(0.8f, 0.9f),
-                    new Color(0.6f, 0.85f, 1f, 0.55f), 4);
+                    new Color(0.65f, 0.9f, 1f, 0.85f), 6);
                 b.transform.localPosition = Vector3.zero;
                 vis = b.transform;
             }
+
+            // A floating name tag so you can tell who's who in the race.
+            var label = new GameObject("GName");
+            label.transform.SetParent(go.transform, false);
+            label.transform.localPosition = new Vector3(0f, 1.15f, 0f);
+            var tm = label.AddComponent<TextMesh>();
+            tm.text = Net.NickOf(actor);
+            tm.anchor = TextAnchor.LowerCenter; tm.alignment = TextAlignment.Center;
+            tm.characterSize = 0.1f; tm.fontSize = 40;
+            tm.color = new Color(0.8f, 0.92f, 1f, 0.95f);
+            label.GetComponent<MeshRenderer>().sortingOrder = 7;
+
             ghost.Bind(vis, baseScale);
             return ghost;
         }
@@ -926,10 +1427,15 @@ namespace TrustIssues
         void VersusResult(bool youWon)
         {
             _state = State.Win;
+            if (youWon) { Badges.Award("versus_win"); _versusWins++; } else _versusLosses++;
+            if (_versusWins >= 3) Badges.Award("versus_streak3");
             Analytics.Track("versus_result", new System.Collections.Generic.Dictionary<string, object>
             {
                 { "won", youWon },
                 { "total_deaths", _deaths },
+                { "round", _versusRound },
+                { "wins", _versusWins },
+                { "losses", _versusLosses },
             });
             Analytics.Track("run_end", new System.Collections.Generic.Dictionary<string, object>
             {
@@ -943,12 +1449,16 @@ namespace TrustIssues
             Theme.Label(root, youWon ? "YOU WON THE RACE" : "YOU LOST THE RACE",
                 youWon ? 90 : 84, youWon ? Theme.Exit : Theme.Player,
                 new Vector2(0.5f, 0.5f), new Vector2(0, 160), new Vector2(1600, 150));
-            Theme.Label(root, youWon ? "first to the coffin \U0001FA78" : "a faster vampire beat you to it",
-                46, Color.white, new Vector2(0.5f, 0.5f), new Vector2(0, 50), new Vector2(1500, 70));
-            Theme.Label(root, $"{_deaths} death" + (_deaths == 1 ? "" : "s") + " on the way",
-                32, Theme.Coin, new Vector2(0.5f, 0.5f), new Vector2(0, -10), new Vector2(1400, 50));
-            Theme.Button(root, "LEAVE RACE", new Color(0.28f, 0.24f, 0.32f), Color.white, 44,
-                new Vector2(0.5f, 0.5f), new Vector2(0, -150), new Vector2(560, 120),
+            Theme.Label(root, youWon ? "first to the coffin" : "a faster vampire beat you to it",
+                44, Color.white, new Vector2(0.5f, 0.5f), new Vector2(0, 60), new Vector2(1500, 70));
+            // Running match score across rounds — the "one more round" hook.
+            Theme.Label(root, $"MATCH:  YOU {_versusWins}  –  {_versusLosses} RIVAL",
+                40, Theme.Coin, new Vector2(0.5f, 0.5f), new Vector2(0, 0), new Vector2(1400, 56));
+            Theme.Button(root, "NEXT ROUND", Theme.Exit, Theme.Ink, 46,
+                new Vector2(0.5f, 0.5f), new Vector2(0, -120), new Vector2(560, 116),
+                () => { Destroy(panel); NextVersusRound(); });
+            Theme.Button(root, "LEAVE RACE", new Color(0.28f, 0.24f, 0.32f), Color.white, 40,
+                new Vector2(0.5f, 0.5f), new Vector2(0, -250), new Vector2(460, 100),
                 () => { Destroy(panel); LeaveVersus(); });
         }
 
@@ -967,14 +1477,16 @@ namespace TrustIssues
             if (_menuPanel != null) Destroy(_menuPanel);
             _levelIndex = levelIndex;
             _hasCheckpoint = false;
+            _newBest = false;
+            ResetFloorState();
             // Castle deaths are a LIFETIME tally that persists across menu visits
             // and sessions; Endless/Blood Moon deaths are per-run (for the score).
             _deaths = _mode == Mode.Curated ? PlayerPrefs.GetInt("castle_deaths", 0) : 0;
             // Curated and Versus both retry forever (a race death just sends you
-            // back to start); Endless/Daily are 3 lives for score.
-            _hearts = (_mode == Mode.Curated || _mode == Mode.Versus) ? -1 : 3;
+            // back to start); Endless/Daily get a difficulty-scaled pool of lives.
+            _hearts = (_mode == Mode.Curated || _mode == Mode.Versus) ? -1 : Diff.StartHearts;
             _hud.gameObject.SetActive(true);
-            if (_touchPanel != null) _touchPanel.SetActive(_isMobile); // phone only
+            if (_touchPanel != null) _touchPanel.SetActive(TouchControlsOn); // refined per-level by UpdateTouchLayout
             _state = State.Play;
             Analytics.Track("mode_start", new System.Collections.Generic.Dictionary<string, object>
             {
@@ -996,13 +1508,22 @@ namespace TrustIssues
             {
                 case Mode.Daily:   return Levels.Generate(DailySeed() * 31 + _levelIndex * 7919, 2 + _levelIndex);
                 case Mode.Endless: return Levels.Generate(_endlessSeed + _levelIndex * 7919, _levelIndex + 2);
-                // Versus: ONE shared race track, identical for everyone in the
-                // room (the room code seeds it, so a new room = a new layout).
-                // Kept EASY (difficulty 1: just spikes/late-spikes, no invisible
-                // sun traps) so it stays a fun race, not a rage level.
-                case Mode.Versus:  return Levels.Generate(Net.Seed, 1);
-                default:           return Levels.Get(_levelIndex);
+                // Versus: a shared race track, identical for everyone in the room.
+                // The room code + ROUND number seed it, so each round is a fresh
+                // (still deterministic) layout and the match runs continuously. Kept
+                // EASY (difficulty 1) so it stays a fun race, not a rage level.
+                case Mode.Versus:  return Levels.Generate(Net.Seed + _versusRound * 101, 1);
+                default:
+                    int bt = BossTierForFloor(_levelIndex);          // Castle floors 10/20/30/40
+                    return bt > 0 ? Levels.BossRoom(bt) : Levels.Get(_levelIndex);
             }
+        }
+
+        // Curated floors 10/20/30/40 (0-based 9/19/29/39) are boss arenas, tiers 1-4.
+        static int BossTierForFloor(int idx)
+        {
+            switch (idx) { case 9: return 1; case 19: return 2; case 29: return 3; case 39: return 4; }
+            return 0;
         }
 
         static int DailySeed()
@@ -1034,9 +1555,17 @@ namespace TrustIssues
         void BuildLevel()
         {
             _dying = false;
+            _recT.Clear(); _recP.Clear(); _recTimer = 0f;   // fresh recording for this attempt
             _level = CurrentLevel();
             _camMin = _level.CamMinX; _camMax = _level.CamMaxX;
             _levelRoot = new GameObject("Level").transform;
+
+            // Right edge of the floor — used for the near-miss narrator.
+            _levelEndX = _level.Spawn.x;
+            foreach (var p in _level.Platforms)
+                _levelEndX = Mathf.Max(_levelEndX, p.pos.x + p.size.x / 2f);
+
+            ThemeBackdrop();   // pick the backdrop by mode + progress (distinct per mode)
 
             foreach (var p in _level.Platforms)
                 BuildPlatform(p);
@@ -1046,11 +1575,29 @@ namespace TrustIssues
                 BuildTrap(t);
             foreach (var pp in _level.Portals)
                 BuildPortals(pp);
+            BuildReactiveTraps();   // the "Trust Issues" learned traps from past deaths
+            PlaceTorches();         // gothic ambience — flickering wall sconces
             BuildAerialHazards();
 
             SpawnPlayer();
+            SpawnReplayGhost();      // race your previous attempt
             SnapCamera();
+
+            // Boss arena setup (spawns the boss, gives the player a pip buffer +
+            // the blaster, plays the boss theme). Normal floors disarm the blaster
+            // and silence any lingering boss music.
+            if (InBossRoom) SetupBoss(_level.BossTier);
+            else { if (_player != null) _player.canShoot = false; Audio.StopMusic(); }
             UpdateHud();
+            UpdateTouchLayout();   // match the on-screen action cluster to this floor
+
+            // Arm the sun-rise clock for this attempt. Longer levels get more time;
+            // Versus and boss arenas are exempt.
+            _sunRising = false; _sunWall = null;
+            int plats = _level.Platforms.Count;
+            _sunThreshold = (_mode == Mode.Versus || InBossRoom || !Diff.SunRise) ? 999f
+                          : _mode == Mode.Curated ? 16f + plats * 2.2f
+                                                  : 11f + plats * 1.8f;
 
             _levelStartRealtime = Time.realtimeSinceStartup;
             Analytics.Track("level_start", new System.Collections.Generic.Dictionary<string, object>
@@ -1058,6 +1605,74 @@ namespace TrustIssues
                 { "mode", ModeName },
                 { "level_index", _levelIndex },
             });
+        }
+
+        // The "Trust Issues" reactive traps: a late-spike sprouts at each spot you
+        // lingered on in a past attempt (banked in RecordReactiveTrap). A faint mark
+        // makes it learnable on the retry. Always a jump-over (never blocks the floor).
+        void BuildReactiveTraps()
+        {
+            if (_reactiveAdded)   // the game just learned a new spot — it laughs at you
+            { Audio.Play("troll", 0.5f); _reactiveAdded = false; }
+            foreach (float gx in _ghostTrapX)
+            {
+                BuildTrap(new TrapSpec(TrapType.LateSpike, gx, -2.4f, 1.0f, 1.2f));
+                var mk = Theme.Box("LearnedMark", _levelRoot, new Vector2(gx, -2.62f),
+                    new Vector2(0.7f, 0.12f), Theme.Danger, 4);
+                var c = mk.GetComponent<SpriteRenderer>().color; c.a = 0.32f;
+                mk.GetComponent<SpriteRenderer>().color = c;
+            }
+        }
+
+        // Wipe per-floor loop state (section checkpoint + learned traps + ghost
+        // recording) when a NEW floor begins — NOT on a death-respawn (those keep
+        // their progress/learning/ghost).
+        void ResetFloorState()
+        {
+            _linger.Clear(); _ghostTrapX.Clear(); _reactiveAdded = false;
+            _lastT = null; _lastP = null; _recT.Clear(); _recP.Clear();
+            _bossIntroedTier = -1;   // a fresh floor → the next boss plays its full cutscene
+        }
+
+        // Gothic ambience: flickering torch sconces along the level with a warm glow.
+        void PlaceTorches()
+        {
+            if (_mode == Mode.Versus) return;
+            var frames = Assets.Sheet("torch", 32);
+            if (frames == null || frames.Length == 0) return;   // no torch art → skip silently
+            for (float x = _level.Spawn.x + 3f; x <= _levelEndX - 1f; x += 6f)
+            {
+                float y = 1.2f;   // upper-background sconce height (off the play plane)
+                var go = Theme.SpriteBox("Torch", _levelRoot, new Vector3(x, y, 0f), new Vector2(1f, 1f), frames[0], 1);
+                go.AddComponent<LoopAnim>().Init(frames, 10f);
+                var glow = Theme.SpriteBox("TorchGlow", go.transform, new Vector3(x, y, 0f), new Vector2(2.4f, 2.4f), Theme.Moon, 0);
+                glow.GetComponent<SpriteRenderer>().color = new Color(1f, 0.55f, 0.2f, 0.2f);
+                var fp = glow.AddComponent<FaintPulse>(); fp.min = 0.1f; fp.max = 0.24f; fp.speed = 6f;
+            }
+        }
+
+        // The replay-ghost (a faint blue echo of your last attempt) is opt-in and
+        // lives ONLY in the Castle campaign. Players found it following them around
+        // in Blood Moon / Endless, so it's force-disabled there (and always in Versus).
+        public static bool ReplayGhostOn => PlayerPrefs.GetInt("opt_replay_ghost", 0) == 1;
+
+        // A faint blue echo of your last attempt, racing alongside you.
+        void SpawnReplayGhost()
+        {
+            if (_lastP == null || _lastP.Length < 2) return;
+            if (_mode != Mode.Curated) return;   // Castle only — never in Versus/Daily/Endless
+            if (!ReplayGhostOn) return;          // opt-in (default OFF)
+            var frames = Assets.Grid("vamp_idle_sheet", 64, 3);
+            Sprite sp = (frames != null && frames.Length > 0) ? frames[0] : Theme.Square;
+            var go = new GameObject("ReplayGhost");
+            go.transform.SetParent(_levelRoot, false);
+            var sr = go.AddComponent<SpriteRenderer>();
+            sr.sprite = sp; sr.sortingOrder = 3;                 // behind the live player (5)
+            sr.color = new Color(0.7f, 0.78f, 1f, 0.38f);       // faint blue "echo"
+            float h = sp.bounds.size.y; float s = h > 0.0001f ? 1.35f / h : 1f;
+            go.transform.localScale = new Vector3(s, s, 1f);
+            go.transform.position = _lastP[0];
+            go.AddComponent<GhostReplay>().Init(_lastT, _lastP);
         }
 
         // A FEW hanging saw-blades on chains in the upper air — gothic and
@@ -1094,7 +1709,7 @@ namespace TrustIssues
                     : Theme.Box("AirSaw", _levelRoot, pos, new Vector2(1f, 1f), Theme.Danger, 3);
                 if (blade != null) go.AddComponent<Spinner>();
                 FitTrigger(go, 0.66f); // matches the visible blade
-                var kz = go.AddComponent<KillZone>(); kz.msg = "Caught in the blades.";
+                var kz = go.AddComponent<KillZone>(); kz.msg = "Caught in the blades."; kz.trapTag = (int)TrapType.Saw;
             }
         }
 
@@ -1103,10 +1718,16 @@ namespace TrustIssues
             if (_hud == null) return;
             string left = _mode == Mode.Endless ? $"FLOOR {_levelIndex + 1}    "
                         : _mode == Mode.Daily ? $"NIGHT {_levelIndex + 1}/{DailyLen}    "
-                        : _mode == Mode.Versus ? $"RACE {Net.RoomCode}  ({Net.PlayerCount})    " : "";
-            string hearts = _hearts >= 0 ? "    " + new string('♥', Mathf.Max(0, _hearts)) : "";
-            _hud.text = left + "DEATHS " + _deaths + hearts;
+                        : _mode == Mode.Versus ? $"RACE {Net.RoomCode}  ({Net.PlayerCount})    "
+                        : $"FLOOR {_levelIndex + 1}  •  {WorldNames[WorldOf(_levelIndex)]}    ";
+            string hearts = _hearts >= 0 ? "    LIVES " + Mathf.Max(0, _hearts) : "";
+            string guard = InBossRoom && _bossHp > 0 ? "    GUARD " + new string('♥', _bossHp) : "";
+            string ammo = InBossRoom && _player != null && _player.ammo > 0 ? "    AMMO " + _player.ammo : "";
+            _hud.text = left + "DEATHS " + _deaths + hearts + guard + ammo;
         }
+
+        // Lets the player controller refresh the ammo readout as a clip is spent.
+        public void RefreshHud() => UpdateHud();
 
         // A platform: castle-stone tile (tiled) with a single blood-red lip on top.
         void BuildPlatform(Rect2 p) => BuildStoneFloor("Platform", p.pos, p.size, null);
@@ -1189,7 +1810,7 @@ namespace TrustIssues
                         : Theme.Box("Spikes", _levelRoot, t.pos, t.size, Theme.Danger, 3);
                     if (sp != null) go.GetComponent<SpriteRenderer>().color = Theme.Danger; // blood
                     FitTrigger(go, 0.85f); // reliable: roughly the full visible spike
-                    var kz = go.AddComponent<KillZone>(); kz.msg = "Impaled.";
+                    var kz = go.AddComponent<KillZone>(); kz.msg = "Impaled."; kz.trapTag = (int)TrapType.SpikeStatic;
                     break;
                 }
                 case TrapType.GrowSpike:
@@ -1269,7 +1890,48 @@ namespace TrustIssues
                     go.AddComponent<Trap>().Init(TrapType.WarpBack);
                     break;
                 }
-                default: // LateSpike / Crusher / Surprise / Dart / Faller / Reverse = invisible sensors
+                case TrapType.Pendulum:
+                {
+                    // A ceiling bracket; the Trap hangs a chain + blade from it and
+                    // swings the whole thing. Rotating the pivot does the work.
+                    var go = Theme.Box("Pendulum", _levelRoot, t.pos, new Vector2(0.45f, 0.25f), Theme.Hex("2A2230"), 2);
+                    go.AddComponent<Trap>().Init(TrapType.Pendulum);
+                    break;
+                }
+                case TrapType.FlameJet:
+                {
+                    var sp = Assets.Sprite("flame");
+                    GameObject go = sp != null
+                        ? Theme.SpriteBox("FlameJet", _levelRoot, t.pos, t.size, sp, 3)
+                        : Theme.Box("FlameJet", _levelRoot, t.pos, t.size, Theme.Hex("FF7A1A"), 3);
+                    FitTrigger(go, 0.8f);
+                    var kz = go.AddComponent<KillZone>(); kz.msg = "Burned by the flame jet.";
+                    go.AddComponent<Trap>().Init(TrapType.FlameJet);
+                    break;
+                }
+                case TrapType.HolyWater:
+                {
+                    var sp = Assets.Sprite("holywater");
+                    GameObject go = sp != null
+                        ? Theme.SpriteBox("HolyWater", _levelRoot, t.pos, t.size, sp, 3)
+                        : Theme.Box("HolyWater", _levelRoot, t.pos, t.size, new Color(0.5f, 0.8f, 0.95f, 0.5f), 3);
+                    FitTrigger(go, 0.9f);
+                    var kz = go.AddComponent<KillZone>(); kz.msg = "Burned by holy water.";
+                    go.AddComponent<Trap>().Init(TrapType.HolyWater);
+                    break;
+                }
+                case TrapType.BatSwoop:
+                {
+                    var frames = Assets.Sheet("bat_fly", 32);   // 128x32 strip = 4 frames
+                    var sp = (frames != null && frames.Length > 0) ? frames[0] : Theme.Bat;
+                    var go = Theme.SpriteBox("Bat", _levelRoot, t.pos, new Vector2(0.95f, 0.95f), sp, 4);
+                    // Blood-red from frame one + a glow halo so swooping bats are unmistakable.
+                    go.GetComponent<SpriteRenderer>().color = new Color(1f, 0.22f, 0.22f, 1f);
+                    Fx.Glow(go, new Color(1f, 0.2f, 0.2f, 0.55f), 1.5f, 3);
+                    go.AddComponent<BatEnemy>().Init(frames);
+                    break;
+                }
+                default: // LateSpike / Crusher / Surprise / Dart / Faller / Chandelier / Reverse = invisible sensors
                 {
                     var go = Theme.Box(t.type.ToString(), _levelRoot, t.pos, t.size,
                         new Color(0, 0, 0, 0f), 0);
@@ -1292,23 +1954,43 @@ namespace TrustIssues
             if (t.type != TrapType.Surprise) return;
             if (t.pos.y > -1.5f) return;   // skip air-placed sensors (e.g. spring spikes)
 
-            var sun = Theme.Hex("FFE9A8"); // pale daylight gold
-            float floorY = -2.5f;          // floors sit with top ~ -2.7
+            var gold  = Theme.Hex("FFE6A0"); // pale daylight gold
+            var amber = Theme.Hex("FFB347"); // warmer body of the sun
+            float floorY = -2.5f;            // floors sit with top ~ -2.7
+            float sunY   = floorY + 1.85f;   // the orb hovers above the cursed ground
+            var sunPos   = new Vector2(t.pos.x, sunY);
 
-            // A SMALL, low shimmer hugging the floor — a hint, not a barrier. (It
-            // used to be a tall shaft that read like a wall blocking the path.)
-            float w = Mathf.Min(t.size.x, 0.8f);
+            // --- slow-spinning ray spokes radiating behind the orb ---
+            var rays = new GameObject("SunRays");
+            rays.transform.SetParent(_levelRoot, false);
+            rays.transform.position = sunPos;
+            for (int i = 0; i < 8; i++)
+            {
+                var ray = Theme.Box("Ray", rays.transform, sunPos, new Vector2(0.13f, 2.6f), gold, 1);
+                ray.transform.localRotation = Quaternion.Euler(0, 0, i * 45f);
+                ray.GetComponent<SpriteRenderer>().color = new Color(gold.r, gold.g, gold.b, 0.14f);
+            }
+            rays.AddComponent<Spinner>().speed = 9f;   // lazy, ominous turn
+
+            // --- a soft shaft of daylight spilling DOWN onto the cursed ground ---
             var beam = Theme.Box("SunBeam", _levelRoot,
-                new Vector2(t.pos.x, floorY + 0.45f), new Vector2(w * 0.5f, 0.9f), sun, 2);
-            var bsr = beam.GetComponent<SpriteRenderer>();
-            bsr.color = new Color(sun.r, sun.g, sun.b, 0.06f);
-            var bp = beam.AddComponent<FaintPulse>(); bp.min = 0.03f; bp.max = 0.09f;
+                new Vector2(t.pos.x, (sunY + floorY) / 2f), new Vector2(0.9f, sunY - floorY), gold, 1);
+            beam.GetComponent<SpriteRenderer>().color = new Color(gold.r, gold.g, gold.b, 0.07f);
+            var bp = beam.AddComponent<FaintPulse>(); bp.min = 0.05f; bp.max = 0.12f;
 
-            // the hot patch where it touches the ground
-            var patch = Theme.Box("SunPatch", _levelRoot, new Vector2(t.pos.x, floorY),
-                new Vector2(w * 0.8f, 0.16f), sun, 3);
-            patch.GetComponent<SpriteRenderer>().color = new Color(sun.r, sun.g, sun.b, 0.28f);
-            var pp = patch.AddComponent<FaintPulse>(); pp.min = 0.12f; pp.max = 0.32f;
+            // --- the sun orb itself: a warm glowing disc that gently breathes ---
+            var orb = Theme.SpriteBox("Sun", _levelRoot, sunPos, new Vector2(1.5f, 1.5f), Theme.Moon, 2);
+            orb.GetComponent<SpriteRenderer>().color = new Color(amber.r, amber.g, amber.b, 0.9f);
+            var op = orb.AddComponent<FaintPulse>(); op.min = 0.72f; op.max = 0.96f; op.speed = 1.8f;
+            // a hot near-white core for depth
+            var core = Theme.SpriteBox("SunCore", orb.transform, sunPos, new Vector2(0.85f, 0.85f), Theme.Moon, 3);
+            core.GetComponent<SpriteRenderer>().color = new Color(1f, 0.97f, 0.85f, 0.95f);
+
+            // --- the hot pool of sunlight on the floor: THIS is the kill tell ---
+            var patch = Theme.SpriteBox("SunPatch", _levelRoot, new Vector2(t.pos.x, floorY + 0.04f),
+                new Vector2(1.5f, 0.55f), Theme.Moon, 3);
+            patch.GetComponent<SpriteRenderer>().color = new Color(gold.r, gold.g, gold.b, 0.42f);
+            var pp = patch.AddComponent<FaintPulse>(); pp.min = 0.28f; pp.max = 0.52f;
         }
 
         void BuildPortals(PortalPair pp)
@@ -1334,7 +2016,13 @@ namespace TrustIssues
         {
             var go = new GameObject("Beanie");
             go.transform.SetParent(_levelRoot, false);
-            go.transform.position = _hasCheckpoint ? _checkpoint : (Vector3)_level.Spawn;
+            // Respawn at the level start, OR at a deliberately-placed checkpoint if
+            // you've reached one. We deliberately do NOT track "wherever you last
+            // stood" — in a one-hit game that parks you right next to whatever just
+            // killed you, so you'd respawn straight into the same death over and over.
+            Vector3 spawnAt = _level.Spawn;
+            if (_hasCheckpoint && _checkpoint.x > spawnAt.x) spawnAt = _checkpoint;
+            go.transform.position = spawnAt;
             go.tag = "Player";
 
             go.AddComponent<Rigidbody2D>();
@@ -1364,7 +2052,12 @@ namespace TrustIssues
             var pmRun = Assets.Sheet("pinkman_run", 32);
             var pmJump = Assets.Sheet("pinkman_jump", 32);
             var beanie = Assets.Sprite("beanie_idle");
-            Sprite firstFrame = haveVamp ? vIdle[0]
+
+            // Equipped cosmetic skin: choose the base sprite set, then tint it.
+            var skin = Skins.Current;
+            bool wantPink = skin.pinkman && pmIdle != null && pmIdle.Length > 0;
+            bool useVamp = haveVamp && !wantPink;
+            Sprite firstFrame = useVamp ? vIdle[0]
                 : (pmIdle != null && pmIdle.Length > 0) ? pmIdle[0] : beanie;
 
             if (firstFrame != null)
@@ -1373,9 +2066,10 @@ namespace TrustIssues
                 b.transform.SetParent(go.transform, false);
                 // Vampire frames have shadow/padding at the bottom; nudge down so
                 // the character's feet sit on the floor, not floating above it.
-                b.transform.localPosition = haveVamp ? new Vector3(0f, -0.12f, 0f) : Vector3.zero;
+                b.transform.localPosition = useVamp ? new Vector3(0f, -0.12f, 0f) : Vector3.zero;
                 bodySr = b.AddComponent<SpriteRenderer>();
                 bodySr.sprite = firstFrame;
+                bodySr.color = Skins.Shade(skin);  // cosmetic skin colour (softened so it keeps detail)
                 bodySr.sortingOrder = 5;
                 float h = firstFrame.bounds.size.y;
                 float s = h > 0.0001f ? 1.35f / h : 1f;
@@ -1392,12 +2086,17 @@ namespace TrustIssues
 
             _player = go.AddComponent<PlayerController>();
             _player.canFly = _mode != Mode.Curated; // The Castle is pure precision — no bat flight
+            // Skin-granted abilities (dash / double-jump / speed / phase).
+            _player.moveMul = skin.moveMul;
+            _player.jumpMul = skin.jumpMul;
+            _player.dashEnabled = skin.dash;
+            _player.extraAirJumps = skin.airJumps;
             _playerVisual = vis;
             if (bodySr != null)
             {
                 _player.bodyRenderer = bodySr;
                 _player.batSprite = Theme.Bat;
-                if (haveVamp)
+                if (useVamp)
                 {
                     _player.idleFrames = vIdle;
                     _player.runFrames = (vRun != null && vRun.Length > 0) ? vRun
@@ -1432,18 +2131,305 @@ namespace TrustIssues
             return list.Count > 0 ? list.ToArray() : null;
         }
 
+        // ==================== sun-rise pressure ====================
+        // Daylight floods in from behind: a bright wall that creeps right. Catch the
+        // player's x and they burn. Resets every life (BuildLevel re-arms the clock).
+        void StartSunrise()
+        {
+            _sunRising = true;
+            _sunWallX = _player.transform.position.x - 9f;  // dawn breaks behind you
+            _sunWall = Theme.Box("Sunrise", _levelRoot, new Vector2(_sunWallX - 20f, 0f),
+                new Vector2(40f, 40f), Theme.Hex("FFE6A0"), 6);
+            _sunWall.GetComponent<SpriteRenderer>().color = new Color(1f, 0.95f, 0.7f, 0.1f);
+            if (_toast != null) StartCoroutine(FlashToast("The sun is rising — RUN!"));
+        }
+
+        void TickSunrise()
+        {
+            _sunWallX += 3.2f * Time.deltaTime;   // the creep speed (tuned to be escapable)
+            if (_sunWall != null)
+            {
+                _sunWall.transform.position = new Vector3(_sunWallX - 20f, 0f, 0f);
+                float d = _player.transform.position.x - _sunWallX;
+                float a = Mathf.Clamp01(1f - d / 8f) * 0.6f;
+                _sunWall.GetComponent<SpriteRenderer>().color =
+                    new Color(1f, 0.95f, 0.7f, Mathf.Max(0.1f, a));
+            }
+            if (_sunWallX >= _player.transform.position.x)
+                Die("Caught in the sunrise. Vampires burn.");
+        }
+
+        // ==================== boss arenas ====================
+        // Per-boss intro flavour — reinforces that the four fights are distinct.
+        static readonly string[] BossTitles = { "", "THE GHOUL", "THE COUNTESS", "THE WARLOCK", "THE VAMPIRE LORD" };
+        static readonly string[] BossTags =
+        {
+            "",
+            "a lumbering bruiser — bait the charge, then punish",
+            "a trickster duelist — don't flinch at her fake-outs",
+            "he owns the air — weave the rain, grab the gun",
+            "the full nightmare — dodge everything, then strike",
+        };
+
+        void SetupBoss(int tier)
+        {
+            _bossGen++;                     // invalidate any pending pickup respawns
+            _gunPickup = null;
+            // Start the fight UNARMED: you must dodge to a weapon pickup, grab a clip,
+            // blast the boss, then dodge to the next one. canShoot just means "blaster
+            // mechanic is live in this arena"; ammo gates the actual firing + the gun.
+            if (_player != null) { _player.canShoot = true; _player.ammo = 0; }
+            // A small health buffer in boss arenas ONLY, so a single mis-read isn't an
+            // instant death. Difficulty-scaled (Nightmare = one-shot). Resets here on
+            // every (re)build of the fight.
+            _bossHp = Diff.BossPlayerHearts;
+            _bossIFrames = 0f;
+            if (_player != null && _player.bodyRenderer != null) _player.bodyRenderer.enabled = true;
+
+            // Calm the busy parallax scenery so the duel reads clearly: a dark haze
+            // across the arena, behind the platforms/boss (order 0 < platforms at 1)
+            // but in front of the world backdrop (order -18). Makes the boss pop.
+            float mid = (_camMin + _camMax) / 2f;
+            Theme.Box("BossHaze", _levelRoot, new Vector2(mid, 0f),
+                new Vector2((_camMax - _camMin) + 40f, 30f), new Color(0.03f, 0.01f, 0.05f, 0.5f), 0);
+
+            float cx = mid + 3f;   // boss sits right of centre
+            var sp = Assets.Sprite("boss" + tier);
+            GameObject go = sp != null
+                ? Theme.SpriteBox("Boss", _levelRoot, new Vector3(cx, -0.4f, 0f), new Vector2(2.6f, 2.6f), sp, 4)
+                : Theme.Box("Boss", _levelRoot, new Vector2(cx, -0.4f), new Vector2(2.0f, 2.6f), Theme.Hex("2A0A12"), 4);
+            var bsr = go.GetComponent<SpriteRenderer>();
+            // Higher tiers look more sinister: deepen toward blood-red.
+            Color[] tint = { Color.white, Color.white, new Color(0.95f, 0.85f, 0.95f),
+                             new Color(1f, 0.75f, 0.75f), new Color(1f, 0.55f, 0.55f) };
+            if (sp != null) bsr.color = tint[tier];
+            else
+            {
+                // fallback silhouette with glowing eyes (only if art is missing)
+                Theme.Box("BossEyeL", go.transform, new Vector2(cx - 0.4f, 0.3f), new Vector2(0.3f, 0.3f), Theme.Danger, 5);
+                Theme.Box("BossEyeR", go.transform, new Vector2(cx + 0.4f, 0.3f), new Vector2(0.3f, 0.3f), Theme.Danger, 5);
+            }
+            var boss = go.AddComponent<Boss>();
+            boss.Init(tier, _camMin - 4f, _camMax + 4f);
+            Audio.Music("music_boss", 0.45f);
+
+            int ti = Mathf.Clamp(tier, 1, 4);
+            if (_bossIntroedTier == tier)
+            {
+                // A retry of the same fight — skip the cutscene, hand control straight back.
+                boss.IntroHold = false;
+                ShowBanner(BossTitles[ti], BossTags[ti]);
+                SpawnGunPickup();
+            }
+            else
+            {
+                // First time facing this boss this run — play the cinematic reveal. The
+                // cutscene unfreezes the player and drops the first weapon at its end.
+                _bossIntroedTier = tier;
+                StartCoroutine(BossIntro(ti, boss, go));
+            }
+        }
+
+        // A short cinematic before a boss fight: letterbox bars slide in, the boss
+        // punches up to full size with a roar + red ring, its name slams in, then
+        // control returns and the first weapon drops. Held off on retries (see above).
+        IEnumerator BossIntro(int ti, Boss boss, GameObject bossGo)
+        {
+            if (_player != null) _player.Freeze();
+            // Shrink the boss out of sight BEFORE the bars come in, so it punches up
+            // into view during the reveal rather than just sitting there.
+            Vector3 full = bossGo != null ? bossGo.transform.localScale : Vector3.one;
+            if (bossGo != null) bossGo.transform.localScale = full * 0.25f;
+
+            const float barH = 130f;
+            var top = CineBar(true);
+            var bot = CineBar(false);
+
+            for (float e = 0f; e < 1f; e += Time.unscaledDeltaTime / 0.35f)
+            {
+                float k = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(e));
+                SetBarHeight(top, barH * k); SetBarHeight(bot, barH * k);
+                yield return null;
+            }
+
+            // Boss reveal: scale-punch from small + roar + ring + flash.
+            Audio.PlayOr("boss_roar", "death", 0.85f);
+            if (bossGo != null) Fx.Ring(bossGo.transform.position, new Color(1f, 0.15f, 0.15f, 0.85f), 6f, 0.7f);
+            ScreenFlash(); ShakeCam(0.45f, 0.45f);
+            for (float e = 0f; e < 1f; e += Time.unscaledDeltaTime / 0.4f)
+            {
+                if (bossGo != null)
+                    bossGo.transform.localScale = Vector3.Lerp(full * 0.25f, full * 1.12f, Mathf.Clamp01(e));
+                yield return null;
+            }
+            if (bossGo != null) bossGo.transform.localScale = full;
+
+            // Name slam + tagline.
+            var nameT = Theme.Label(Theme.Canvas.transform, BossTitles[ti], 100, Theme.Player,
+                new Vector2(0.5f, 0.5f), new Vector2(0, 44), new Vector2(1700, 150));
+            if (Theme.TitleFont != null) nameT.font = Theme.TitleFont;
+            var tagT = Theme.Label(Theme.Canvas.transform, BossTags[ti], 32, new Color(1, 1, 1, 0.82f),
+                new Vector2(0.5f, 0.5f), new Vector2(0, -42), new Vector2(1500, 70));
+            yield return new WaitForSecondsRealtime(1.5f);
+            if (nameT != null) Destroy(nameT.gameObject);
+            if (tagT != null) Destroy(tagT.gameObject);
+
+            // Retract the bars.
+            for (float e = 0f; e < 1f; e += Time.unscaledDeltaTime / 0.3f)
+            {
+                float k = 1f - Mathf.Clamp01(e);
+                SetBarHeight(top, barH * k); SetBarHeight(bot, barH * k);
+                yield return null;
+            }
+            if (top != null) Destroy(top.gameObject);
+            if (bot != null) Destroy(bot.gameObject);
+
+            // Fight on: release the boss, hand control back, drop the first weapon.
+            if (boss != null) boss.IntroHold = false;
+            if (_player != null) _player.Unfreeze();
+            SpawnGunPickup();
+        }
+
+        // A full-width cinematic letterbox bar pinned to the top or bottom edge.
+        Image CineBar(bool top)
+        {
+            var go = new GameObject(top ? "CineTop" : "CineBot", typeof(RectTransform));
+            go.transform.SetParent(Theme.Canvas.transform, false);
+            var img = go.AddComponent<Image>();
+            img.color = new Color(0f, 0f, 0f, 0.94f); img.raycastTarget = false;
+            var rt = img.rectTransform;
+            rt.anchorMin = new Vector2(0f, top ? 1f : 0f);
+            rt.anchorMax = new Vector2(1f, top ? 1f : 0f);
+            rt.pivot = new Vector2(0.5f, top ? 1f : 0f);
+            rt.sizeDelta = new Vector2(0f, 0f);
+            return img;
+        }
+        void SetBarHeight(Image bar, float h)
+        {
+            if (bar != null) bar.rectTransform.sizeDelta = new Vector2(0f, h);
+        }
+
+        // Drop a weapon pickup somewhere on the LEFT side of the arena (away from the
+        // boss, which sits right), low to the ground so the player must move to grab it.
+        void SpawnGunPickup()
+        {
+            if (!InBossRoom) return;
+            float mid = (_camMin + _camMax) / 2f;
+            float x = Random.Range(_camMin + 2f, mid - 0.5f);
+            var pos = new Vector3(x, -2.0f, 0f);
+
+            var go = new GameObject("GunPickup");
+            go.transform.SetParent(_levelRoot, false);
+            go.transform.position = pos;
+            // A clear, glowing stake-launcher: dark body + bright muzzle + gold halo + bob.
+            Theme.Box("PuBody",   go.transform, pos, new Vector2(0.7f, 0.26f), Theme.Hex("3A3440"), 4);
+            Theme.Box("PuBarrel", go.transform, pos + new Vector3(0.3f, 0f, 0f), new Vector2(0.5f, 0.14f), Theme.Hex("6A6470"), 4);
+            Theme.Box("PuTip",    go.transform, pos + new Vector3(0.55f, 0f, 0f), new Vector2(0.12f, 0.18f), Theme.Danger, 5);
+            Fx.Glow(go, new Color(1f, 0.82f, 0.3f, 0.7f), 1.6f, 3);
+            var col = go.AddComponent<BoxCollider2D>(); col.isTrigger = true; col.size = new Vector2(1.4f, 1.4f);
+            go.AddComponent<Bobber>();                 // gentle float so it reads as "grab me"
+            go.AddComponent<GunPickup>().Init(BossClip);
+            _gunPickup = go;
+        }
+
+        // The held weapon was collected — no pickup in the arena until the clip is spent.
+        // Refresh the touch layout so the phone SHOOT button appears now that you're armed.
+        public void OnGunCollected() { _gunPickup = null; UpdateHud(); UpdateTouchLayout(); }
+
+        // The clip ran dry — after a short dodge gap, drop a fresh weapon elsewhere.
+        public void OnGunEmpty()
+        {
+            UpdateTouchLayout();   // hide the phone SHOOT button — you're empty again
+            if (!InBossRoom || _gunPickup != null) return;
+            StartCoroutine(RespawnGunAfter(1.4f, _bossGen));
+        }
+
+        IEnumerator RespawnGunAfter(float delay, int gen)
+        {
+            yield return new WaitForSeconds(delay);
+            // Bail if the fight ended / rebuilt / the player already grabbed one.
+            if (gen != _bossGen || !InBossRoom || _state != State.Play || _gunPickup != null) yield break;
+            SpawnGunPickup();
+        }
+
+        // A boss hit (contact, bolt, dash, or spike). Outside boss arenas the game is
+        // one-shot; INSIDE one, the player has a small buffer (3 pips) so a single slip
+        // isn't instant death. After a chip hit there's a brief mercy window so one
+        // volley can't eat every pip in consecutive frames.
+        public void HitPlayer(string cause)
+        {
+            if (_state != State.Play || _dying || !InBossRoom) return;
+            if (_bossIFrames > 0f) return;            // still in the mercy window
+            if (_bossHp > 1)
+            {
+                _bossHp--;
+                _bossIFrames = 1.1f;
+                ScreenFlash();
+                ShakeCam(0.35f, 0.25f);
+                Audio.PlayOr("boss_hit", "death", 0.6f);
+                UpdateHud();
+                return;
+            }
+            Die(cause);                                // last pip spent — this one kills
+        }
+
+        // The boss is dead: open the coffin so the player can leave, hush the theme.
+        public void BossDefeated()
+        {
+            _bossGen++;                               // stop any pending pickup respawn
+            if (_gunPickup != null) { Destroy(_gunPickup); _gunPickup = null; }
+            if (_player != null) { _player.canShoot = false; _player.ammo = 0; }
+            SlowMoBurst(0.35f, 0.7f);            // savour the kill
+            Audio.StopMusic();
+            int tier = _level != null ? _level.BossTier : 0;
+            if (tier >= 1) Badges.Award("boss" + Mathf.Clamp(tier, 1, 4));
+            if (_toast != null) StartCoroutine(FlashToast("THE LORD FALLS  -  flee RIGHT to the coffin"));
+            SpawnExitCoffin(new Vector2(_camMax + 4f, -2f));
+        }
+
+        void SpawnExitCoffin(Vector2 pos)
+        {
+            var go = new GameObject("RealExit");
+            go.transform.SetParent(_levelRoot, false);
+            go.transform.position = pos;
+            var col = go.AddComponent<BoxCollider2D>();
+            col.isTrigger = true; col.size = new Vector2(1.1f, 1.7f);
+            go.AddComponent<Trap>().Init(TrapType.RealExit);
+            Theme.Box("CoffinBack", _levelRoot, pos, new Vector2(1.4f, 2.05f), Theme.Hex("140C08"), 1);
+            Theme.Box("Coffin", _levelRoot, pos, new Vector2(1.15f, 1.9f), Theme.Hex("3A2418"), 2);
+            Theme.Box("CrossV", _levelRoot, pos + new Vector2(0, 0.1f), new Vector2(0.18f, 0.95f), Theme.Exit, 3);
+            Theme.Box("CrossH", _levelRoot, pos + new Vector2(0, 0.45f), new Vector2(0.62f, 0.18f), Theme.Exit, 3);
+            // A gold glow pulsing on the coffin so the way out is unmistakable.
+            Fx.Ring(pos, new Color(0.88f, 0.7f, 0.25f, 0.8f), 3.2f, 0.7f);
+        }
+
         // ==================== camera & loop ====================
         void SnapCamera()
         {
             if (_player == null) return;
+            if (InBossRoom) { PositionBossCam(); return; }
+            _cam.orthographicSize = NormalCamSize;
             float x = Mathf.Clamp(_player.transform.position.x, _camMin, _camMax);
             _cam.transform.position = new Vector3(x, CamY, -10f);
+        }
+
+        // Boss arenas pull the camera WAY back and lock it on the room centre, so the
+        // entire battlefield — every telegraph, bolt and spike — is visible at once.
+        void PositionBossCam()
+        {
+            const float halfArena = 14.2f;          // walls sit at ±13.2; show a little past them
+            const float topY = 5.2f, botY = -3.6f;  // floor to the bolt-rain ceiling
+            float sizeForWidth = halfArena / Mathf.Max(0.1f, _cam.aspect);
+            float sizeForHeight = (topY - botY) / 2f;
+            _cam.orthographicSize = Mathf.Max(sizeForWidth, sizeForHeight);
+            _cam.transform.position = new Vector3(0f, (topY + botY) / 2f, -10f);
         }
 
         void LateUpdate()
         {
             if (_state == State.Play && _player != null)
             {
+                if (InBossRoom) { PositionBossCam(); return; }   // locked, no follow
                 float x = Mathf.Clamp(_player.transform.position.x, _camMin, _camMax);
                 var p = _cam.transform.position;
                 _cam.transform.position = new Vector3(
@@ -1488,6 +2474,44 @@ namespace TrustIssues
             if (_state == State.Play && _player != null && !_dying &&
                 _player.transform.position.y < -9f)
                 Die("Gravity wins again.");
+
+            // Boss-arena mercy window: count it down and blink the player so the
+            // invulnerability is legible. Always restore the sprite when it ends.
+            if (_bossIFrames > 0f)
+            {
+                _bossIFrames -= Time.deltaTime;
+                if (_player != null && _player.bodyRenderer != null)
+                    _player.bodyRenderer.enabled = _bossIFrames <= 0f || ((int)(Time.unscaledTime * 12f) % 2 == 0);
+            }
+
+            // Record the path (~20 Hz) for the ghost-of-your-last-attempt racer.
+            if (_state == State.Play && _player != null && !_dying && _mode != Mode.Versus)
+            {
+                _recTimer += Time.deltaTime;
+                if (_recTimer >= 0.05f)
+                {
+                    _recTimer = 0f;
+                    _recT.Add(Time.realtimeSinceStartup - _levelStartRealtime);
+                    _recP.Add(_player.transform.position);
+                }
+            }
+
+            // Reactive-trap "linger" tracking (which floor spots you dawdle on).
+            if (_state == State.Play && _player != null && !_dying && !InBossRoom && _player.IsGrounded)
+            {
+                var pp = _player.transform.position;
+                int bucket = Mathf.RoundToInt(pp.x);
+                _linger.TryGetValue(bucket, out float lt);
+                _linger[bucket] = lt + Time.deltaTime;
+            }
+
+            // Sun-rise pressure (skips Versus / boss arenas via the 999s threshold).
+            if (_state == State.Play && _player != null && !_dying)
+            {
+                float elapsed = Time.realtimeSinceStartup - _levelStartRealtime;
+                if (!_sunRising && elapsed > _sunThreshold) StartSunrise();
+                if (_sunRising) TickSunrise();
+            }
 
             if (_flyBar != null)
             {
@@ -1556,37 +2580,137 @@ namespace TrustIssues
                 { "duration_ms", LevelDurationMs },
             });
             if (_mode == Mode.Curated)
-            { PlayerPrefs.SetInt("castle_deaths", _deaths); PlayerPrefs.Save(); } // persist lifetime tally
+            {
+                PlayerPrefs.SetInt("castle_deaths", _deaths); PlayerPrefs.Save(); // persist lifetime tally
+                if (_deaths >= 100) Badges.Award("die100");
+            }
             if (_hearts > 0) _hearts--;     // lose a heart (Endless/Daily); Curated = -1 (infinite)
-            Audio.Play("death", 0.9f);
+
+            // A death SOUNDS like what killed you (spikes squelch, crusher slams,
+            // daylight burns…) AND the vampire lets out a dying groan, so there's
+            // always loud, layered feedback. The game also ROASTS you, meaner each death.
+            string cause = Juice.Categorize(msg);
+            Audio.PlayOr(Juice.DeathSfx(cause), "death", 1f);
+            Audio.PlayVoice("death_voice", 0.85f);     // the vampire perishes — scaled by the VOICE slider
             FlashRed();
+            StartCoroutine(HitStop(0.08f));        // a punchy freeze-frame on impact
             UpdateHud();
-            StartCoroutine(DieRoutine(msg ?? Juice.DeathLine()));
+            // Did you die RIGHT before the exit? The narrator twists the knife.
+            bool nearMiss = _player != null && _levelEndX > 0f &&
+                            _player.transform.position.x > _levelEndX - 6f;
+            RecordReactiveTrap();                  // the game LEARNS where you felt safe
+            string roast = Juice.Roast(cause, _deaths, _levelIndex + 1, nearMiss);
+            Voice.Speak(roast);                    // the game mocks you OUT LOUD (WebGL TTS)
+            StartCoroutine(DieRoutine(roast));
         }
 
         IEnumerator DieRoutine(string msg)
         {
-            if (_toast != null) _toast.text = msg;
+            // Snapshot this attempt's path so the next try races it as a ghost.
+            if (_recP.Count > 1) { _lastT = _recT.ToArray(); _lastP = _recP.ToArray(); }
+            // Show the roast but DON'T block on it — it lingers on the canvas while
+            // you're already retrying (the toast survives the level rebuild).
+            if (_toast != null) { _toast.text = msg; StartCoroutine(ClearToastAfter(msg, 1.2f)); }
             Vector3 deathPos = _player != null ? _player.transform.position : Vector3.zero;
             if (_player != null)
             {
+                Fx.Explosion(deathPos, 1.7f);     // a quick blast under the gore
                 GoreBurst(deathPos);
                 BloodSplash(deathPos);
+                _player.PlayDeath();
                 _player.Freeze();
             }
-            StartCoroutine(Juice.Shake(_cam.transform, 0.55f, 0.3f));
-            // Vampire has a real death animation; play it instead of the squish.
-            if (_player != null && _player.deathFrames != null && _player.deathFrames.Length > 0)
-            {
-                _player.PlayDeath();
-                yield return new WaitForSecondsRealtime(0.35f);
-            }
-            else if (_playerVisual != null) yield return Juice.Squish(_playerVisual);
-            yield return new WaitForSecondsRealtime(0.2f);
-            if (_toast != null) _toast.text = "";
+            StartCoroutine(Juice.Shake(_cam.transform, 0.45f, 0.22f));
+            // NEAR-INSTANT retry — the heart of the "just one more try" loop.
+            yield return new WaitForSecondsRealtime(0.18f);
             Destroy(_levelRoot.gameObject);
-            if (_hearts == 0) RunOver();   // out of hearts -> the run ends
+            if (_hearts == 0)
+            {
+                // Endless never hard-ends on lives — drop back to the last checkpoint
+                // segment with a fresh pool and keep going. Blood Moon still ends (it's
+                // a fixed nightly challenge), as does any other heart mode.
+                if (_mode == Mode.Endless) EndlessCheckpointRespawn();
+                else RunOver();
+            }
             else BuildLevel();
+        }
+
+        // Endless: out of lives → bank best depth, fall back to the start of the
+        // current checkpoint segment, refill hearts, and continue. The run only ever
+        // ends when the player chooses "END RUN" from the pause menu.
+        void EndlessCheckpointRespawn()
+        {
+            if (_levelIndex > PlayerPrefs.GetInt("best_endless", 0))
+            { PlayerPrefs.SetInt("best_endless", _levelIndex); PlayerPrefs.Save(); }
+            int seg = (_levelIndex / Diff.CheckpointEvery) * Diff.CheckpointEvery;
+            _levelIndex = seg;
+            _hearts = Diff.StartHearts;
+            _hasCheckpoint = false;
+            ResetFloorState();
+            Audio.Play("levelup", 0.5f);
+            ShowBanner("CHECKPOINT HOLDS",
+                       $"back to floor {seg + 1} • {Diff.StartHearts} fresh lives • the night goes on");
+            BuildLevel();
+        }
+
+        IEnumerator ClearToastAfter(string msg, float delay)
+        {
+            yield return new WaitForSecondsRealtime(delay);
+            if (_toast != null && _toast.text == msg) _toast.text = "";
+        }
+
+        // The game LEARNS: bank the spot where you lingered longest this attempt, so
+        // on the next retry a late-spike sprouts there. Avoidable (jump it) — never
+        // makes a floor impossible — but it punishes the "safe spot" you trusted.
+        void RecordReactiveTrap()
+        {
+            if (InBossRoom || _mode == Mode.Versus) { _linger.Clear(); return; }
+            if (_mode == Mode.Curated && _levelIndex < 5) { _linger.Clear(); return; } // floors 1-5 stay welcoming
+            if (_ghostTrapX.Count < Diff.ReactiveTrapCap)
+            {
+                float bestX = 0f, bestT = 0.55f; bool found = false;
+                foreach (var kv in _linger)
+                {
+                    float x = kv.Key;
+                    if (x <= _level.Spawn.x + 2f || x >= _levelEndX - 2f) continue;
+                    if (kv.Value > bestT) { bestT = kv.Value; bestX = x; found = true; }
+                }
+                // Place the spike JUST AHEAD of the comfort spot — never on the
+                // respawn point itself (no instant-death loop), and it betrays the
+                // path you were about to take. Fall back to the comfort spot if the
+                // spot ahead isn't safely jumpable.
+                float trapX = Mathf.Min(bestX + 1.2f, _levelEndX - 2f);
+                if (!SafeSpikeSpot(trapX)) trapX = bestX;
+                // ONLY commit it where you can actually run up and jump it. If neither
+                // spot is safely jumpable, learn nothing this floor — better no trap
+                // than one that drops into a gap / lone foothold and walls the floor off.
+                if (found && SafeSpikeSpot(trapX) &&
+                    !_ghostTrapX.Exists(g => Mathf.Abs(g - trapX) < 1.5f))
+                { _ghostTrapX.Add(trapX); _reactiveAdded = true; }
+            }
+            _linger.Clear();
+        }
+
+        // A learned reactive spike is only FAIR if you can run up and jump it. This
+        // guards against the spike landing somewhere that walls the floor off:
+        //  • requires continuous ground-level floor across the whole run-up/landing
+        //    span (so it can't drop into a gap or onto a single-tile foothold), and
+        //  • keeps clear of every other hazard (so you never leap one death into
+        //    another). If it returns false we simply don't learn that spot.
+        bool SafeSpikeSpot(float x)
+        {
+            const float clear = 1.6f;   // stride of run-up + landing room each side of the ~1-wide spike
+            for (float sx = x - clear; sx <= x + clear + 0.001f; sx += 0.4f)
+            {
+                bool grounded = _level.Platforms.Exists(p =>
+                    Mathf.Abs(p.pos.y + 3f) < 0.6f &&                 // a real ground floor (not a high ledge / wall)
+                    sx >= p.pos.x - p.size.x / 2f &&
+                    sx <= p.pos.x + p.size.x / 2f);
+                if (!grounded) return false;                          // a gap (or lone foothold) in the span
+            }
+            foreach (var t in _level.Traps)
+                if (Mathf.Abs(t.pos.x - x) < 2.2f) return false;      // another hazard too close
+            return true;
         }
 
         // Out of hearts in Endless/Daily — end the run and show the result.
@@ -1594,7 +2718,7 @@ namespace TrustIssues
         {
             _state = State.Win;
             if (_mode == Mode.Endless && _levelIndex > PlayerPrefs.GetInt("best_endless", 0))
-            { PlayerPrefs.SetInt("best_endless", _levelIndex); PlayerPrefs.Save(); }
+            { PlayerPrefs.SetInt("best_endless", _levelIndex); PlayerPrefs.Save(); _newBest = true; }
             Analytics.Track("run_end", new System.Collections.Generic.Dictionary<string, object>
             {
                 { "mode", ModeName },
@@ -1605,24 +2729,19 @@ namespace TrustIssues
             Audio.Play("death", 0.7f);
 
             var panel = Overlay(new Color(0.05f, 0f, 0.02f, 0.85f), out var root);
-            Theme.Label(root, "YOU PERISHED", 100, Theme.Player,
-                new Vector2(0.5f, 0.5f), new Vector2(0, 200), new Vector2(1400, 150));
+            Theme.Label(root, "YOU PERISHED", 84, Theme.Player,
+                new Vector2(0.5f, 0.5f), new Vector2(0, 200), new Vector2(1400, 150)).font = Theme.TitleFont;
             string reached = _mode == Mode.Endless ? $"reached floor {_levelIndex + 1}"
                                                     : $"fell on night {_levelIndex + 1}/{DailyLen}";
             Theme.Label(root, reached + $"   •   {_deaths} deaths", 50, Color.white,
                 new Vector2(0.5f, 0.5f), new Vector2(0, 90), new Vector2(1400, 70));
 
-            string share = _mode == Mode.Endless
-                ? $"“I reached FLOOR {_levelIndex + 1} of Endless Night in Trust Issues \U0001F987 — beat that”"
-                : $"“I only reached night {_levelIndex + 1} of tonight's Blood Moon \U0001F987”";
-            Theme.Label(root, share, 30, Theme.Coin,
-                new Vector2(0.5f, 0.5f), new Vector2(0, -10), new Vector2(1500, 60));
-            Theme.Label(root, "(screenshot & share your run)", 24, new Color(1, 1, 1, 0.45f),
-                new Vector2(0.5f, 0.5f), new Vector2(0, -55), new Vector2(1200, 40));
-
-            Theme.Button(root, "BACK TO THE CASTLE", new Color(0.28f, 0.24f, 0.32f), Color.white, 44,
-                new Vector2(0.5f, 0.5f), new Vector2(0, -160), new Vector2(640, 120),
-                () => { Destroy(panel); ShowMenu(); });
+            string lbMode = _mode == Mode.Endless ? "endless" : "daily";
+            Leaderboard.Submit(lbMode, _mode == Mode.Endless ? _levelIndex + 1 : _deaths);
+            string brag = _mode == Mode.Endless
+                ? $"I reached FLOOR {_levelIndex + 1} of Endless Night in Trust Issues \U0001F987 — beat that"
+                : $"I fell on night {_levelIndex + 1} of tonight's Blood Moon \U0001F987";
+            ResultFooter(root, panel, brag, lbMode);
         }
 
         // ==================== level progression / win ====================
@@ -1650,13 +2769,29 @@ namespace TrustIssues
             }
 
             Audio.Play("levelup", 0.7f);
-            if (_hearts >= 0) _hearts = Mathf.Min(5, _hearts + 1); // bank a heart per floor
+            // Clear payoff: gold burst + ring + a little shake (dopamine close).
+            if (_player != null)
+            {
+                Fx.Burst(_player.transform.position, Theme.Exit, 18, 6f, 0.18f, 0.6f, 6f);
+                Fx.Ring(_player.transform.position, new Color(1f, 0.9f, 0.5f, 0.7f), 3f, 0.5f);
+                ShakeCam(0.22f, 0.18f);
+            }
+            if (_hearts >= 0) _hearts = Mathf.Min(Diff.MaxHearts, _hearts + 1); // bank a heart per floor
 
             if (_mode == Mode.Endless)
             {
                 _levelIndex++;
                 if (_levelIndex > PlayerPrefs.GetInt("best_endless", 0))
-                { PlayerPrefs.SetInt("best_endless", _levelIndex); PlayerPrefs.Save(); }
+                { PlayerPrefs.SetInt("best_endless", _levelIndex); PlayerPrefs.Save(); _newBest = true; }
+                if (_levelIndex + 1 >= 10) Badges.Award("endless10");
+                if (_levelIndex + 1 >= 20) Badges.Award("endless20");
+                // Crossing a checkpoint boundary banks a new safe fall-back floor.
+                if (_levelIndex % Diff.CheckpointEvery == 0)
+                {
+                    Badges.Award("endless" + _levelIndex);   // milestone badge (endless5/10/15/…)
+                    ShowBanner($"CHECKPOINT — FLOOR {_levelIndex + 1}",
+                               "you'll respawn here if you fall • keep climbing");
+                }
                 StartCoroutine(NextLevelFlash());
                 return;
             }
@@ -1667,7 +2802,7 @@ namespace TrustIssues
                 {
                     string key = "daily_" + DailySeed();
                     if (_deaths < PlayerPrefs.GetInt(key, int.MaxValue))
-                    { PlayerPrefs.SetInt(key, _deaths); PlayerPrefs.Save(); }
+                    { PlayerPrefs.SetInt(key, _deaths); PlayerPrefs.Save(); _newBest = true; }
                     TrackRunComplete();
                     _state = State.Win; Audio.Play("win", 0.7f); StartCoroutine(WinRoutine());
                 }
@@ -1682,7 +2817,7 @@ namespace TrustIssues
                 PlayerPrefs.Save();
                 StartCoroutine(NextLevelFlash());
             }
-            else { UnlockCastle(Levels.Count - 1); TrackRunComplete(); _state = State.Win; Audio.Play("win", 0.7f); StartCoroutine(WinRoutine()); }
+            else { UnlockCastle(Levels.Count - 1); Badges.Award("castle_clear"); TrackRunComplete(); _state = State.Win; Audio.Play("win", 0.7f); StartCoroutine(WinRoutine()); }
         }
 
         // The player finished the whole mode (last night / last castle floor).
@@ -1707,6 +2842,7 @@ namespace TrustIssues
             if (_toast != null) _toast.text = "";
             Destroy(_levelRoot.gameObject);
             _hasCheckpoint = false;
+            ResetFloorState();          // new floor — clear section checkpoint + learned traps
             _state = State.Play;
             BuildLevel();
         }
@@ -1718,21 +2854,158 @@ namespace TrustIssues
             bool daily = _mode == Mode.Daily;
             Theme.Label(root, daily ? "YOU SURVIVED THE NIGHT" : "YOU ESCAPED THE CASTLE", daily ? 80 : 90, Theme.Exit,
                 new Vector2(0.5f, 0.5f), new Vector2(0, 200), new Vector2(1600, 160));
-            Theme.Label(root, $"died {_deaths} time" + (_deaths == 1 ? "" : "s") + " \U0001FA78",
+            Theme.Label(root, $"died {_deaths} time" + (_deaths == 1 ? "" : "s"),
                 60, Theme.Player, new Vector2(0.5f, 0.5f), new Vector2(0, 90), new Vector2(1400, 90));
 
-            string share = daily
-                ? $"“I cleared tonight's Blood Moon in Trust Issues with {_deaths} deaths \U0001F987 — beat that”"
-                : $"“I escaped the castle in Trust Issues — {_deaths} deaths \U0001F987”";
-            Theme.Label(root, share, 30, Theme.Coin,
-                new Vector2(0.5f, 0.5f), new Vector2(0, -10), new Vector2(1600, 60));
-            Theme.Label(root, "(screenshot & share)", 24, new Color(1, 1, 1, 0.45f),
-                new Vector2(0.5f, 0.5f), new Vector2(0, -55), new Vector2(1200, 40));
-
-            Theme.Button(root, "MAIN MENU", Theme.Trick, Theme.Ink, 50,
-                new Vector2(0.5f, 0.5f), new Vector2(0, -160), new Vector2(460, 120),
-                () => { Destroy(panel); Destroy(_levelRoot.gameObject); ShowMenu(); });
+            string lbMode = daily ? "daily" : "castle";
+            Leaderboard.Submit(lbMode, _deaths);
+            string brag = daily
+                ? $"I cleared tonight's Blood Moon in Trust Issues with {_deaths} deaths \U0001F987 — beat that"
+                : $"I escaped the castle in Trust Issues — {_deaths} deaths \U0001F987";
+            ResultFooter(root, panel, brag, lbMode);
             yield break;
+        }
+
+        // Shared footer for result screens: a real brag line, the newest badge, and
+        // SHARE (captures a PNG card) + LEADERBOARD + MENU buttons.
+        void ResultFooter(Transform root, GameObject panel, string brag, string lbMode)
+        {
+            var c = new Vector2(0.5f, 0.5f);
+            if (_newBest)
+                Theme.Label(root, "NEW BEST!", 38, Theme.Exit,
+                    c, new Vector2(0, 34), new Vector2(800, 52)).font = Theme.TitleFont;
+            // Display strips the emoji (the pixel font can't draw it); the SHARE text
+            // keeps it (renders fine on social).
+            string shown = brag.Replace("\U0001F987", "").Replace("  ", " ").Trim();
+            Theme.Label(root, "“" + shown + "”", 28, Theme.Coin,
+                c, new Vector2(0, -10), new Vector2(1600, 60));
+            var nb = Badges.Newest;
+            if (nb != null)
+                Theme.Label(root, "NEW BADGE UNLOCKED — " + nb.name, 26, Color.white,
+                    c, new Vector2(0, -54), new Vector2(1200, 44));
+            Theme.Button(root, "SHARE", new Color(0.5f, 0.12f, 0.16f), Color.white, 36,
+                c, new Vector2(-200, -150), new Vector2(330, 96),
+                () => StartCoroutine(ShareCard.CaptureAndShare("trust-issues.png", brag)));
+            Theme.Button(root, "LEADERBOARD", new Color(0.28f, 0.24f, 0.32f), Color.white, 32,
+                c, new Vector2(200, -150), new Vector2(330, 96), () => { Destroy(panel); ShowLeaderboard(lbMode); });
+            Theme.Button(root, "MAIN MENU", new Color(1, 1, 1, 0.22f), Color.white, 34,
+                c, new Vector2(0, -270), new Vector2(420, 100),
+                () => { Destroy(panel); if (_levelRoot != null) Destroy(_levelRoot.gameObject); ShowMenu(); });
+        }
+
+        void ShowLeaderboard(string mode)
+        {
+            Audio.Play("click");
+            var c = new Vector2(0.5f, 0.5f);
+            var panel = Overlay(new Color(0.04f, 0.02f, 0.06f, 0.92f), out var root);
+            Theme.Label(root, "LEADERBOARD", 70, Theme.Player, c, new Vector2(0, 400), new Vector2(1400, 120)).font = Theme.TitleFont;
+            string scope = mode == "daily" ? "today" : "all";
+            string heading = mode == "daily" ? "Blood Moon — tonight (fewest deaths)"
+                           : mode == "endless" ? "Endless Night — deepest floor"
+                                               : "The Castle — fewest deaths";
+            Theme.Label(root, heading, 32, Theme.Coin, c, new Vector2(0, 310), new Vector2(1400, 50));
+            var list = Theme.Label(root, "summoning the dead…", 34, Color.white,
+                c, new Vector2(0, -30), new Vector2(1000, 540), TextAnchor.UpperCenter);
+            Leaderboard.Fetch(mode, scope, entries =>
+            {
+                if (list == null) return;
+                if (entries.Count == 0)
+                { list.text = "No souls ranked yet — be the first.\n(or the leaderboard server isn't live yet)"; return; }
+                var sb = new System.Text.StringBuilder();
+                for (int i = 0; i < entries.Count && i < 15; i++)
+                    sb.AppendLine($"{i + 1}.   {entries[i].nick}      {entries[i].value}");
+                list.text = sb.ToString();
+            });
+            Theme.Button(root, "‹ BACK", new Color(1, 1, 1, 0.25f), Color.white, 40,
+                new Vector2(0.5f, 0f), new Vector2(0, 40), new Vector2(360, 100), () => { Destroy(panel); ShowMenu(); });
+        }
+
+        void ShowWardrobe()
+        {
+            Audio.Play("click");
+            var c = new Vector2(0.5f, 0.5f);
+            var panel = Overlay(new Color(0.04f, 0.02f, 0.06f, 0.92f), out var root);
+            Theme.Label(root, "WARDROBE", 70, Theme.Player, c, new Vector2(0, 420), new Vector2(1400, 120)).font = Theme.TitleFont;
+            Theme.Label(root, "cosmetic look + a signature mobility trick — never pay-to-win", 28, Theme.Coin, c, new Vector2(0, 348), new Vector2(1400, 50));
+
+            // Preview sprites: the vampire idle frame (most skins) and the Pink-Man
+            // frame (the "pink" skin). Shown tinted so you actually SEE the costume.
+            var vampFrames = Assets.Grid("vamp_idle_sheet", 64, 3);
+            Sprite vampSp = (vampFrames != null && vampFrames.Length > 0) ? vampFrames[0] : null;
+            var pmFrames = Assets.Sheet("pinkman_idle", 32);
+            Sprite pmSp = (pmFrames != null && pmFrames.Length > 0) ? pmFrames[0] : null;
+
+            int cols = 4; float spX = 350f, spY = 268f, startX = -((cols - 1) * spX) / 2f, startY = 170f;
+            for (int i = 0; i < Skins.All.Count; i++)
+            {
+                var s = Skins.All[i];
+                int r = i / cols, col = i % cols;
+                var pos = new Vector2(startX + col * spX, startY - r * spY);
+                bool unlocked = Skins.IsUnlocked(s);
+                bool equipped = Skins.CurrentId == s.id;
+                var bg = equipped ? new Color(0.42f, 0.11f, 0.15f, 0.96f)
+                       : unlocked ? new Color(0.16f, 0.13f, 0.2f, 0.95f) : new Color(0.1f, 0.1f, 0.13f, 0.95f);
+                string sid = s.id; var sdef = s;
+
+                // The whole card is one button (Image + Button). We build its contents
+                // ourselves so the sprite, name and ability each get their own line and
+                // never overlap. Empty label text — the children below are the content.
+                var card = Theme.Button(root, "", bg, Color.white, 1, c, pos, new Vector2(320, 236),
+                    unlocked ? (System.Action)(() => { Skins.Equip(sid); Destroy(panel); ShowWardrobe(); })
+                             : (System.Action)(() => ShowHint(sdef.unlockHint)));
+                var ct = card.transform;
+
+                // Gold ring around the equipped card so the current pick is obvious.
+                if (equipped)
+                {
+                    var ring = new GameObject("EquipRing", typeof(RectTransform)).AddComponent<Image>();
+                    ring.transform.SetParent(ct, false); ring.raycastTarget = false;
+                    var frame = Theme.NineSlice("panel_frame", 16);
+                    if (frame != null) { ring.sprite = frame; ring.type = Image.Type.Sliced; ring.pixelsPerUnitMultiplier = 0.12f; }
+                    ring.color = Theme.Coin;
+                    var rrt = ring.rectTransform; rrt.anchorMin = Vector2.zero; rrt.anchorMax = Vector2.one;
+                    rrt.offsetMin = new Vector2(-4, -4); rrt.offsetMax = new Vector2(4, 4);
+                }
+
+                // Sprite preview — tinted for unlocked skins, a dark mystery silhouette
+                // when locked (so the look stays a surprise until you earn it).
+                Sprite preview = s.pinkman ? pmSp : vampSp;
+                if (preview != null)
+                {
+                    var pv = new GameObject("Preview", typeof(RectTransform)).AddComponent<Image>();
+                    pv.transform.SetParent(ct, false);
+                    pv.sprite = preview; pv.preserveAspect = true; pv.raycastTarget = false;
+                    pv.color = unlocked ? Skins.Shade(s) : new Color(0.05f, 0.04f, 0.06f, 0.95f);
+                    var prt = pv.rectTransform;
+                    prt.anchorMin = prt.anchorMax = new Vector2(0.5f, 0.5f); prt.pivot = new Vector2(0.5f, 0.5f);
+                    prt.anchoredPosition = new Vector2(0, 58); prt.sizeDelta = new Vector2(104, 104);
+                }
+
+                // Name.
+                Theme.Label(ct, s.name, 28, unlocked ? Color.white : new Color(1, 1, 1, 0.55f),
+                    c, new Vector2(0, -22), new Vector2(304, 36)).raycastTarget = false;
+
+                // Ability line (unlocked) or unlock hint (locked) — its own row, no overlap.
+                if (unlocked)
+                {
+                    Theme.Label(ct, s.ability, 19, Theme.Coin, c, new Vector2(0, -56), new Vector2(300, 30)).raycastTarget = false;
+                    Theme.Label(ct, equipped ? "EQUIPPED" : "tap to wear", 18,
+                        equipped ? Theme.Exit : new Color(1, 1, 1, 0.45f), c,
+                        new Vector2(0, -90), new Vector2(300, 28)).raycastTarget = false;
+                }
+                else
+                {
+                    Theme.Label(ct, "LOCKED", 20, new Color(1, 0.5f, 0.5f, 0.85f), c,
+                        new Vector2(0, -54), new Vector2(300, 30)).raycastTarget = false;
+                    var hint = Theme.Label(ct, s.unlockHint, 15, new Color(1, 1, 1, 0.5f), c,
+                        new Vector2(0, -88), new Vector2(280, 48));
+                    hint.horizontalOverflow = HorizontalWrapMode.Wrap;   // wrap inside the card
+                    hint.raycastTarget = false;
+                }
+            }
+
+            Theme.Button(root, "‹ BACK", new Color(1, 1, 1, 0.25f), Color.white, 40,
+                new Vector2(0.5f, 0f), new Vector2(0, 40), new Vector2(360, 100), () => { Destroy(panel); ShowMenu(); });
         }
 
         // ==================== pause ====================
@@ -1753,13 +3026,27 @@ namespace TrustIssues
             Time.timeScale = 0f;
             _pausePanel = Overlay(new Color(0, 0, 0, 0.6f), out var root);
             Theme.Label(root, "PAUSED", 96, Theme.Player,
-                new Vector2(0.5f, 0.5f), new Vector2(0, 230), new Vector2(1000, 130));
+                new Vector2(0.5f, 0.5f), new Vector2(0, 250), new Vector2(1000, 130));
+            // Endless never ends on lives, so it needs an explicit "END RUN" to bank
+            // your depth and see the score — that's the 4-button layout.
+            bool endless = _mode == Mode.Endless;
             Theme.Button(root, "RESUME", Theme.Exit, Theme.Ink, 52,
-                new Vector2(0.5f, 0.5f), new Vector2(0, 70), new Vector2(460, 120), Resume);
-            Theme.Button(root, "RESTART LEVEL", Theme.Trick, Theme.Ink, 46,
-                new Vector2(0.5f, 0.5f), new Vector2(0, -70), new Vector2(560, 120), RestartLevel);
-            Theme.Button(root, "MAIN MENU", new Color(1, 1, 1, 0.25f), Color.white, 46,
-                new Vector2(0.5f, 0.5f), new Vector2(0, -210), new Vector2(560, 120), QuitToMenu);
+                new Vector2(0.5f, 0.5f), new Vector2(0, endless ? 130 : 70), new Vector2(460, 116), Resume);
+            Theme.Button(root, "RESTART LEVEL", Theme.Trick, Theme.Ink, 44,
+                new Vector2(0.5f, 0.5f), new Vector2(0, endless ? 6 : -70), new Vector2(560, 116), RestartLevel);
+            if (endless)
+                Theme.Button(root, "END RUN — bank score", new Color(0.55f, 0.1f, 0.13f), Color.white, 42,
+                    new Vector2(0.5f, 0.5f), new Vector2(0, -118), new Vector2(560, 116), EndRun);
+            Theme.Button(root, "MAIN MENU", new Color(1, 1, 1, 0.25f), Color.white, 44,
+                new Vector2(0.5f, 0.5f), new Vector2(0, endless ? -242 : -210), new Vector2(560, 116), QuitToMenu);
+        }
+
+        // End an Endless run on purpose: unpause and show the result/leaderboard screen.
+        void EndRun()
+        {
+            if (_pausePanel != null) Destroy(_pausePanel);
+            Time.timeScale = 1f;
+            RunOver();
         }
 
         void Resume()
@@ -1809,6 +3096,22 @@ namespace TrustIssues
             var rt = panel.GetComponent<RectTransform>();
             rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
             rt.offsetMin = rt.offsetMax = Vector2.zero;
+
+            // Gothic ornate frame around the panel (behind the content, no raycast).
+            var frameSp = Theme.NineSlice("panel_frame", 16);
+            if (frameSp != null)
+            {
+                var fr = new GameObject("Frame", typeof(RectTransform));
+                fr.transform.SetParent(panel.transform, false);
+                var fi = fr.AddComponent<Image>();
+                fi.sprite = frameSp; fi.type = Image.Type.Sliced; fi.raycastTarget = false;
+                fi.pixelsPerUnitMultiplier = 0.22f;   // scale the ornate corners up so they read at fullscreen
+                fi.color = new Color(0.95f, 0.9f, 0.92f, 0.95f);
+                var frt = fi.rectTransform;
+                frt.anchorMin = Vector2.zero; frt.anchorMax = Vector2.one;
+                frt.offsetMin = new Vector2(26, 26); frt.offsetMax = new Vector2(-26, -26);
+            }
+
             root = panel.transform;
             return panel;
         }

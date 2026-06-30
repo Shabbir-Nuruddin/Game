@@ -22,6 +22,7 @@ namespace TrustIssues
     {
         public Vector2 Spawn;
         public float CamMinX = -1.5f, CamMaxX = -1.5f;
+        public int BossTier = 0;   // 0 = normal level; >0 = a boss arena of that tier
         public List<Rect2> Platforms = new();
         public List<TrapSpec> Traps = new();
         public List<Deco> Decos = new();
@@ -61,6 +62,12 @@ namespace TrustIssues
         public void WarpBack(float x) => T(TrapType.WarpBack, x, -2.3f, 0.8f, 1.2f);
         public void Crusher(float x) => T(TrapType.Crusher, x, -1f, 1.6f, 1.4f); // no coin tell — jump up here and you're crushed
         public void Spring(float x) { T(TrapType.Spring, x, -2.55f, 1.0f, 0.5f); T(TrapType.Surprise, x, -0.4f, 1.4f, 1.4f); }
+        // --- vampire traps ---
+        public void Pendulum(float x) => T(TrapType.Pendulum, x, 1.0f, 0.45f, 0.25f);   // pivot high; blade swings below
+        public void FlameJet(float x) => T(TrapType.FlameJet, x, -2.0f, 0.8f, 1.6f);    // erupts up from the floor
+        public void Chandelier(float x) => T(TrapType.Chandelier, x, -2.3f, 1.2f, 1.2f);// reactive ceiling drop (wide)
+        public void HolyWater(float x) => T(TrapType.HolyWater, x, -2.55f, 1.4f, 0.4f); // floor puddle, pulses lethal
+        public void Bat(float x) => T(TrapType.BatSwoop, x, 1.8f, 0.6f, 0.6f);          // hovers, then dives
 
         public Level Finish()
         {
@@ -75,7 +82,21 @@ namespace TrustIssues
 
     public static class Levels
     {
-        public static int Count => 20;
+        public static int Count => 40;
+
+        // A boss arena: one solid floor (NO pits — a fair fight), bounding walls,
+        // and the player spawned at the left. GameRoot spawns the boss + the (sealed)
+        // exit, which opens when the boss dies. Tier scales the boss, not the room.
+        public static Level BossRoom(int tier)
+        {
+            var L = new Level { BossTier = Mathf.Clamp(tier, 1, 4) };
+            L.Spawn = new Vector2(-8f, -2f);
+            L.Platforms.Add(new Rect2(0f, -3f, 26f, 0.6f));     // arena floor
+            L.Platforms.Add(new Rect2(-13.2f, 1f, 0.6f, 9f));   // left wall
+            L.Platforms.Add(new Rect2(13.2f, 1f, 0.6f, 9f));    // right wall
+            L.CamMinX = -6f; L.CamMaxX = 6f;
+            return L;
+        }
 
         public static Level Get(int index)
         {
@@ -87,7 +108,14 @@ namespace TrustIssues
                 case 9: return L10(); case 10: return L11(); case 11: return L12();
                 case 12: return L13(); case 13: return L14(); case 14: return L15();
                 case 15: return L16(); case 16: return L17(); case 17: return L18();
-                case 18: return L19(); default: return L20();
+                case 18: return L19(); case 19: return L20(); case 20: return L21();
+                case 21: return L22(); case 22: return L23(); case 23: return L24();
+                case 24: return L25(); case 25: return L26(); case 26: return L27();
+                case 27: return L28(); case 28: return L29(); case 29: return L30();
+                case 30: return L31(); case 31: return L32(); case 32: return L33();
+                case 33: return L34(); case 34: return L35(); case 35: return L36();
+                case 36: return L37(); case 37: return L38(); case 38: return L39();
+                default: return L40();
             }
         }
 
@@ -103,18 +131,54 @@ namespace TrustIssues
             var b = new B();
             b.Plat(3.7f); // safe start
 
+            // These levels are FLIGHT modes (Endless / Blood Moon), so the player
+            // can bat-glide. We cap inverted-controls to ONE per level (it was the
+            // most-complained-about Blood Moon pain) and sprinkle a few wide gaps
+            // that can only be cleared by jumping then holding glide.
+            bool reverseUsed = false, lastWasLong = false;
+
             int segments = Mathf.Clamp(5 + difficulty, 5, 11);
             for (int i = 0; i < segments; i++)
             {
-                if (difficulty >= 1 && rng.Next(100) < 18 + difficulty * 3) b.FakeFloor(2f);
-                else b.Gap(2.4f + (float)rng.NextDouble() * 0.5f);
-                float p = b.Plat(3.6f + (float)rng.NextDouble() * 1.3f);
-                PlaceHazard(b, pool[rng.Next(pool.Count)], p);
-                if (difficulty >= 4 && rng.Next(100) < 28)        // a second hazard, deeper in
-                    PlaceHazard(b, pool[rng.Next(pool.Count)], p + 1.2f);
+                // A wide GLIDE gap: too far for a plain jump, crossable with bat form.
+                bool longGap = difficulty >= 3 && !lastWasLong && rng.Next(100) < 22;
+                if (longGap) { b.Gap(6.0f + (float)rng.NextDouble() * 0.7f); lastWasLong = true; }
+                else if (difficulty >= 1 && rng.Next(100) < 18 + difficulty * 3) { b.FakeFloor(2f); lastWasLong = false; }
+                else { b.Gap(2.4f + (float)rng.NextDouble() * 0.5f); lastWasLong = false; }
+
+                // A wider platform after a glide gap = a fair landing + meter refill.
+                float p = b.Plat((longGap ? 4.6f : 3.6f) + (float)rng.NextDouble() * 1.3f);
+
+                var first = NextHazard(pool, rng, ref reverseUsed);
+                PlaceHazard(b, first, p);
+
+                // A second hazard deeper in, for variety — but NEVER pair anything
+                // with a Crusher. A Crusher demands you stay LOW (jump and the block
+                // slams you), while almost every other hazard demands you JUMP OVER
+                // it. Combine the two and the platform is physically impossible.
+                // We also keep the rage-teleport (WarpBack) solo.
+                if (difficulty >= 4 && !Soloist(first) && rng.Next(100) < 30)
+                {
+                    var second = NextHazard(pool, rng, ref reverseUsed);
+                    if (!Soloist(second))
+                        PlaceHazard(b, second, p + 1.6f);
+                }
             }
             b.Gap(2.4f);
             return b.Finish();
+        }
+
+        // Pick a hazard, but allow at most ONE inverted-controls trap per level —
+        // after that, Reverse is swapped for an ordinary spike.
+        static TrapType NextHazard(List<TrapType> pool, System.Random rng, ref bool reverseUsed)
+        {
+            var t = pool[rng.Next(pool.Count)];
+            if (t == TrapType.Reverse)
+            {
+                if (reverseUsed) return TrapType.SpikeStatic;
+                reverseUsed = true;
+            }
+            return t;
         }
 
         static List<TrapType> HazardPool(int d)
@@ -122,11 +186,22 @@ namespace TrustIssues
             var l = new List<TrapType> { TrapType.SpikeStatic, TrapType.SpikeStatic };
             if (d >= 1) l.Add(TrapType.LateSpike);
             if (d >= 2) { l.Add(TrapType.Dart); l.Add(TrapType.Crusher); l.Add(TrapType.GrowSpike); }
-            if (d >= 3) l.Add(TrapType.Faller);
-            if (d >= 4) { l.Add(TrapType.Saw); l.Add(TrapType.Surprise); }
-            if (d >= 5) l.Add(TrapType.ArrowRain);
+            if (d >= 3) { l.Add(TrapType.Faller);
+                          l.Add(TrapType.Pendulum); l.Add(TrapType.Chandelier); }        // vampire traps
+            if (d >= 4) { l.Add(TrapType.Saw); l.Add(TrapType.Surprise); l.Add(TrapType.WarpBack);
+                          l.Add(TrapType.FlameJet); l.Add(TrapType.HolyWater);
+                          l.Add(TrapType.Reverse); }                                       // inverted controls (rare)
+            if (d >= 5) { l.Add(TrapType.ArrowRain); l.Add(TrapType.BatSwoop); }
             return l;
         }
+
+        // Hazards that must stand ALONE on a platform: crushers (stay-low), the
+        // warp rune (rage teleport), and the reactive ceiling drops (Faller /
+        // Chandelier) — pairing a drop with another hazard forces you to stop
+        // right under it, which is what made the night-3 "falling box" unfair.
+        static bool Soloist(TrapType t) =>
+            t == TrapType.Crusher || t == TrapType.WarpBack ||
+            t == TrapType.Faller || t == TrapType.Chandelier;
 
         static void PlaceHazard(B b, TrapType t, float p)
         {
@@ -140,291 +215,617 @@ namespace TrustIssues
                 case TrapType.ArrowRain: b.ArrowRain(p); break;
                 case TrapType.Surprise: b.Surprise(p); break;
                 case TrapType.GrowSpike: b.GrowSpike(p); break;
+                case TrapType.Reverse: b.Reverse(p); break;       // flips controls for a few seconds
+                case TrapType.WarpBack: b.WarpBack(p); break;     // cursed rune yanks you to the start
+                case TrapType.Pendulum: b.Pendulum(p); break;
+                case TrapType.FlameJet: b.FlameJet(p); break;
+                case TrapType.Chandelier: b.Chandelier(p); break;
+                case TrapType.HolyWater: b.HolyWater(p); break;
+                case TrapType.BatSwoop: b.Bat(p); break;
                 default: b.Spike(p); break;
             }
         }
 
-        // 1 — intro: fake floor, one spike, one crusher.
+        // ====================================================================
+        // FLOORS 1–20 — the teaching castle. ONE new mechanic is introduced per
+        // floor on wide, forgiving ground, then gently combined, so a new player
+        // ramps up instead of slamming into a wall. Floors 10 & 20 are fair
+        // "gauntlet" gates (and become BOSS rooms once Phase 2 lands).
+        // ====================================================================
+
+        // 1 — first steps: jump the gaps, hop a single spike.
         static Level L1()
         {
             var b = new B();
-            b.Plat(3.5f);
-            b.FakeFloor(2f);
-            float p2 = b.Plat(3.5f); b.Spike(p2);
-            b.Gap(2.5f);
-            float p3 = b.Plat(3.5f); b.Crusher(p3);
+            b.Plat(5f);
+            b.Gap(2.3f);
+            float p2 = b.Plat(5f); b.Spike(p2);
+            b.Gap(2.3f);
+            b.Plat(5f);
             return b.Finish();
         }
 
-        // 2 — gap jumps + a late spike.
+        // 2 — the late spike: it springs up as you arrive, so keep moving.
         static Level L2()
         {
             var b = new B();
-            b.Plat(3.5f);
-            b.Gap(2.5f);
-            float p2 = b.Plat(3.5f); b.LateSpike(p2);
-            b.Gap(2.5f);
-            float p3 = b.Plat(3.5f); b.Spike(p3);
-            b.FakeFloor(2f);
-            float p4 = b.Plat(3.5f); b.Crusher(p4);
+            b.Plat(5f);
+            b.Gap(2.4f);
+            float p2 = b.Plat(5f); b.LateSpike(p2);
+            b.Gap(2.4f);
+            float p3 = b.Plat(5f); b.Spike(p3);
             return b.Finish();
         }
 
-        // 3 — gentle intro to darts (one trap per platform, room to react).
+        // 3 — the floor lies: one fake floor hides among the real ones.
         static Level L3()
         {
             var b = new B();
-            b.Plat(3.5f);
-            b.Gap(2.5f);
-            float p2 = b.Plat(4.5f); b.Dart(p2);
-            b.Gap(2.5f);
-            float p3 = b.Plat(4f); b.Faller(p3);
-            b.Gap(2.5f);
-            float p4 = b.Plat(4f); b.Spike(p4);
+            b.Plat(4.5f);
+            b.FakeFloor(2f);
+            float p2 = b.Plat(5f); b.Spike(p2);
+            b.Gap(2.4f);
+            float p3 = b.Plat(4.5f); b.LateSpike(p3);
             return b.Finish();
         }
 
-        // 4 — invisible deaths.
+        // 4 — darts: a stake fires across when you step on the plate. Jump it.
         static Level L4()
         {
             var b = new B();
-            b.Plat(3.5f);
-            b.FakeFloor(2f);
-            float p2 = b.Plat(4f); b.Surprise(p2);
-            b.Gap(2.5f);
-            float p3 = b.Plat(3.5f); b.Spike(p3);
-            b.Gap(2.5f);
-            float p4 = b.Plat(3.5f); b.Faller(p4);
+            b.Plat(4.5f);
+            b.Gap(2.4f);
+            float p2 = b.Plat(5f); b.Dart(p2);
+            b.Gap(2.4f);
+            float p3 = b.Plat(4.5f); b.Spike(p3);
             return b.Finish();
         }
 
-        // 5 — saws and spikes, fairly spaced.
+        // 5 — the crusher slams the HIGH ground. Stay low and walk under it.
         static Level L5()
         {
             var b = new B();
-            b.Plat(3.5f);
-            b.Gap(2.5f);
-            float p2 = b.Plat(4f); b.Saw(p2);
-            b.Gap(2.5f);
-            float p3 = b.Plat(4f); b.Spike(p3);
-            b.Gap(2.5f);
-            float p4 = b.Plat(4f); b.LateSpike(p4);
+            b.Plat(4.5f);
+            b.Gap(2.4f);
+            float p2 = b.Plat(4f); b.Crusher(p2);
+            b.Gap(2.4f);
+            float p3 = b.Plat(4.5f); b.Dart(p3);
             return b.Finish();
         }
 
-        // 6 — reverse controls (wait it out, then go).
+        // 6 — the saw slides back and forth. Wait for the gap, then cross.
         static Level L6()
         {
             var b = new B();
-            float p1 = b.Plat(4f); b.Reverse(p1 + 1f);
-            b.Gap(2.5f);
-            float p2 = b.Plat(4f); b.GrowSpike(p2);   // pulsing blood spike
-            b.Gap(2.5f);
-            float p3 = b.Plat(3.5f); b.LateSpike(p3);
-            b.Gap(2.5f);
-            float p4 = b.Plat(3.5f); b.Crusher(p4);
+            b.Plat(4.5f);
+            b.Gap(2.4f);
+            float p2 = b.Plat(5f); b.Saw(p2);
+            b.Gap(2.4f);
+            float p3 = b.Plat(4.5f); b.LateSpike(p3);
             return b.Finish();
         }
 
-        // 7 — warp-back rage + combos.
+        // 7 — the pendulum blade swings across; time your dash beneath it.
         static Level L7()
         {
             var b = new B();
-            b.Plat(3.5f);
-            b.Gap(2.5f);
-            float p2 = b.Plat(4f); b.Spike(p2 - 1f); b.WarpBack(p2 + 1f);
-            b.Gap(2.5f);
-            float p3 = b.Plat(3.5f); b.Faller(p3);
-            b.Gap(2.5f);
-            float p4 = b.Plat(3.5f); b.Saw(p4);
+            b.Plat(4.5f);
+            b.Gap(2.4f);
+            float p2 = b.Plat(5f); b.Pendulum(p2);
+            b.Gap(2.4f);
+            float p3 = b.Plat(4.5f); b.Spike(p3);
             return b.Finish();
         }
 
-        // 8 — spike gauntlet.
+        // 8 — the chandelier drops when you pass under. Don't loiter.
         static Level L8()
         {
             var b = new B();
-            b.Plat(3.5f);
-            b.Gap(2.5f);
-            float p2 = b.Plat(5f); b.Spike(p2 - 1.2f); b.Spike(p2 + 1.2f);
-            b.Gap(2.5f);
-            float p3 = b.Plat(4f); b.Faller(p3 - 1f); b.Dart(p3 + 1f);
-            b.Gap(2.5f);
-            float p4 = b.Plat(3.5f); b.Crusher(p4);
+            b.Plat(4.5f);
+            b.Gap(2.4f);
+            float p2 = b.Plat(5f); b.Chandelier(p2);
+            b.Gap(2.4f);
+            float p3 = b.Plat(4.5f); b.Saw(p3);
             return b.Finish();
         }
 
-        // 9 — everything mixed.
+        // 9 — growing blood-spikes pulse up and down. Cross while they're low.
         static Level L9()
+        {
+            var b = new B();
+            b.Plat(4.5f);
+            b.Gap(2.4f);
+            float p2 = b.Plat(5f); b.GrowSpike(p2);
+            b.Gap(2.4f);
+            float p3 = b.Plat(4.5f); b.Dart(p3);
+            return b.Finish();
+        }
+
+        // 10 — GATE: a fair gauntlet of everything so far, with a checkpoint.
+        static Level L10()
+        {
+            var b = new B();
+            b.Plat(4.5f);
+            b.Gap(2.5f);
+            float p2 = b.Plat(5f); b.Pendulum(p2 - 1.2f); b.Spike(p2 + 1.2f);
+            b.Gap(2.5f);
+            float p3 = b.Plat(4.8f); b.Checkpoint(p3 - 1.5f); b.Dart(p3 + 1f);
+            b.Gap(2.5f);
+            float p4 = b.Plat(5f); b.Saw(p4);
+            b.Gap(2.5f);
+            float p5 = b.Plat(4.5f); b.LateSpike(p5);
+            return b.Finish();
+        }
+
+        // 11 — BATS: they hover, then dive on a telegraph. Keep moving to dodge.
+        static Level L11()
+        {
+            var b = new B();
+            b.Plat(4.5f);
+            b.Gap(2.4f);
+            float p2 = b.Plat(5f); b.Bat(p2);
+            b.Gap(2.4f);
+            float p3 = b.Plat(4.5f); b.Spike(p3);
+            b.Gap(2.4f);
+            float p4 = b.Plat(4.5f); b.Dart(p4);
+            return b.Finish();
+        }
+
+        // 12 — bats wheeling over a saw lane.
+        static Level L12()
+        {
+            var b = new B();
+            b.Plat(4.5f);
+            b.Gap(2.5f);
+            float p2 = b.Plat(5f); b.Saw(p2); b.Bat(p2 + 1.6f);
+            b.Gap(2.5f);
+            float p3 = b.Plat(4.5f); b.LateSpike(p3);
+            b.Gap(2.5f);
+            float p4 = b.Plat(4.5f); b.Chandelier(p4);
+            return b.Finish();
+        }
+
+        // 13 — a swinging blade, a dart, and a circling bat.
+        static Level L13()
+        {
+            var b = new B();
+            b.Plat(4.5f);
+            b.Gap(2.5f);
+            float p2 = b.Plat(5f); b.Pendulum(p2);
+            b.Gap(2.5f);
+            float p3 = b.Plat(5f); b.Dart(p3 - 1f); b.Bat(p3 + 1.6f);
+            b.Gap(2.5f);
+            float p4 = b.Plat(4.5f); b.Spike(p4);
+            return b.Finish();
+        }
+
+        // 14 — the SUN: invisible burning ground, flagged by a faint sunbeam. Jump it.
+        static Level L14()
+        {
+            var b = new B();
+            b.Plat(4.5f);
+            b.Gap(2.5f);
+            float p2 = b.Plat(5f); b.Surprise(p2);
+            b.Gap(2.5f);
+            float p3 = b.Plat(4.5f); b.Pendulum(p3);
+            b.Gap(2.5f);
+            float p4 = b.Plat(4.5f); b.LateSpike(p4);
+            return b.Finish();
+        }
+
+        // 15 — sunbeams between drops and a diving bat.
+        static Level L15()
+        {
+            var b = new B();
+            b.Plat(4.5f);
+            b.FakeFloor(2f);
+            float p2 = b.Plat(5f); b.Surprise(p2 - 1f); b.Dart(p2 + 1f);
+            b.Gap(2.5f);
+            float p3 = b.Plat(4.5f); b.Chandelier(p3);
+            b.Gap(2.5f);
+            float p4 = b.Plat(4.5f); b.Bat(p4);
+            return b.Finish();
+        }
+
+        // 16 — a longer trial with a mid checkpoint.
+        static Level L16()
+        {
+            var b = new B();
+            b.Plat(4.5f);
+            b.Gap(2.5f);
+            float p2 = b.Plat(5f); b.Saw(p2 - 1.3f); b.Spike(p2 + 1.3f);
+            b.Gap(2.5f);
+            float p3 = b.Plat(4.8f); b.Checkpoint(p3 - 1.5f); b.Surprise(p3 + 1f);
+            b.Gap(2.5f);
+            float p4 = b.Plat(4.5f); b.Pendulum(p4);
+            return b.Finish();
+        }
+
+        // 17 — FLAME JETS erupt from the floor. Cross while they're down.
+        static Level L17()
+        {
+            var b = new B();
+            b.Plat(4.5f);
+            b.Gap(2.5f);
+            float p2 = b.Plat(5f); b.FlameJet(p2);
+            b.Gap(2.5f);
+            float p3 = b.Plat(5f); b.FlameJet(p3 - 1.3f); b.Spike(p3 + 1.3f);
+            b.Gap(2.5f);
+            float p4 = b.Plat(4.5f); b.Dart(p4);
+            return b.Finish();
+        }
+
+        // 18 — HOLY WATER puddles flare on a pulse. Step through while dim.
+        static Level L18()
+        {
+            var b = new B();
+            b.Plat(4.5f);
+            b.Gap(2.5f);
+            float p2 = b.Plat(5f); b.HolyWater(p2);
+            b.Gap(2.5f);
+            float p3 = b.Plat(5f); b.HolyWater(p3 - 1.3f); b.FlameJet(p3 + 1.3f);
+            b.Gap(2.5f);
+            float p4 = b.Plat(4.5f); b.Bat(p4);
+            return b.Finish();
+        }
+
+        // 19 — a cursed rune (warps you back), flames, and a blade.
+        static Level L19()
+        {
+            var b = new B();
+            b.Plat(4.5f);
+            b.Gap(2.5f);
+            float p2 = b.Plat(5f); b.FlameJet(p2 - 1.3f); b.WarpBack(p2 + 1.3f);
+            b.Gap(2.5f);
+            float p3 = b.Plat(4.5f); b.Pendulum(p3);
+            b.Gap(2.5f);
+            float p4 = b.Plat(4.5f); b.HolyWater(p4);
+            return b.Finish();
+        }
+
+        // 20 — GATE: the vampire traps together, with a checkpoint.
+        static Level L20()
+        {
+            var b = new B();
+            b.Plat(4.5f);
+            b.Gap(2.6f);
+            float p2 = b.Plat(5f); b.Pendulum(p2 - 1.3f); b.Surprise(p2 + 1.3f);
+            b.Gap(2.6f);
+            float p3 = b.Plat(4.8f); b.Checkpoint(p3 - 1.5f); b.FlameJet(p3 + 1f);
+            b.Gap(2.6f);
+            float p4 = b.Plat(5f); b.Chandelier(p4 - 1.3f); b.Bat(p4 + 1.3f);
+            b.Gap(2.6f);
+            float p5 = b.Plat(4.5f); b.HolyWater(p5);
+            return b.Finish();
+        }
+
+        // ====================================================================
+        // FLOORS 21–40 — the deep castle. Difficulty keeps climbing: hazards
+        // pair up tighter, inversions and warp-runes show up more, and gaps
+        // creep wider. Floor 40 is the boss room. Every platform still obeys the
+        // golden rule — a Crusher (stay LOW) never shares ground with a jump-over
+        // hazard — so all of these are beatable, just mean.
+        // ====================================================================
+
+        // 21 — reverse meets a spike: jump it with your controls flipped.
+        static Level L21()
+        {
+            var b = new B();
+            b.Plat(4f);
+            b.Gap(2.5f);
+            float p2 = b.Plat(4.6f); b.Reverse(p2 - 1.2f); b.Spike(p2 + 1.2f);
+            b.Gap(2.5f);
+            float p3 = b.Plat(4f); b.Dart(p3);
+            b.Gap(2.5f);
+            float p4 = b.Plat(3.6f); b.Faller(p4);
+            return b.Finish();
+        }
+
+        // 22 — saws and a twin growing-spike pinch.
+        static Level L22()
+        {
+            var b = new B();
+            b.Plat(3.6f);
+            b.Gap(2.6f);
+            float p2 = b.Plat(4.6f); b.Saw(p2);
+            b.Gap(2.6f);
+            float p3 = b.Plat(4.4f); b.GrowSpike(p3 - 1.1f); b.GrowSpike(p3 + 1.1f);
+            b.Gap(2.6f);
+            float p4 = b.Plat(3.6f); b.LateSpike(p4);
+            return b.Finish();
+        }
+
+        // 23 — the warp-rune + dart combo, then an invisible patch.
+        static Level L23()
+        {
+            var b = new B();
+            b.Plat(3.6f);
+            b.Gap(2.5f);
+            float p2 = b.Plat(4.6f); b.WarpBack(p2 - 1.2f); b.Dart(p2 + 1.2f);
+            b.FakeFloor(2f);
+            float p3 = b.Plat(4f); b.Surprise(p3);
+            b.Gap(2.5f);
+            float p4 = b.Plat(3.6f); b.Spike(p4);
+            return b.Finish();
+        }
+
+        // 24 — ceiling arrows into a faller/dart pincer, capped by a crusher.
+        static Level L24()
+        {
+            var b = new B();
+            b.Plat(3.6f);
+            b.Gap(2.5f);
+            float p2 = b.Plat(4f); b.ArrowRain(p2);
+            b.Gap(2.5f);
+            float p3 = b.Plat(4.6f); b.Faller(p3 - 1.1f); b.Dart(p3 + 1.1f);
+            b.Gap(2.6f);
+            float p4 = b.Plat(3.6f); b.Crusher(p4);
+            return b.Finish();
+        }
+
+        // 25 — milestone: a mid-checkpoint before the back half.
+        static Level L25()
+        {
+            var b = new B();
+            b.Plat(3.6f);
+            b.Gap(2.6f);
+            float p2 = b.Plat(4.6f); b.Saw(p2);
+            b.Gap(2.6f);
+            float p3 = b.Plat(4.8f); b.Checkpoint(p3 - 1.6f); b.Surprise(p3 + 1f);
+            b.Gap(2.6f);
+            float p4 = b.Plat(4.4f); b.Dart(p4 - 1f); b.Spike(p4 + 1f);
+            b.Gap(2.6f);
+            float p5 = b.Plat(3.6f); b.LateSpike(p5);
+            return b.Finish();
+        }
+
+        // 26 — flipped from the first step, then a warp-rune and a fake floor.
+        static Level L26()
+        {
+            var b = new B();
+            float p1 = b.Plat(4f); b.Reverse(p1 + 1f);
+            b.Gap(2.5f);
+            float p2 = b.Plat(4.4f); b.Spike(p2 - 1f); b.WarpBack(p2 + 1f);
+            b.Gap(2.5f);
+            float p3 = b.Plat(4.6f); b.Saw(p3);
+            b.FakeFloor(2f);
+            float p4 = b.Plat(4f); b.Faller(p4);
+            return b.Finish();
+        }
+
+        // 27 — an arrow-rain corridor with a dart down the middle.
+        static Level L27()
+        {
+            var b = new B();
+            b.Plat(3.6f);
+            b.Gap(2.5f);
+            float p2 = b.Plat(5.2f); b.ArrowRain(p2 - 1.6f); b.Dart(p2); b.ArrowRain(p2 + 1.6f);
+            b.Gap(2.5f);
+            float p3 = b.Plat(4f); b.Faller(p3);
+            b.Gap(2.5f);
+            float p4 = b.Plat(3.6f); b.Spike(p4);
+            return b.Finish();
+        }
+
+        // 28 — a wall of growing spikes, then saw and crusher.
+        static Level L28()
+        {
+            var b = new B();
+            b.Plat(3.6f);
+            b.Gap(2.5f);
+            float p2 = b.Plat(5.2f); b.GrowSpike(p2 - 1.6f); b.GrowSpike(p2); b.GrowSpike(p2 + 1.6f);
+            b.Gap(2.5f);
+            float p3 = b.Plat(4f); b.Saw(p3);
+            b.Gap(2.6f);
+            float p4 = b.Plat(3.6f); b.Crusher(p4);
+            return b.Finish();
+        }
+
+        // 29 — flipped controls into invisible deaths and a dart.
+        static Level L29()
         {
             var b = new B();
             float p1 = b.Plat(4f); b.Reverse(p1 + 1f);
             b.FakeFloor(2f);
-            float p2 = b.Plat(4f); b.Surprise(p2);
+            float p2 = b.Plat(4.6f); b.Surprise(p2 - 1.2f); b.Dart(p2 + 1.2f);
             b.Gap(2.5f);
-            float p3 = b.Plat(4f); b.Saw(p3);
+            float p3 = b.Plat(4f); b.ArrowRain(p3);
             b.Gap(2.5f);
-            float p4 = b.Plat(4f); b.Spike(p4 - 1f); b.WarpBack(p4 + 1f);
+            float p4 = b.Plat(3.6f); b.Faller(p4);
             return b.Finish();
         }
 
-        // 10 — brutal finale.
-        static Level L10()
+        // 30 — milestone: long, with a checkpoint buried in the middle.
+        static Level L30()
         {
             var b = new B();
-            b.Plat(3.5f);
-            b.Gap(2.8f);
-            float p2 = b.Plat(5f); b.Spike(p2 - 1.5f); b.LateSpike(p2 + 0.7f);
-            b.Gap(2.8f);
-            float p3 = b.Plat(4.5f); b.Checkpoint(p3 - 1.5f); b.Dart(p3 + 0.5f);
-            b.Gap(2.8f);
-            float p4 = b.Plat(4f); b.Faller(p4);
+            b.Plat(3.6f);
+            b.Gap(2.7f);
+            float p2 = b.Plat(5f); b.Spike(p2 - 1.5f); b.LateSpike(p2 + 0.6f);
+            b.Gap(2.7f);
+            float p3 = b.Plat(4.8f); b.Checkpoint(p3 - 1.6f); b.Saw(p3 + 1f);
+            b.Gap(2.7f);
+            float p4 = b.Plat(4f); b.WarpBack(p4);
             b.FakeFloor(2f);
-            float p5 = b.Plat(3.5f); b.Surprise(p5);
+            float p5 = b.Plat(4.4f); b.Surprise(p5 - 1f); b.Dart(p5 + 1f);
             return b.Finish();
         }
 
-        // 11 — dart gauntlet, eased: wide platforms, ONE hazard each, a mid
-        // checkpoint, and shorter gaps so a slip doesn't mean starting over.
-        static Level L11()
+        // 31 — flip, saws, twin darts, faller.
+        static Level L31()
         {
             var b = new B();
-            b.Plat(4f);
-            b.Gap(2.3f);
-            float p2 = b.Plat(4.5f); b.Dart(p2);                 // one dart, room to read it
-            b.Gap(2.3f);
-            float p3 = b.Plat(4.8f); b.Checkpoint(p3 - 1.5f); b.Spike(p3 + 1.2f); // respawn here
-            b.Gap(2.3f);
-            float p4 = b.Plat(4.5f); b.Dart(p4);
-            b.Gap(2.3f);
+            float p1 = b.Plat(4f); b.Reverse(p1 + 1.2f);
+            b.Gap(2.6f);
+            float p2 = b.Plat(4.6f); b.Saw(p2);
+            b.Gap(2.6f);
+            float p3 = b.Plat(4.6f); b.Dart(p3 - 1.1f); b.Dart(p3 + 1.1f);
+            b.Gap(2.6f);
+            float p4 = b.Plat(4f); b.Faller(p4);
+            return b.Finish();
+        }
+
+        // 32 — a heavier arrow storm, an invisible patch, then a crusher.
+        static Level L32()
+        {
+            var b = new B();
+            b.Plat(3.6f);
+            b.Gap(2.6f);
+            float p2 = b.Plat(5.6f); b.ArrowRain(p2 - 1.9f); b.ArrowRain(p2); b.ArrowRain(p2 + 1.9f);
+            b.Gap(2.6f);
+            float p3 = b.Plat(4f); b.Surprise(p3);
+            b.Gap(2.7f);
+            float p4 = b.Plat(3.6f); b.Crusher(p4);
+            return b.Finish();
+        }
+
+        // 33 — kitchen sink with a checkpoint and a warp-rune finish.
+        static Level L33()
+        {
+            var b = new B();
+            b.Plat(3.6f);
+            b.Gap(2.7f);
+            float p2 = b.Plat(5f); b.GrowSpike(p2 - 1.5f); b.Dart(p2 + 1.5f);
+            b.Gap(2.7f);
+            float p3 = b.Plat(4.8f); b.Checkpoint(p3 - 1.6f); b.Saw(p3 + 1f);
+            b.FakeFloor(2f);
+            float p4 = b.Plat(4.6f); b.Surprise(p4 - 1.2f); b.LateSpike(p4 + 1.2f);
+            b.Gap(2.7f);
+            float p5 = b.Plat(4f); b.WarpBack(p5);
+            return b.Finish();
+        }
+
+        // 34 — flip, warp + faller, arrows + dart, a saw to end.
+        static Level L34()
+        {
+            var b = new B();
+            float p1 = b.Plat(4f); b.Reverse(p1 + 1f);
+            b.Gap(2.6f);
+            float p2 = b.Plat(4.6f); b.WarpBack(p2 - 1.2f); b.Faller(p2 + 1.2f);
+            b.Gap(2.6f);
+            float p3 = b.Plat(4.6f); b.ArrowRain(p3 - 1f); b.Dart(p3 + 1f);
+            b.Gap(2.6f);
+            float p4 = b.Plat(4f); b.Saw(p4);
+            return b.Finish();
+        }
+
+        // 35 — milestone: a triple-hazard platform and a checkpoint.
+        static Level L35()
+        {
+            var b = new B();
+            b.Plat(3.6f);
+            b.Gap(2.8f);
+            float p2 = b.Plat(5.2f); b.Dart(p2 - 1.6f); b.Spike(p2); b.Saw(p2 + 1.6f);
+            b.Gap(2.8f);
+            float p3 = b.Plat(4.8f); b.Checkpoint(p3 - 1.6f); b.GrowSpike(p3 + 1f);
+            b.Gap(2.8f);
+            float p4 = b.Plat(4.6f); b.Faller(p4 - 1.2f); b.LateSpike(p4 + 1.2f);
+            b.FakeFloor(2f);
+            float p5 = b.Plat(4f); b.Surprise(p5);
+            return b.Finish();
+        }
+
+        // 36 — reverse hell: flipped twice, with a warp-rune sting.
+        static Level L36()
+        {
+            var b = new B();
+            float p1 = b.Plat(4f); b.Reverse(p1 + 1f);
+            b.Gap(2.6f);
+            float p2 = b.Plat(4.6f); b.Reverse(p2 - 1.2f); b.Spike(p2 + 1.2f);
+            b.Gap(2.6f);
+            float p3 = b.Plat(4.6f); b.Saw(p3);
+            b.Gap(2.6f);
+            float p4 = b.Plat(4.4f); b.Dart(p4 - 1f); b.WarpBack(p4 + 1f);
+            return b.Finish();
+        }
+
+        // 37 — arrow storm hiding an invisible patch, saw, then a pincer.
+        static Level L37()
+        {
+            var b = new B();
+            b.Plat(3.6f);
+            b.Gap(2.7f);
+            float p2 = b.Plat(5.2f); b.ArrowRain(p2 - 1.6f); b.Surprise(p2); b.ArrowRain(p2 + 1.6f);
+            b.Gap(2.7f);
+            float p3 = b.Plat(4.6f); b.Saw(p3);
+            b.FakeFloor(2f);
+            float p4 = b.Plat(4.6f); b.Faller(p4 - 1.2f); b.Dart(p4 + 1.2f);
+            return b.Finish();
+        }
+
+        // 38 — a crusher maze: crushers stand alone, danger fills the gaps between.
+        static Level L38()
+        {
+            var b = new B();
+            b.Plat(3.6f);
+            b.Gap(2.6f);
+            float p2 = b.Plat(3.8f); b.Crusher(p2);
+            b.Gap(2.6f);
+            float p3 = b.Plat(4.6f); b.Spike(p3 - 1.2f); b.Dart(p3 + 1.2f);
+            b.Gap(2.6f);
+            float p4 = b.Plat(3.8f); b.Crusher(p4);
+            b.Gap(2.6f);
+            float p5 = b.Plat(4f); b.Saw(p5);
+            return b.Finish();
+        }
+
+        // 39 — the penultimate trial: everything, tight, before the boss.
+        static Level L39()
+        {
+            var b = new B();
+            float p1 = b.Plat(4f); b.Reverse(p1 + 1f);
+            b.Gap(2.7f);
+            float p2 = b.Plat(5.2f); b.Dart(p2 - 1.6f); b.ArrowRain(p2); b.GrowSpike(p2 + 1.6f);
+            b.FakeFloor(2f);
+            float p3 = b.Plat(4.6f); b.Surprise(p3 - 1.2f); b.Saw(p3 + 1.2f);
+            b.Gap(2.7f);
+            float p4 = b.Plat(4.6f); b.Faller(p4 - 1.2f); b.WarpBack(p4 + 1.2f);
+            b.Gap(2.7f);
             float p5 = b.Plat(4f); b.LateSpike(p5);
             return b.Finish();
         }
 
-        // 12 — saws and darts.
-        static Level L12()
+        // 40 — THE BOSS ROOM. One long descent through three phases. Checkpoints
+        // sit FAR apart (one after each phase), so a slip late in a phase costs
+        // you the whole stretch. No warp-runes here — the room is brutal on its
+        // own, and a rune that ignores checkpoints would just be unfair.
+        static Level L40()
         {
             var b = new B();
-            b.Plat(3.5f);
-            b.Gap(2.5f);
-            float p2 = b.Plat(4f); b.Saw(p2);
-            b.Gap(2.5f);
-            float p3 = b.Plat(4f); b.Dart(p3);
-            b.Gap(2.5f);
-            float p4 = b.Plat(4f); b.Spike(p4);
-            return b.Finish();
-        }
+            b.Plat(4.4f);                                          // the gate: safe staging
 
-        // 13 — invisible deaths between darts.
-        static Level L13()
-        {
-            var b = new B();
-            b.Plat(3.5f);
+            // ---- Phase 1: the approach ----
+            b.Gap(2.7f);
+            float a1 = b.Plat(4.8f); b.Spike(a1 - 1.3f); b.Dart(a1 + 1.3f);
+            b.Gap(2.7f);
+            float a2 = b.Plat(4.6f); b.Saw(a2);
             b.FakeFloor(2f);
-            float p2 = b.Plat(4f); b.Surprise(p2 - 1f); b.Dart(p2 + 1f);
-            b.Gap(2.5f);
-            float p3 = b.Plat(4f); b.Faller(p3);
-            b.Gap(2.5f);
-            float p4 = b.Plat(3.5f); b.Spike(p4);
-            return b.Finish();
-        }
+            float a3 = b.Plat(4.8f); b.Reverse(a3 - 1.3f); b.LateSpike(a3 + 1.3f);
+            b.Gap(2.7f);
+            float cp1 = b.Plat(4f); b.Checkpoint(cp1);             // CHECKPOINT — far in
 
-        // 14 — reverse controls + warp-back + dart.
-        static Level L14()
-        {
-            var b = new B();
-            float p1 = b.Plat(4f); b.Reverse(p1 + 1f);
-            b.Gap(2.5f);
-            float p2 = b.Plat(4f); b.Dart(p2 - 1f); b.WarpBack(p2 + 1f);
-            b.Gap(2.5f);
-            float p3 = b.Plat(4f); b.Saw(p3);
-            b.Gap(2.5f);
-            float p4 = b.Plat(3.5f); b.Faller(p4);
-            return b.Finish();
-        }
-
-        // 15 — the brutal finale (darts everywhere).
-        static Level L15()
-        {
-            var b = new B();
-            b.Plat(3.5f);
+            // ---- Phase 2: the gauntlet ----
             b.Gap(2.8f);
-            float p2 = b.Plat(5f); b.Dart(p2 - 1.5f); b.Spike(p2); b.Dart(p2 + 1.5f);
+            float g1 = b.Plat(5.2f); b.GrowSpike(g1 - 1.6f); b.ArrowRain(g1 + 1.6f);
             b.Gap(2.8f);
-            float p3 = b.Plat(4f); b.Faller(p3 - 1f); b.Saw(p3 + 1f);
+            float g2 = b.Plat(3.8f); b.Crusher(g2);               // crusher stands alone
+            b.Gap(2.8f);
+            float g3 = b.Plat(5.2f); b.Faller(g3 - 1.6f); b.Dart(g3 + 1.6f);
             b.FakeFloor(2f);
-            float p4 = b.Plat(4f); b.Surprise(p4 - 1f); b.LateSpike(p4 + 1f);
-            return b.Finish();
-        }
+            float g4 = b.Plat(4.8f); b.Surprise(g4 - 1.3f); b.Saw(g4 + 1.3f);
+            b.Gap(2.8f);
+            float cp2 = b.Plat(4f); b.Checkpoint(cp2);            // CHECKPOINT — far again
 
-        // 16 — ceiling arrows (the new feature).
-        static Level L16()
-        {
-            var b = new B();
-            b.Plat(3.5f);
-            b.Gap(2.5f);
-            float p2 = b.Plat(4f); b.ArrowRain(p2 - 1f); b.ArrowRain(p2 + 1f);
-            b.Gap(2.5f);
-            float p3 = b.Plat(3.5f); b.Spike(p3);
-            b.Gap(2.5f);
-            float p4 = b.Plat(3.5f); b.Crusher(p4);
-            return b.Finish();
-        }
-
-        // 17 — rain + darts.
-        static Level L17()
-        {
-            var b = new B();
-            b.Plat(3.5f);
-            b.Gap(2.5f);
-            float p2 = b.Plat(4f); b.Dart(p2); b.ArrowRain(p2 + 1.5f);
-            b.Gap(2.5f);
-            float p3 = b.Plat(4f); b.Faller(p3);
-            b.Gap(2.5f);
-            float p4 = b.Plat(3.5f); b.Spike(p4);
-            return b.Finish();
-        }
-
-        // 18 — the rain corridor.
-        static Level L18()
-        {
-            var b = new B();
-            b.Plat(3.5f);
-            b.Gap(2.5f);
-            float p2 = b.Plat(5f); b.ArrowRain(p2 - 1.5f); b.ArrowRain(p2); b.ArrowRain(p2 + 1.5f);
-            b.Gap(2.5f);
-            float p3 = b.Plat(3.5f); b.LateSpike(p3);
-            return b.Finish();
-        }
-
-        // 19 — reverse, rain, saw, invisible.
-        static Level L19()
-        {
-            var b = new B();
-            float p1 = b.Plat(4f); b.Reverse(p1 + 1f);
-            b.Gap(2.5f);
-            float p2 = b.Plat(4f); b.ArrowRain(p2 - 1f); b.Dart(p2 + 1f);
-            b.Gap(2.5f);
-            float p3 = b.Plat(4f); b.Saw(p3);
+            // ---- Phase 3: the throne ----
+            b.Gap(2.9f);
+            float t1 = b.Plat(5.4f); b.ArrowRain(t1 - 1.7f); b.Reverse(t1); b.ArrowRain(t1 + 1.7f);
+            b.Gap(2.9f);
+            float t2 = b.Plat(4.8f); b.GrowSpike(t2 - 1.3f); b.Dart(t2 + 1.3f);
             b.FakeFloor(2f);
-            float p4 = b.Plat(3.5f); b.Surprise(p4);
-            return b.Finish();
-        }
-
-        // 20 — the grand finale.
-        static Level L20()
-        {
-            var b = new B();
-            b.Plat(3.5f);
-            b.Gap(2.8f);
-            float p2 = b.Plat(5f); b.Dart(p2 - 1.5f); b.ArrowRain(p2); b.Spike(p2 + 1.5f);
-            b.Gap(2.8f);
-            float pc = b.Plat(3.5f); b.Checkpoint(pc);
-            b.Gap(2.8f);
-            float p3 = b.Plat(5f); b.Faller(p3 - 1.5f); b.Saw(p3 + 1.5f);
-            b.FakeFloor(2f);
-            float p4 = b.Plat(4f); b.Surprise(p4 - 1f); b.WarpBack(p4 + 1f);
-            return b.Finish();
+            float t3 = b.Plat(4.8f); b.Surprise(t3 - 1.3f); b.LateSpike(t3 + 1.3f);
+            b.Gap(2.7f);
+            float t4 = b.Plat(4.2f); b.Saw(t4);
+            return b.Finish();                                    // the coffin: escape at last
         }
     }
 }

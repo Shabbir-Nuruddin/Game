@@ -15,6 +15,7 @@ namespace TrustIssues
             _dir = Mathf.Sign(dir);
             var c = gameObject.AddComponent<BoxCollider2D>();
             c.isTrigger = true;
+            c.size = new Vector2(0.8f, 0.7f);    // tight hitbox (local; transform scales it down)
             // A kinematic body so trigger events actually fire against the
             // static candy walls (2D triggers need a Rigidbody on one side).
             var rb = gameObject.AddComponent<Rigidbody2D>();
@@ -38,7 +39,49 @@ namespace TrustIssues
             {
                 Destroy(o.gameObject);
                 Destroy(gameObject);
+                return;
             }
+            var boss = o.GetComponent<Boss>();
+            if (boss != null)
+            {
+                boss.Hit(2);          // each collected shot bites — a clip is meaningful
+                Destroy(gameObject);
+            }
+        }
+    }
+
+    /// <summary>
+    /// A weapon pickup that sits in a boss arena. Walk into it to load a fresh clip,
+    /// then blast the boss until it's spent — at which point another one appears
+    /// elsewhere, forcing the dodge → grab → shoot rhythm. Built by GameRoot.
+    /// </summary>
+    public class GunPickup : MonoBehaviour
+    {
+        int _clip;
+        public void Init(int clip) { _clip = clip; }
+
+        void OnTriggerEnter2D(Collider2D o)
+        {
+            var pc = o.GetComponent<PlayerController>();
+            if (pc == null) return;
+            pc.GiveAmmo(_clip);
+            Audio.PlayOr("levelup", "click", 0.6f);
+            Fx.Burst(transform.position, new Color(1f, 0.85f, 0.3f, 1f), 12, 6f, 0.16f, 0.4f, 4f);
+            Fx.Ring(transform.position, new Color(1f, 0.8f, 0.3f, 0.85f), 1.6f, 0.3f);
+            GameRoot.I?.OnGunCollected();
+            Destroy(gameObject);
+        }
+    }
+
+    /// <summary>Gentle vertical bob so a pickup reads as "grab me". Cosmetic.</summary>
+    public class Bobber : MonoBehaviour
+    {
+        Vector3 _home; float _t;
+        void Start() { _home = transform.position; _t = Random.value * 6f; }
+        void Update()
+        {
+            _t += Time.deltaTime;
+            transform.position = _home + new Vector3(0f, Mathf.Sin(_t * 2.5f) * 0.18f, 0f);
         }
     }
 }

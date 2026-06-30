@@ -21,7 +21,12 @@ namespace TrustIssues
         ArrowRain,  // spikes drop from the ceiling on a timer — time your run
         Checkpoint, // touch it and you respawn here instead of the start
         BreakBlock, // a solid candy wall you must SHOOT to get past
-        GrowSpike   // a blood spike that grows (lethal) and shrinks (safe) on a loop
+        GrowSpike,  // a blood spike that grows (lethal) and shrinks (safe) on a loop
+        Pendulum,   // a blade on a chain that swings across the path — time your run
+        FlameJet,   // a floor jet that erupts fire on a loop (cross while it's down)
+        Chandelier, // a wide telegraphed drop from the ceiling (a big Faller)
+        HolyWater,  // a floor puddle that turns lethal on a pulse (cross while dim)
+        BatSwoop    // a bat that hovers, then dives at you on a telegraph
     }
 
     /// <summary>
@@ -54,31 +59,57 @@ namespace TrustIssues
             _sr = GetComponent<SpriteRenderer>();
             _col = GetComponent<BoxCollider2D>();
             _origin = transform.position;
-            if (type == TrapType.GrowSpike)
+            // GrowSpike and FlameJet both erupt UP from the floor, so they share the
+            // base-anchor maths (otherwise they'd shrink toward their own centre).
+            if (type == TrapType.GrowSpike || type == TrapType.FlameJet)
             {
                 _growBaseScale = transform.localScale;
-                // Anchor the BASE to the platform so the spike erupts upward and
-                // sinks back DOWN — instead of shrinking toward its own centre
-                // (which looked like a harmless flicker).
                 float spriteH = (_sr != null && _sr.sprite != null) ? _sr.sprite.bounds.size.y : 1f;
                 _growFullH = spriteH * _growBaseScale.y;
                 _growBottomY = _origin.y - _growFullH / 2f;
             }
 
-            // A faller is a VISIBLE rock-head hovering above; it slams down with a
-            // brief telegraph so you can sprint through (dodgeable, not a cheap kill).
-            if (type == TrapType.Faller)
+            // A faller hovers above and slams down on a brief telegraph. A chandelier
+            // is the same idea but WIDE and gothic — it shares the drop coroutine.
+            if (type == TrapType.Faller || type == TrapType.Chandelier)
             {
-                var sp = Assets.Sprite("rockhead");
-                var pos = transform.position + Vector3.up * 3.5f;
+                bool chand = type == TrapType.Chandelier;
+                var sp = Assets.Sprite(chand ? "chandelier" : "rockhead");
+                var size = chand ? new Vector2(2.4f, 1.1f) : new Vector2(1.5f, 1.5f);
+                var pos = transform.position + Vector3.up * (chand ? 4.0f : 3.5f);
                 var go = sp != null
-                    ? Theme.SpriteBox("RockHead", transform, pos, new Vector2(1.5f, 1.5f), sp, 4)
-                    : Theme.Box("RockHead", transform, pos, new Vector2(1.4f, 1.4f), Theme.Trick, 4);
-                if (sp != null) go.GetComponent<SpriteRenderer>().color = new Color(0.5f, 0.45f, 0.5f); // stone boulder
+                    ? Theme.SpriteBox(chand ? "Chandelier" : "RockHead", transform, pos, size, sp, 4)
+                    : Theme.Box(chand ? "Chandelier" : "RockHead", transform, pos, size,
+                                chand ? Theme.Hex("3A2A12") : Theme.Trick, 4);
+                if (sp != null && !chand) go.GetComponent<SpriteRenderer>().color = new Color(0.5f, 0.45f, 0.5f);
+                if (chand && sp == null) // a couple of candle dots so the box reads as a chandelier
+                {
+                    Theme.Box("Candle", go.transform, (Vector2)pos + new Vector2(-0.7f, 0.5f), new Vector2(0.14f, 0.4f), Theme.Coin, 5);
+                    Theme.Box("Candle", go.transform, (Vector2)pos + new Vector2(0.0f, 0.55f), new Vector2(0.14f, 0.4f), Theme.Coin, 5);
+                    Theme.Box("Candle", go.transform, (Vector2)pos + new Vector2(0.7f, 0.5f), new Vector2(0.14f, 0.4f), Theme.Coin, 5);
+                }
                 var col = go.AddComponent<BoxCollider2D>(); col.isTrigger = true;
-                var kz = go.AddComponent<KillZone>(); kz.msg = "Crushed by the falling stone.";
+                var kz = go.AddComponent<KillZone>();
+                kz.msg = chand ? "Crushed under the chandelier." : "Crushed by the falling stone.";
                 _faller = go.transform;
                 _fallerHome = _faller.position;
+            }
+
+            // A pendulum: a blade on a chain that swings across the lane below. The
+            // trap object itself is the pivot (up high); the chain + blade hang from
+            // it as children, so rotating the pivot swings the whole assembly.
+            if (type == TrapType.Pendulum)
+            {
+                const float arm = 3.0f;
+                Theme.Box("Chain", transform, transform.position + Vector3.down * (arm / 2f),
+                    new Vector2(0.08f, arm), Theme.Hex("2A2230"), 2);
+                var sp = Assets.Sprite("pendulum");
+                var bladePos = transform.position + Vector3.down * arm;
+                var blade = sp != null
+                    ? Theme.SpriteBox("Blade", transform, bladePos, new Vector2(1.3f, 1.3f), sp, 3)
+                    : Theme.Box("Blade", transform, bladePos, new Vector2(1.0f, 1.0f), Theme.Danger, 3);
+                var col = blade.AddComponent<BoxCollider2D>(); col.isTrigger = true; col.size = Vector2.one * 0.7f;
+                var kz = blade.AddComponent<KillZone>(); kz.msg = "Sliced by the pendulum blade.";
             }
 
             if (type == TrapType.ArrowRain)
@@ -98,7 +129,7 @@ namespace TrustIssues
                     : Theme.Box("RainDart", transform, spawn, new Vector2(0.3f, 0.7f), Theme.Danger, 4);
                 var col = go.AddComponent<BoxCollider2D>(); col.isTrigger = true;
                 col.size *= 0.8f; // reliable spike hitbox
-                var kz = go.AddComponent<KillZone>(); kz.msg = "Look up next time.";
+                var kz = go.AddComponent<KillZone>(); kz.msg = "Impaled by a falling spike.";
                 StartCoroutine(FallDart(go.transform));
                 yield return new WaitForSeconds(1.3f);
             }
@@ -146,6 +177,44 @@ namespace TrustIssues
                     _sr.color = lethal ? Theme.Danger
                                        : new Color(0.55f, 0.12f, 0.14f, 1f); // dim while safe
             }
+
+            // A pendulum blade: swing the pivot back and forth. The chain + blade
+            // are children, so they sweep through the lane below.
+            else if (type == TrapType.Pendulum)
+            {
+                float ang = Mathf.Sin(Time.time * 1.6f + _origin.x) * 55f;
+                transform.rotation = Quaternion.Euler(0f, 0f, ang);
+            }
+
+            // A flame jet: mostly OFF, erupts for a beat with a tiny telegraph. Same
+            // base-anchor maths as GrowSpike so the fire shoots UP out of the floor.
+            else if (type == TrapType.FlameJet)
+            {
+                float t = Mathf.Repeat(Time.time * 0.8f + _origin.x, 1f); // 0..1 loop
+                bool erupt = t > 0.55f && t < 0.9f;     // lethal window
+                bool warn  = t >= 0.45f && t <= 0.55f;  // a flicker of warning
+                float h = erupt ? 1f : (warn ? 0.35f : 0.08f);
+                transform.localScale = new Vector3(_growBaseScale.x, _growBaseScale.y * h, 1f);
+                float curH = _growFullH * h;
+                transform.position = new Vector3(_origin.x, _growBottomY + curH / 2f, 0f);
+                if (_col != null) _col.enabled = erupt;
+                if (_sr != null)
+                    _sr.color = erupt ? Theme.Hex("FF7A1A")
+                              : warn ? Theme.Hex("FFC24D")
+                                     : new Color(1f, 0.5f, 0.1f, 0.25f);
+            }
+
+            // Holy water: a flat puddle that turns lethal on a slow pulse. Bright =
+            // burning (deadly), dim = safe to cross. No vertical growth.
+            else if (type == TrapType.HolyWater)
+            {
+                float k = 0.5f + 0.5f * Mathf.Sin(Time.time * 2.0f + _origin.x);
+                bool lethal = k > 0.6f;
+                if (_col != null) _col.enabled = lethal;
+                if (_sr != null)
+                    _sr.color = lethal ? new Color(0.85f, 0.97f, 1f, 0.95f)
+                                       : new Color(0.5f, 0.8f, 0.95f, 0.4f);
+            }
         }
 
         // ---- solid traps (FakeFloor) use collision; the rest are triggers ----
@@ -162,6 +231,7 @@ namespace TrustIssues
         IEnumerator Collapse()
         {
             _armed = false;
+            Codex.Unlock(TrapType.FakeFloor);   // you've discovered the treacher-floor
             // A single-frame shudder as the only warning, then the floor is GONE.
             // No time to react the first time — that's the trap. The crack tell
             // means you'll know to jump it next run.
@@ -198,27 +268,33 @@ namespace TrustIssues
                     if (_armed) StartCoroutine(Crush());
                     break;
                 case TrapType.FakeExit:
+                    Codex.Unlock(TrapType.FakeExit);
                     GameRoot.I?.Die("That door? Pure evil.");
                     break;
                 case TrapType.RealExit:
                     if (_armed) { _armed = false; GameRoot.I?.ReachExit(); }
                     break;
                 case TrapType.Surprise:
+                    Codex.Unlock(TrapType.Surprise);
                     GameRoot.I?.Die("Caught in a sunbeam. Vampires burn.");
                     break;
                 case TrapType.Dart:
                     if (_armed) { _armed = false; StartCoroutine(FireDart()); }
                     break;
                 case TrapType.Faller:
+                case TrapType.Chandelier:
                     if (_armed) StartCoroutine(DropReactive());
                     break;
                 case TrapType.Spring:
+                    Codex.Unlock(TrapType.Spring);
                     LaunchPlayer(other);
                     break;
                 case TrapType.WarpBack:
+                    Codex.Unlock(TrapType.WarpBack);
                     GameRoot.I?.WarpToStart();
                     break;
                 case TrapType.Reverse:
+                    Codex.Unlock(TrapType.Reverse);
                     pc.SetReversed(3f);
                     break;
                 case TrapType.Checkpoint:
@@ -232,7 +308,7 @@ namespace TrustIssues
         {
             var dart = Theme.Box("Dart", transform.parent, transform.position + Vector3.right * 5f,
                 new Vector2(0.6f, 0.22f), Theme.Danger, 4);
-            var kz = dart.AddComponent<KillZone>(); kz.msg = "Didn't see that coming?";
+            var kz = dart.AddComponent<KillZone>(); kz.msg = "Skewered by a flying stake."; kz.trapTag = (int)type;
             var col = dart.AddComponent<BoxCollider2D>(); col.isTrigger = true;
             float t = 0f;
             while (t < 2.2f && dart != null)
@@ -250,11 +326,13 @@ namespace TrustIssues
         IEnumerator DropReactive()
         {
             _armed = false;
+            // A longer shake so the drop is clearly readable — you have time to
+            // sprint out from under it instead of being flattened on arrival.
             float e = 0f;
-            while (e < 0.25f)
+            while (e < 0.5f)
             {
                 e += Time.deltaTime;
-                if (_faller != null) _faller.position = _fallerHome + (Vector3)(Random.insideUnitCircle * 0.06f);
+                if (_faller != null) _faller.position = _fallerHome + (Vector3)(Random.insideUnitCircle * 0.08f);
                 yield return null;
             }
             Vector3 to = new Vector3(_fallerHome.x, transform.position.y, 0f);
@@ -265,6 +343,10 @@ namespace TrustIssues
                 if (_faller != null) _faller.position = Vector3.Lerp(_fallerHome, to, e / 0.1f);
                 yield return null;
             }
+            // SLAM — dust + shake even if it misses (weight).
+            Fx.Burst(to + Vector3.down * 0.4f, new Color(0.55f, 0.5f, 0.55f, 0.9f), 9, 4.5f, 0.18f, 0.4f, 10f);
+            GameRoot.I?.ShakeCam(0.28f, 0.18f);
+            Audio.PlayOr("die_slam", "jump", 0.4f);
             yield return new WaitForSeconds(0.35f);
             e = 0f;
             while (e < 0.3f)
@@ -367,13 +449,23 @@ namespace TrustIssues
     public class KillZone : MonoBehaviour
     {
         public string msg = "Bonk.";
+        public int trapTag = -1;   // (int)TrapType for the Codex; -1 = not a codex trap
+
+        void Kill()
+        {
+            // Reveal the trap's Bestiary entry the first time it gets you.
+            int tag = trapTag;
+            if (tag < 0) { var tr = GetComponentInParent<Trap>(); if (tr != null) tag = (int)tr.type; }
+            if (tag >= 0) Codex.Unlock((TrapType)tag);
+            GameRoot.I?.Die(msg);
+        }
         void OnTriggerEnter2D(Collider2D o)
         {
-            if (o.GetComponent<PlayerController>()) GameRoot.I?.Die(msg);
+            if (o.GetComponent<PlayerController>()) Kill();
         }
         void OnCollisionEnter2D(Collision2D c)
         {
-            if (c.collider.GetComponent<PlayerController>()) GameRoot.I?.Die(msg);
+            if (c.collider.GetComponent<PlayerController>()) Kill();
         }
     }
 }

@@ -99,6 +99,27 @@ namespace TrustIssues
         const float MasterSfx = 0.55f;
         const float MasterMusic = 0.6f;
 
+        // Player-set 0..1 volumes (the Settings sliders). Cached after first read.
+        static float _musicVol = -1f, _sfxVol = -1f;
+        static float _musicBase = 0.35f;   // last per-track volume passed to Music(), so the slider can re-scale live
+
+        public static float MusicVol
+        {
+            get { if (_musicVol < 0f) _musicVol = Mathf.Clamp01(PlayerPrefs.GetFloat("music_vol", 1f)); return _musicVol; }
+            set
+            {
+                _musicVol = Mathf.Clamp01(value);
+                PlayerPrefs.SetFloat("music_vol", _musicVol); PlayerPrefs.Save();
+                if (_music != null) _music.volume = _musicBase * MasterMusic * _musicVol;   // apply immediately
+            }
+        }
+
+        public static float SfxVol
+        {
+            get { if (_sfxVol < 0f) _sfxVol = Mathf.Clamp01(PlayerPrefs.GetFloat("sfx_vol", 1f)); return _sfxVol; }
+            set { _sfxVol = Mathf.Clamp01(value); PlayerPrefs.SetFloat("sfx_vol", _sfxVol); PlayerPrefs.Save(); }
+        }
+
         static void Ensure()
         {
             if (_sfx != null) return;
@@ -163,7 +184,26 @@ namespace TrustIssues
         {
             Ensure();
             var c = Assets.Clip(name);
-            if (c != null) _sfx.PlayOneShot(c, volume * MasterSfx);
+            if (c != null) _sfx.PlayOneShot(c, volume * MasterSfx * SfxVol);
+        }
+
+        // Like Play, but if the preferred clip is missing it falls back to another
+        // (e.g. cause-specific death SFX -> the generic "death"), so there's always
+        // SOME feedback even before the bespoke clips are dropped in.
+        public static void PlayOr(string name, string fallback, float volume = 1f)
+        {
+            Ensure();
+            var c = Assets.Clip(name) ?? Assets.Clip(fallback);
+            if (c != null) _sfx.PlayOneShot(c, volume * MasterSfx * SfxVol);
+        }
+
+        // A spoken/groan clip (e.g. the vampire's dying voice) — scaled by the VOICE
+        // slider, not SFX, so the two can be balanced independently.
+        public static void PlayVoice(string name, float volume = 1f)
+        {
+            Ensure();
+            var c = Assets.Clip(name);
+            if (c != null) _sfx.PlayOneShot(c, volume * MasterSfx * Voice.Volume);
         }
 
         public static void Music(string name, float volume = 0.35f)
@@ -171,8 +211,9 @@ namespace TrustIssues
             Ensure();
             var c = Assets.Clip(name);
             if (c == null) { _music.Stop(); return; }
-            if (_music.clip == c && _music.isPlaying) return;
-            _music.clip = c; _music.volume = volume * MasterMusic; _music.Play();
+            _musicBase = volume;
+            if (_music.clip == c && _music.isPlaying) { _music.volume = volume * MasterMusic * MusicVol; return; }
+            _music.clip = c; _music.volume = volume * MasterMusic * MusicVol; _music.Play();
         }
 
         public static void StopMusic() { if (_music != null) _music.Stop(); }

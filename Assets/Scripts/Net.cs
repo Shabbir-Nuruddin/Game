@@ -65,6 +65,15 @@ namespace TrustIssues
         // Paste your Photon App ID here (the one from your PUN app dashboard).
         public const string AppId = "14e6b323-104c-45ba-95e3-0e023ee33dcf";
 
+        // CRITICAL: every client MUST use the SAME region, or two devices on
+        // different networks auto-pick different regions, land in same-named but
+        // ISOLATED rooms (matching seed/map, but they never see each other), which
+        // was THE "same code, can't see the opponent" bug. Pin one region here.
+        // Common codes: "us","usw","eu","asia","in","jp","sa","au". Set to wherever
+        // most of your players are for the lowest ping (correctness is region-agnostic
+        // as long as it's the same for everyone).
+        public const string Region = "in";
+
         public const byte EvState = 1;   // x, y, faceLeft
         public const byte EvWin   = 2;   // sender won the race
 
@@ -74,6 +83,13 @@ namespace TrustIssues
         public static int LocalActor => PhotonNetwork.LocalPlayer != null ? PhotonNetwork.LocalPlayer.ActorNumber : 0;
         public static int PlayerCount => InRoom ? PhotonNetwork.CurrentRoom.PlayerCount : 0;
         public static int Seed { get; private set; }
+        public static string MyNick => PhotonNetwork.NickName ?? "";
+        public static string NickOf(int actor)
+        {
+            if (!InRoom) return "Heir";
+            var p = PhotonNetwork.CurrentRoom.GetPlayer(actor);
+            return (p != null && !string.IsNullOrEmpty(p.NickName)) ? p.NickName : ("Heir-" + actor);
+        }
 
         // GameRoot subscribes to these.
         public static Action<int, Vector3, bool> OnState;  // actor, pos, faceLeft
@@ -175,7 +191,7 @@ namespace TrustIssues
 
             var settings = PhotonNetwork.PhotonServerSettings.AppSettings;
             settings.AppIdRealtime = Net.AppId;
-            settings.FixedRegion = "";                    // auto-pick best ping
+            settings.FixedRegion = Net.Region;            // pin ONE region (see Net.Region)
             PhotonNetwork.NickName = "Heir-" + UnityEngine.Random.Range(100, 999);
             PhotonNetwork.AutomaticallySyncScene = false;
 
@@ -261,6 +277,8 @@ namespace TrustIssues
         public static int LocalActor => 0;
         public static int PlayerCount => 0;
         public static int Seed => 0;
+        public static string MyNick => "";
+        public static string NickOf(int actor) => "Heir";
 
         public static Action<int, Vector3, bool> OnState;
         public static Action<int> OnLeft;

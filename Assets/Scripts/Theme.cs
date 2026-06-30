@@ -54,6 +54,23 @@ namespace TrustIssues
             return c;
         }
 
+        // A 9-sliced sprite loaded from Resources/art with a runtime border, so UI
+        // frames/bars stretch cleanly (corners stay crisp). Cached; null if missing
+        // (callers fall back to plain boxes). Used for the gothic UI skin.
+        static readonly System.Collections.Generic.Dictionary<string, Sprite> _nine = new();
+        public static Sprite NineSlice(string name, int border)
+        {
+            if (_nine.TryGetValue(name, out var s)) return s;
+            var tex = Resources.Load<Texture2D>("art/" + name);
+            if (tex == null) { _nine[name] = null; return null; }
+            tex.filterMode = FilterMode.Point;
+            var b = new Vector4(border, border, border, border);
+            s = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height),
+                new Vector2(0.5f, 0.5f), tex.width, 0, SpriteMeshType.FullRect, b);
+            _nine[name] = s;
+            return s;
+        }
+
         // A code-generated bat silhouette (used for the player's bat/fly form).
         static Sprite _bat;
         public static Sprite Bat
@@ -243,6 +260,10 @@ namespace TrustIssues
                     var s = go.AddComponent<CanvasScaler>();
                     s.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
                     s.referenceResolution = new Vector2(1920, 1080);
+                    // Balance width/height so UI doesn't clip off-screen on odd
+                    // fullscreen aspect ratios (16:9, 16:10, ultrawide, etc.).
+                    s.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
+                    s.matchWidthOrHeight = 0.5f;
                     go.AddComponent<GraphicRaycaster>();
 
                     // Without an EventSystem, UI buttons receive NO clicks. We
@@ -265,11 +286,28 @@ namespace TrustIssues
             {
                 if (_font == null)
                 {
-                    try { _font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf"); } catch { }
+                    // Prefer the dropped-in pixel font (Resources/fonts/body.ttf);
+                    // fall back to a built-in font so text never disappears.
+                    _font = Resources.Load<Font>("fonts/body");
+                    if (_font == null)
+                        try { _font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf"); } catch { }
                     if (_font == null)
                         try { _font = Resources.GetBuiltinResource<Font>("Arial.ttf"); } catch { }
                 }
                 return _font;
+            }
+        }
+
+        // A gothic display font for big headings (Resources/fonts/title.ttf =
+        // Nosifer). Falls back to the body font if it isn't present.
+        static Font _titleFont;
+        public static Font TitleFont
+        {
+            get
+            {
+                if (_titleFont == null) _titleFont = Resources.Load<Font>("fonts/title");
+                if (_titleFont == null) _titleFont = Font;
+                return _titleFont;
             }
         }
 

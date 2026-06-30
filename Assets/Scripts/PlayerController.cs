@@ -38,13 +38,35 @@ namespace TrustIssues
         BoxCollider2D _col;
         Transform _visual;       // child we squash/stretch (so physics box is stable)
         float _coyote, _buffer;
-        bool _grounded;
+        bool _grounded, _wasGrounded;
         float _inputX;
         bool _frozen;
         float _baseX = 1f, _baseY = 1f, _facing = 1f, _animTimer;
         float _reverseTimer;
+        float _fireCd;
+        public bool canShoot = false;            // on only in boss arenas
+        public int ammo = 0;                     // boss arenas: shots left in the held weapon
+        public void GiveAmmo(int n) { ammo = Mathf.Max(ammo, n); }
+
+        // ---- skin-granted traits/abilities (set by GameRoot from the equipped skin) ----
+        public float moveMul = 1f, jumpMul = 1f;
+        public bool dashEnabled = false;
+        public int extraAirJumps = 0;            // double-jump etc.
+        public float dashSpeed = 19f, dashDur = 0.16f, dashCooldown = 0.85f;
+        float _dashCdLeft, _dashLeft, _dashDir;
+        int _airJumpsLeft;
+        bool _isDashing;
+
+        // Visible boss-arena blaster (a small procedural "stake-launcher") parented to
+        // the player ROOT so it never inherits the body's squash/stretch. Shown only
+        // while armed (canShoot) and not in bat form.
+        Transform _gunRoot;
+        const float GunReach = 0.7f;   // muzzle distance in front of the player centre
 
         public void SetReversed(float duration) { _reverseTimer = duration; }
+
+        // Read by GameRoot for section-checkpoints + reactive-trap tracking.
+        public bool IsGrounded => _grounded;
 
         // Which way the character is visually facing (+1 right, -1 left). Read by
         // the netcode so a remote ghost mirrors the real player's facing.
@@ -64,6 +86,8 @@ namespace TrustIssues
         }
 
         public void Freeze() { _frozen = true; _rb.linearVelocity = Vector2.zero; _rb.simulated = false; }
+        // Hand control back (used after the cinematic boss intro).
+        public void Unfreeze() { _frozen = false; _rb.simulated = true; }
 
         // Plays the death frames once (called by GameRoot on death). Runs as a
         // coroutine so it works even though the controller is frozen.
@@ -85,11 +109,35 @@ namespace TrustIssues
         void Fire()
         {
             if (_frozen) return;
-            var go = Theme.Box("Bullet", null,
-                transform.position + Vector3.right * (_facing * 0.6f),
-                new Vector2(0.34f, 0.16f), Theme.Player, 7);
+            Vector3 muzzle = transform.position + new Vector3(_facing * GunReach, -0.04f, 0f);
+            var go = Theme.Box("Bullet", null, muzzle, new Vector2(0.4f, 0.18f), Theme.Danger, 7);
             go.AddComponent<Bullet>().Init(_facing);
-            Audio.Play("jump", 0.25f);
+            // Muzzle flash + spark so the shot has real punch and the gun reads clearly.
+            Fx.Burst(muzzle, new Color(1f, 0.82f, 0.32f, 1f), 6, 5f, 0.12f, 0.16f, 0f);
+            Fx.Ring(muzzle, new Color(1f, 0.5f, 0.2f, 0.85f), 0.7f, 0.15f);
+            Audio.PlayOr("shoot", "jump", 0.5f);
+        }
+
+        // Build the procedural blaster once (dark body + barrel + grip + glowing red
+        // muzzle), parented to the player root and initially hidden.
+        void EnsureGun()
+        {
+            if (_gunRoot != null) return;
+            var root = new GameObject("Blaster");
+            root.transform.SetParent(transform, false);
+            root.transform.localPosition = new Vector3(0f, -0.05f, 0f);
+            _gunRoot = root.transform;
+            GunPart("Body",   new Vector3(0.12f, -0.02f, 0f), new Vector2(0.34f, 0.22f), Theme.Hex("2A2630"), 6);
+            GunPart("Barrel", new Vector3(0.46f,  0.00f, 0f), new Vector2(0.44f, 0.12f), Theme.Hex("4A4450"), 6);
+            GunPart("Grip",   new Vector3(0.02f, -0.16f, 0f), new Vector2(0.14f, 0.18f), Theme.Hex("1F1B26"), 6);
+            GunPart("Muzzle", new Vector3(0.66f,  0.00f, 0f), new Vector2(0.10f, 0.14f), Theme.Danger, 7);
+            root.SetActive(false);
+        }
+
+        void GunPart(string name, Vector3 local, Vector2 size, Color col, int order)
+        {
+            var go = Theme.Box(name, _gunRoot, Vector2.zero, size, col, order);
+            go.transform.localPosition = local;
         }
 
         void Update()
@@ -100,18 +148,41 @@ namespace TrustIssues
             if (Input.GetKey(KeyCode.LeftArrow) || Input.GetKey(KeyCode.A)) _inputX -= 1f;
             if (Input.GetKey(KeyCode.RightArrow) || Input.GetKey(KeyCode.D)) _inputX += 1f;
 
-            if (Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.UpArrow) ||
+            // Jump: the rebindable jump key, plus the fixed up-keys (W / ↑).
+            if (Input.GetKeyDown(Controls.Jump) || Input.GetKeyDown(KeyCode.UpArrow) ||
                 Input.GetKeyDown(KeyCode.W))
                 _buffer = jumpBuffer;
 
             if (Input.GetKeyDown(KeyCode.R)) GameRoot.I?.Die("Do-over!");
 
+            // Vampire DASH (skin ability): a quick mist-burst in the facing direction.
+            _dashCdLeft -= Time.deltaTime;
+            if (dashEnabled && _dashCdLeft <= 0f && _dashLeft <= 0f &&
+                (Input.GetKeyDown(Controls.Dash) || TouchInput.ConsumeDash()))
+            {
+                _dashLeft = dashDur; _dashDir = _facing; _dashCdLeft = dashCooldown;
+                Audio.PlayOr("dash", "jump", 0.5f);
+            }
+            if (_dashLeft > 0f) _dashLeft -= Time.deltaTime;
+            _isDashing = _dashLeft > 0f;
+
+            // Blaster — only armed in boss arenas AND only while you hold a weapon you
+            // collected (ammo > 0). Run out and you must dodge to the next pickup.
+            _fireCd -= Time.deltaTime;
+            bool wantFire = Input.GetKeyDown(Controls.Shoot) || TouchInput.ConsumeFire();
+            if (canShoot && _fireCd <= 0f && ammo > 0 && wantFire)
+            {
+                Fire(); _fireCd = 0.3f;
+                if (--ammo <= 0) GameRoot.I?.OnGunEmpty();   // clip spent → trigger a new pickup
+                GameRoot.I?.RefreshHud();
+            }
+
             // On-screen touch controls (phone): override/add to keyboard.
             if (TouchInput.X != 0f) _inputX = TouchInput.X;
             if (TouchInput.ConsumeJump()) _buffer = jumpBuffer;
 
-            // Bat flight: hold Shift (or the on-screen FLY) to glide; drains meter.
-            bool flyHeld = canFly && (Input.GetKey(KeyCode.LeftShift) || TouchInput.FlyHeld);
+            // Bat flight: hold the glide key (or the on-screen FLY) to glide; drains meter.
+            bool flyHeld = canFly && (Input.GetKey(Controls.Fly) || TouchInput.FlyHeld);
             _flying = flyHeld && flightMeter > 0f && !_grounded; // must be airborne (no ground hover)
             if (_flying) flightMeter = Mathf.Max(0f, flightMeter - flyDrain * Time.deltaTime);
             else if (_grounded) flightMeter = Mathf.Min(1f, flightMeter + flyRefill * Time.deltaTime);
@@ -144,6 +215,16 @@ namespace TrustIssues
                 float stretch = _grounded ? 0f : Mathf.Clamp(vy * 0.02f, -0.18f, 0.25f);
                 var target = new Vector3(_facing * _baseX * (1f - stretch), _baseY * (1f + stretch), 1f);
                 _visual.localScale = Vector3.Lerp(_visual.localScale, target, 14f * Time.deltaTime);
+            }
+
+            // Show/aim the visible blaster only while you actually HOLD a weapon
+            // (collected ammo) in a boss arena and you're on foot.
+            EnsureGun();
+            if (_gunRoot != null)
+            {
+                bool showGun = canShoot && ammo > 0 && !_flying && !_frozen;
+                if (_gunRoot.gameObject.activeSelf != showGun) _gunRoot.gameObject.SetActive(showGun);
+                if (showGun) _gunRoot.localScale = new Vector3(_facing, 1f, 1f);   // flip to face
             }
 
             // Animation: jump pose in the air, run cycle while moving, and a single
@@ -193,14 +274,31 @@ namespace TrustIssues
                 if (hits[i].collider != null && hits[i].normal.y > 0.5f) { _grounded = true; break; }
             if (_grounded) _coyote = coyoteTime;
 
+            // Landing dust on a real impact (juice).
+            if (_grounded && !_wasGrounded && _rb.linearVelocity.y < -3f)
+                Fx.Dust(transform.position + Vector3.down * 0.4f);
+            _wasGrounded = _grounded;
+
             var v = _rb.linearVelocity;
-            v.x = _inputX * moveSpeed;
+            v.x = _inputX * moveSpeed * moveMul;
+
+            if (_grounded) _airJumpsLeft = extraAirJumps;   // refill double-jumps on landing
+
+            // A dash overrides horizontal movement with a flat mist-burst.
+            if (_isDashing) { v.x = _dashDir * dashSpeed; v.y = 0f; }
 
             if (_buffer > 0f && _coyote > 0f)
             {
-                v.y = jumpSpeed;
+                v.y = jumpSpeed * jumpMul;
                 _buffer = 0f; _coyote = 0f;
                 Audio.Play("jump", 0.5f);
+                Fx.Dust(transform.position + Vector3.down * 0.4f);
+            }
+            else if (_buffer > 0f && !_grounded && _coyote <= 0f && _airJumpsLeft > 0)
+            {
+                v.y = jumpSpeed * jumpMul;                   // mid-air (double) jump
+                _buffer = 0f; _airJumpsLeft--;
+                Audio.Play("jump", 0.6f);
             }
 
             // Bat form GLIDES: it slows the fall to a gentle descent but cannot
