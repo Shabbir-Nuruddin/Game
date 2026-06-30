@@ -18,9 +18,11 @@ namespace TrustIssues
         const bool ArtFacesLeft = false;
 
         // World-space half-extents of the VISIBLE body — used for the one-shot CONTACT
-        // kill, so dying matches actually touching the boss (the sprite displays at
-        // ~2.6 units, but the creature body is smaller).
-        const float BodyHalfW = 0.85f, BodyHalfH = 1.10f;
+        // kill. Generous on purpose: the boss hovers above the floor, so this reaches
+        // DOWN far enough that walking under/into it is lethal (players reported being
+        // "inside the boss" without dying). The check below also shifts the centre down.
+        const float BodyHalfW = 1.15f, BodyHalfH = 1.65f;
+        const float BodyDrop = 0.5f;   // shift the kill box down toward the floor
         // The BULLET hurtbox is the same width but a TALL column: the boss hovers high
         // above the ground, so this lets your floor-level shots still reach it without
         // forcing a jump — while keeping side shots from phantom-hitting past the body.
@@ -121,12 +123,13 @@ namespace TrustIssues
                 var c = _promptText.color; c.a = a; _promptText.color = c;
             }
 
-            // One-shot contact: overlap the BODY (an AABB matching the hurtbox, not a
-            // mismatched circle) and you're dust. Disabled during the cinematic intro.
+            // One-shot contact: overlap the BODY (a generous AABB shifted down toward
+            // the floor) and you're dust. Disabled during the cinematic intro.
             if (pl != null && !IntroHold)
             {
-                Vector2 d = (Vector2)pl.position - (Vector2)transform.position;
-                if (Mathf.Abs(d.x) < BodyHalfW && Mathf.Abs(d.y) < BodyHalfH)
+                float dx = pl.position.x - transform.position.x;
+                float dy = pl.position.y - (transform.position.y - BodyDrop);
+                if (Mathf.Abs(dx) < BodyHalfW && Mathf.Abs(dy) < BodyHalfH)
                     GameRoot.I.HitPlayer($"Caught by {BossName()}.");
             }
         }
@@ -194,7 +197,7 @@ namespace TrustIssues
                 case 0: return Pattern_Dash();
                 case 1: return Pattern_GroundSpikes();
                 case 2: return _phase >= 1 ? Pattern_Minefield() : Pattern_Dash();   // phase 2 adds the minefield
-                default: return Pattern_Fan();
+                default: return _phase >= 1 ? Pattern_Lightning() : Pattern_Fan();   // ...and the lightning storm
             }
         }
 
@@ -208,7 +211,7 @@ namespace TrustIssues
                 case 1: return Pattern_Fan();
                 case 2: return _phase >= 1 ? Pattern_Minefield() : Pattern_GroundSpikes();
                 case 3: return _enraged ? Chain(Pattern_FakeOut(), Pattern_Fan()) : Pattern_FakeOut();
-                default: return Pattern_Dash();
+                default: return _phase >= 1 ? Pattern_Lightning() : Pattern_Dash();
             }
         }
 
@@ -220,7 +223,7 @@ namespace TrustIssues
             switch (s % 5)
             {
                 case 0: return _enraged ? Chain(Pattern_BoltRain(), Pattern_Fan()) : Pattern_BoltRain();
-                case 1: return Pattern_Fan();
+                case 1: return _phase >= 1 ? Pattern_Lightning() : Pattern_Fan();
                 case 2: return _phase >= 1 ? Pattern_Minefield() : Pattern_GroundSpikes();
                 case 3: return _phase >= 2 ? Chain(Pattern_BoltRain(), Pattern_Minefield()) : Pattern_BoltRain();
                 default: return Pattern_Fan();
@@ -238,7 +241,7 @@ namespace TrustIssues
                 case 1: return _enraged ? Chain(Pattern_BoltRain(), Pattern_Fan()) : Pattern_BoltRain();
                 case 2: return Pattern_SummonBats();
                 case 3: return _phase >= 2 ? Chain(Pattern_Fan(), Pattern_Minefield()) : Pattern_Fan();
-                case 4: return Pattern_FakeOut();
+                case 4: return _phase >= 1 ? Pattern_Lightning() : Pattern_FakeOut();
                 default: return _phase >= 1 ? Pattern_Minefield() : Pattern_GroundSpikes();
             }
         }
@@ -323,6 +326,51 @@ namespace TrustIssues
             yield return Wait(0.2f);
         }
 
+        // LIGHTNING STORM: a real set-piece. Warning beams mark columns of the arena,
+        // then thick bolts crash down one after another (rolling storm) with a flash +
+        // shake on each strike. A late-phase signature so the fight builds to spectacle.
+        IEnumerator Pattern_Lightning()
+        {
+            int strikes = 2 + _tier / 2 + _phase;
+            float left = _minX + 1.5f, right = _maxX - 1.5f;
+            var parent = _hazards != null ? _hazards : transform.parent;
+            var xs = new System.Collections.Generic.List<float>();
+            var warns = new System.Collections.Generic.List<GameObject>();
+            for (int i = 0; i < strikes; i++)
+            {
+                float x = Random.Range(left, right);
+                xs.Add(x);
+                var w = Theme.Box("BoltWarn", parent, new Vector2(x, 1.5f),
+                    new Vector2(0.18f, 13f), new Color(1f, 0.92f, 0.45f, 0.55f), 5);
+                var fp = w.AddComponent<FaintPulse>(); fp.min = 0.25f; fp.max = 0.75f; fp.speed = 16f;
+                warns.Add(w);
+            }
+            Warn(0.7f);
+            yield return Wait(0.7f);
+            foreach (var w in warns) if (w != null) Destroy(w);
+            // Strike each marked column with a bright bolt, lethal for a brief window.
+            foreach (float x in xs)
+            {
+                if (_dead) yield break;
+                var b = Theme.Box("Lightning", parent, new Vector2(x, 1.5f),
+                    new Vector2(0.5f, 13f), new Color(0.95f, 0.97f, 1f, 1f), 6);
+                var col = b.AddComponent<BoxCollider2D>(); col.isTrigger = true; col.size = new Vector2(0.7f, 13f);
+                var kz = b.AddComponent<KillZone>(); kz.msg = $"Struck down by {BossName()}'s lightning.";
+                GameRoot.I?.ScreenFlash();
+                GameRoot.I?.ShakeCam(0.25f, 0.16f);
+                Audio.PlayOr("die_screech", "death", 0.4f);
+                StartCoroutine(DestroyAfter(b, 0.22f));
+                yield return Wait(0.12f);
+            }
+            yield return Wait(0.3f);
+        }
+
+        IEnumerator DestroyAfter(GameObject go, float t)
+        {
+            yield return new WaitForSeconds(t);
+            if (go != null) Destroy(go);
+        }
+
         // The lord rears back, then DASHES across at your height. Jump it.
         IEnumerator Pattern_Dash()
         {
@@ -404,9 +452,8 @@ namespace TrustIssues
                 var bat = Theme.SpriteBox("Bat", _hazards != null ? _hazards : transform.parent,
                     transform.position + Vector3.up * (0.3f + i * 0.4f), new Vector2(0.95f, 0.95f), sp, 4);
                 // Tint blood-red from frame ONE (BatEnemy re-applies it in Start, but this
-                // avoids a white/dark flash) and wrap in a glow so summoned bats are obvious.
+                // avoids a white/dark flash). No glow disc — the bright red reads fine.
                 bat.GetComponent<SpriteRenderer>().color = new Color(1f, 0.22f, 0.22f, 1f);
-                Fx.Glow(bat, new Color(1f, 0.2f, 0.2f, 0.55f), 1.5f, 3);
                 bat.AddComponent<BatEnemy>().Init(frames);
             }
             yield return Wait(0.3f);
@@ -495,18 +542,16 @@ namespace TrustIssues
         }
 
         // A bolt object: animated vfx orb if the art is present, else a coloured box.
-        // ALWAYS tinted hot blood-red and wrapped in a pulsing glow halo so it reads
-        // as a lethal projectile against the near-black sky (players reported bolts
-        // looking "black/invisible" when they were the old necro-purple).
+        // Tinted a hot blood-red so it reads clearly against the night sky (no glow
+        // disc — that looked like a floating yellow circle).
         GameObject MakeBolt(Vector3 pos)
         {
             var parent = _hazards != null ? _hazards : transform.parent;
             var frames = BoltFrames();
             var go = (frames != null && frames.Length > 0)
-                ? Theme.SpriteBox("BossBolt", parent, pos, new Vector2(0.75f, 0.75f), frames[0], 6)
-                : Theme.Box("BossBolt", parent, pos, new Vector2(0.6f, 0.6f), Theme.Danger, 6);
-            go.GetComponent<SpriteRenderer>().color = Theme.Danger;          // bright red core
-            Fx.Glow(go, new Color(1f, 0.18f, 0.18f, 0.7f), 1.5f, 5);          // red halo, sits behind the core
+                ? Theme.SpriteBox("BossBolt", parent, pos, new Vector2(0.8f, 0.8f), frames[0], 6)
+                : Theme.Box("BossBolt", parent, pos, new Vector2(0.55f, 0.55f), Theme.Danger, 6);
+            go.GetComponent<SpriteRenderer>().color = new Color(1f, 0.27f, 0.2f, 1f);   // bright blood-red
             return go;
         }
 

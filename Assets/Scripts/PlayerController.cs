@@ -112,9 +112,8 @@ namespace TrustIssues
             Vector3 muzzle = transform.position + new Vector3(_facing * GunReach, -0.04f, 0f);
             var go = Theme.Box("Bullet", null, muzzle, new Vector2(0.4f, 0.18f), Theme.Danger, 7);
             go.AddComponent<Bullet>().Init(_facing);
-            // Muzzle flash + spark so the shot has real punch and the gun reads clearly.
-            Fx.Burst(muzzle, new Color(1f, 0.82f, 0.32f, 1f), 6, 5f, 0.12f, 0.16f, 0f);
-            Fx.Ring(muzzle, new Color(1f, 0.5f, 0.2f, 0.85f), 0.7f, 0.15f);
+            // Small muzzle spark — no glow ring (that read as a yellow circle).
+            Fx.Burst(muzzle, new Color(1f, 0.82f, 0.32f, 1f), 5, 4.5f, 0.1f, 0.12f, 0f);
             Audio.PlayOr("shoot", "jump", 0.5f);
         }
 

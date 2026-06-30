@@ -765,7 +765,7 @@ namespace TrustIssues
                 new Vector2(0.5f, 0.5f), new Vector2(0, -294), new Vector2(1200, 36));
             MakeToggle(root, new Vector2(-290, -348), "REPLAY GHOST", "opt_replay_ghost", 0);
             MakeToggle(root, new Vector2(290, -348), "ON-SCREEN PADS", "opt_touch", 0);
-            MakeToggle(root, new Vector2(0, -414), "UNLOCK ALL FLOORS (TEST)", "opt_unlock_all", 0);
+            MakeToggle(root, new Vector2(0, -414), "UNLOCK ALL FLOORS", "opt_unlock_all", 0, 640f);
 
             Theme.Button(root, "‹ BACK", new Color(1, 1, 1, 0.25f), Color.white, 44,
                 new Vector2(0.5f, 0f), new Vector2(0, 40), new Vector2(360, 100), ShowMenu);
@@ -874,13 +874,14 @@ namespace TrustIssues
 
         // A simple ON/OFF toggle button backed by a PlayerPrefs int (0/1). The caption
         // shows the live state; clicking flips and persists it.
-        void MakeToggle(Transform root, Vector2 pos, string label, string prefKey, int def)
+        void MakeToggle(Transform root, Vector2 pos, string label, string prefKey, int def, float width = 560f)
         {
             Button btn = null;
             System.Func<string> caption = () =>
                 $"{label}:  {(PlayerPrefs.GetInt(prefKey, def) == 1 ? "ON" : "OFF")}";
-            btn = Theme.Button(root, caption(), new Color(0.24f, 0.17f, 0.28f, 0.95f), Color.white, 28,
-                new Vector2(0.5f, 0.5f), pos, new Vector2(560, 70), () =>
+            // Smaller font + a width that fits the caption, so it never spills out of the box.
+            btn = Theme.Button(root, caption(), new Color(0.24f, 0.17f, 0.28f, 0.95f), Color.white, 22,
+                new Vector2(0.5f, 0.5f), pos, new Vector2(width, 68), () =>
                 {
                     int cur = PlayerPrefs.GetInt(prefKey, def);
                     PlayerPrefs.SetInt(prefKey, cur == 1 ? 0 : 1);
@@ -1925,9 +1926,8 @@ namespace TrustIssues
                     var frames = Assets.Sheet("bat_fly", 32);   // 128x32 strip = 4 frames
                     var sp = (frames != null && frames.Length > 0) ? frames[0] : Theme.Bat;
                     var go = Theme.SpriteBox("Bat", _levelRoot, t.pos, new Vector2(0.95f, 0.95f), sp, 4);
-                    // Blood-red from frame one + a glow halo so swooping bats are unmistakable.
+                    // Blood-red from frame one so swooping bats are unmistakable (no glow disc).
                     go.GetComponent<SpriteRenderer>().color = new Color(1f, 0.22f, 0.22f, 1f);
-                    Fx.Glow(go, new Color(1f, 0.2f, 0.2f, 0.55f), 1.5f, 3);
                     go.AddComponent<BatEnemy>().Init(frames);
                     break;
                 }
@@ -2315,18 +2315,33 @@ namespace TrustIssues
         {
             if (!InBossRoom) return;
             float mid = (_camMin + _camMax) / 2f;
-            float x = Random.Range(_camMin + 2f, mid - 0.5f);
+            float bossX = mid + 3f;
+            float px = _player != null ? _player.transform.position.x : _camMin;
+            // Pick a spot you must TRAVEL to: well away from where you stand, and clear
+            // of the boss — so the loop is genuinely dodge → run → grab → shoot.
+            float x = px; int tries = 0;
+            do { x = Random.Range(_camMin + 2.5f, _camMax - 2.5f); tries++; }
+            while (tries < 16 && (Mathf.Abs(x - px) < 5.5f || Mathf.Abs(x - bossX) < 3f));
             var pos = new Vector3(x, -2.0f, 0f);
 
             var go = new GameObject("GunPickup");
             go.transform.SetParent(_levelRoot, false);
             go.transform.position = pos;
-            // A clear, glowing stake-launcher: dark body + bright muzzle + gold halo + bob.
-            Theme.Box("PuBody",   go.transform, pos, new Vector2(0.7f, 0.26f), Theme.Hex("3A3440"), 4);
-            Theme.Box("PuBarrel", go.transform, pos + new Vector3(0.3f, 0f, 0f), new Vector2(0.5f, 0.14f), Theme.Hex("6A6470"), 4);
-            Theme.Box("PuTip",    go.transform, pos + new Vector3(0.55f, 0f, 0f), new Vector2(0.12f, 0.18f), Theme.Danger, 5);
-            Fx.Glow(go, new Color(1f, 0.82f, 0.3f, 0.7f), 1.6f, 3);
-            var col = go.AddComponent<BoxCollider2D>(); col.isTrigger = true; col.size = new Vector2(1.4f, 1.4f);
+            // A clean little stake-launcher (dark body + barrel + a pulsing red muzzle) —
+            // no glow disc, plus a floating label so it clearly reads as "grab this".
+            Theme.Box("PuBody", go.transform, pos, new Vector2(0.72f, 0.26f), Theme.Hex("3A3440"), 5);
+            var barrel = Theme.Box("PuBarrel", go.transform, pos, new Vector2(0.5f, 0.14f), Theme.Hex("7A7480"), 5);
+            barrel.transform.localPosition = new Vector3(0.3f, 0.02f, 0f);
+            var tip = Theme.Box("PuTip", go.transform, pos, new Vector2(0.14f, 0.2f), Theme.Danger, 6);
+            tip.transform.localPosition = new Vector3(0.56f, 0.02f, 0f);
+            var tp = tip.AddComponent<FaintPulse>(); tp.min = 0.5f; tp.max = 1f; tp.speed = 8f;
+            var mark = new GameObject("PuMark"); mark.transform.SetParent(go.transform, false);
+            mark.transform.localPosition = new Vector3(0f, 0.7f, 0f);
+            var tm = mark.AddComponent<TextMesh>();
+            tm.text = "WEAPON"; tm.fontSize = 36; tm.characterSize = 0.06f; tm.fontStyle = FontStyle.Bold;
+            tm.anchor = TextAnchor.LowerCenter; tm.alignment = TextAlignment.Center; tm.color = Theme.Coin;
+            mark.GetComponent<MeshRenderer>().sortingOrder = 7;
+            var col = go.AddComponent<BoxCollider2D>(); col.isTrigger = true; col.size = new Vector2(1.5f, 1.5f);
             go.AddComponent<Bobber>();                 // gentle float so it reads as "grab me"
             go.AddComponent<GunPickup>().Init(BossClip);
             _gunPickup = go;
