@@ -168,6 +168,21 @@ namespace TrustIssues
             wsr.color = ThemeWash[0];
             _washSr = wsr;
 
+            // A big themed moon in the upper sky (in FRONT of the wash so it stays bold),
+            // camera-parented so it's always visible. Its colour changes per theme.
+            if (Theme.Moon != null)
+            {
+                var moon = new GameObject("ThemeMoon");
+                moon.transform.SetParent(_cam.transform, false);
+                moon.transform.localPosition = new Vector3(6.5f, 4.6f, 21f);
+                var mb = Theme.Moon.bounds.size;
+                float ms = 7.5f / Mathf.Max(0.0001f, mb.y);
+                moon.transform.localScale = new Vector3(ms, ms, 1f);
+                var msr = moon.AddComponent<SpriteRenderer>();
+                msr.sprite = Theme.Moon; msr.sortingOrder = -8; msr.color = ThemeMoon[0];
+                _moonSr = msr;
+            }
+
             BuildAmbient();   // drifting motes so every backdrop has motion, not a still image
 
             if (Assets.Sprite("bg_castle") != null)
@@ -281,17 +296,32 @@ namespace TrustIssues
         };
         // The big visible difference between themes: a translucent colour wash over the
         // whole backdrop (alpha baked in). Without this every backdrop reads near-black.
+        // Pushed strong so each mode/world is UNMISTAKABLY a different colour.
         static readonly Color[] ThemeWash =
         {
-            new Color(0.35f, 0.12f, 0.16f, 0.30f),  // castle  — crimson
-            new Color(0.12f, 0.22f, 0.48f, 0.36f),  // crypt   — cold blue
-            new Color(0.12f, 0.36f, 0.16f, 0.36f),  // swamp   — sickly green
-            new Color(0.46f, 0.32f, 0.10f, 0.34f),  // throne  — hot amber
-            new Color(0.60f, 0.07f, 0.12f, 0.40f),  // blood moon — searing red
-            new Color(0.32f, 0.12f, 0.50f, 0.36f),  // abyss   — violet
-            new Color(0.06f, 0.42f, 0.40f, 0.36f),  // void    — teal
-            new Color(0.60f, 0.20f, 0.05f, 0.38f),  // inferno — ember orange
-            new Color(0.20f, 0.24f, 0.36f, 0.32f),  // arena   — cold steel
+            new Color(0.42f, 0.12f, 0.17f, 0.46f),  // castle  — crimson
+            new Color(0.10f, 0.22f, 0.55f, 0.52f),  // crypt   — cold blue
+            new Color(0.10f, 0.42f, 0.16f, 0.52f),  // swamp   — sickly green
+            new Color(0.52f, 0.34f, 0.08f, 0.50f),  // throne  — hot amber
+            new Color(0.70f, 0.05f, 0.12f, 0.56f),  // blood moon — searing red
+            new Color(0.36f, 0.10f, 0.58f, 0.52f),  // abyss   — violet
+            new Color(0.04f, 0.48f, 0.44f, 0.52f),  // void    — teal
+            new Color(0.68f, 0.20f, 0.04f, 0.54f),  // inferno — ember orange
+            new Color(0.18f, 0.24f, 0.40f, 0.48f),  // arena   — cold steel
+        };
+        // A big themed MOON in the upper sky — a bold, obvious per-theme anchor so the
+        // modes read as completely different places at a glance.
+        static readonly Color[] ThemeMoon =
+        {
+            new Color(0.88f, 0.22f, 0.26f, 0.92f),  // castle  — blood moon
+            new Color(0.72f, 0.84f, 1.00f, 0.88f),  // crypt   — pale blue
+            new Color(0.72f, 1.00f, 0.66f, 0.82f),  // swamp   — sickly green
+            new Color(1.00f, 0.82f, 0.42f, 0.92f),  // throne  — gold
+            new Color(1.00f, 0.16f, 0.20f, 0.96f),  // blood moon — searing red
+            new Color(0.78f, 0.46f, 1.00f, 0.88f),  // abyss   — violet
+            new Color(0.46f, 0.96f, 1.00f, 0.88f),  // void    — teal
+            new Color(1.00f, 0.56f, 0.20f, 0.92f),  // inferno — ember
+            new Color(0.82f, 0.88f, 1.00f, 0.82f),  // arena   — cold white
         };
         // Drifting-mote (ember/star) colour per theme — the animated ambient layer.
         static readonly Color[] ThemeAccent =
@@ -307,6 +337,7 @@ namespace TrustIssues
 
         int _curTheme = -1;
         SpriteRenderer _washSr;        // the themed colour wash (see BuildBackdrop)
+        SpriteRenderer _moonSr;        // the big themed moon (bold per-theme anchor)
         readonly System.Collections.Generic.List<Mote> _motes = new();
 
         // Pick the backdrop theme from the current mode/progress, then apply it.
@@ -344,6 +375,7 @@ namespace TrustIssues
             }
             if (_skySr != null) _skySr.color = ThemeSky[idx];
             if (_washSr != null) _washSr.color = ThemeWash[idx];   // the actually-visible colour shift
+            if (_moonSr != null) _moonSr.color = ThemeMoon[idx];   // bold per-theme anchor
             if (_cam != null) _cam.backgroundColor = ThemeSky[idx];
             foreach (var m in _motes) if (m != null) m.Recolor(ThemeAccent[idx]);
         }
@@ -2245,10 +2277,9 @@ namespace TrustIssues
                 ? Theme.SpriteBox("Boss", _levelRoot, new Vector3(cx, -0.4f, 0f), new Vector2(2.6f, 2.6f), sp, 4)
                 : Theme.Box("Boss", _levelRoot, new Vector2(cx, -0.4f), new Vector2(2.0f, 2.6f), Theme.Hex("2A0A12"), 4);
             var bsr = go.GetComponent<SpriteRenderer>();
-            // Higher tiers look more sinister: deepen toward blood-red.
-            Color[] tint = { Color.white, Color.white, new Color(0.95f, 0.85f, 0.95f),
-                             new Color(1f, 0.75f, 0.75f), new Color(1f, 0.55f, 0.55f) };
-            if (sp != null) bsr.color = tint[tier];
+            // The boss art is fully painted per tier now, so show it at TRUE colour
+            // (an old wash tinted the detailed sprites pink/red and muddied them).
+            if (sp != null) bsr.color = Color.white;
             else
             {
                 // fallback silhouette with glowing eyes (only if art is missing)
@@ -2282,40 +2313,75 @@ namespace TrustIssues
         IEnumerator BossIntro(int ti, Boss boss, GameObject bossGo)
         {
             if (_player != null) _player.Freeze();
-            // Shrink the boss out of sight BEFORE the bars come in, so it punches up
-            // into view during the reveal rather than just sitting there.
+            // Hide the boss entirely until it's summoned into being.
             Vector3 full = bossGo != null ? bossGo.transform.localScale : Vector3.one;
-            if (bossGo != null) bossGo.transform.localScale = full * 0.25f;
+            Vector3 bpos = bossGo != null ? bossGo.transform.position
+                                          : new Vector3((_camMin + _camMax) / 2f + 3f, -0.4f, 0f);
+            if (bossGo != null) bossGo.transform.localScale = full * 0.01f;
 
             const float barH = 130f;
             var top = CineBar(true);
             var bot = CineBar(false);
-
-            for (float e = 0f; e < 1f; e += Time.unscaledDeltaTime / 0.35f)
+            for (float e = 0f; e < 1f; e += Time.unscaledDeltaTime / 0.3f)
             {
                 float k = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(e));
                 SetBarHeight(top, barH * k); SetBarHeight(bot, barH * k);
                 yield return null;
             }
 
-            // Boss reveal: scale-punch from small + roar + ring + flash.
-            Audio.PlayOr("boss_roar", "death", 0.85f);
-            if (bossGo != null) Fx.Ring(bossGo.transform.position, new Color(1f, 0.15f, 0.15f, 0.85f), 6f, 0.7f);
-            ScreenFlash(); ShakeCam(0.45f, 0.45f);
-            for (float e = 0f; e < 1f; e += Time.unscaledDeltaTime / 0.4f)
+            // ---- SUMMON (Yu-Gi-Oh style): a glowing blood-seal forms and spins faster
+            // and faster while energy sparks converge on it. ----
+            var seal = Theme.Disc != null ? MakeSummonSprite("SummonSeal", Theme.Disc, bpos, new Color(1f, 0.2f, 0.22f, 0.95f), 3) : null;
+            var glow = Theme.Moon != null ? MakeSummonSprite("SummonGlow", Theme.Moon, bpos, new Color(1f, 0.12f, 0.16f, 0.55f), 2) : null;
+            float sealB = (seal != null && Theme.Disc != null) ? Theme.Disc.bounds.size.y : 1f;
+            float glowB = (glow != null && Theme.Moon != null) ? Theme.Moon.bounds.size.y : 1f;
+            Audio.PlayOr("portal", "boss_roar", 0.6f);
+            float spin = 0f;
+            for (float e = 0f; e < 1f; e += Time.unscaledDeltaTime / 1.0f)
             {
-                if (bossGo != null)
-                    bossGo.transform.localScale = Vector3.Lerp(full * 0.25f, full * 1.12f, Mathf.Clamp01(e));
+                float k = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(e));
+                spin += Time.unscaledDeltaTime * (160f + 720f * k);   // accelerating spin
+                float sz = Mathf.Lerp(0.3f, 5.0f, k);
+                if (seal != null && sealB > 0.0001f)
+                {
+                    seal.transform.localScale = Vector3.one * (sz / sealB);
+                    seal.transform.rotation = Quaternion.Euler(0f, 0f, spin);
+                }
+                if (glow != null && glowB > 0.0001f)
+                {
+                    float pulse = 1.15f + 0.12f * Mathf.Sin(Time.unscaledTime * 18f);
+                    glow.transform.localScale = Vector3.one * (sz * pulse / glowB);
+                }
+                if (Random.value < 0.6f)   // sparks converging on the seal
+                    Fx.Burst(bpos + (Vector3)(Random.insideUnitCircle.normalized * Random.Range(3f, 6f)),
+                             new Color(1f, 0.35f, 0.35f, 1f), 1, 0.5f, 0.13f, 0.25f, 0f);
+                yield return null;
+            }
+
+            // ---- BURST: blinding flash, shockwave, the boss punches into existence. ----
+            var flash = FullFlash(new Color(1f, 0.95f, 0.95f, 0.96f));
+            Audio.PlayOr("boss_roar", "death", 0.95f);
+            ShakeCam(0.6f, 0.5f);
+            Fx.Burst(bpos, new Color(1f, 0.3f, 0.3f, 1f), 26, 9f, 0.2f, 0.6f, 6f);
+            Fx.Ring(bpos, new Color(1f, 0.9f, 0.85f, 0.9f), 7f, 0.6f);
+            for (float e = 0f; e < 1f; e += Time.unscaledDeltaTime / 0.35f)
+            {
+                float k = Mathf.Clamp01(e);
+                if (bossGo != null) bossGo.transform.localScale = Vector3.Lerp(full * 0.01f, full * 1.15f, k);
+                if (flash != null) { var c = flash.color; c.a = Mathf.Lerp(0.96f, 0f, k); flash.color = c; }
                 yield return null;
             }
             if (bossGo != null) bossGo.transform.localScale = full;
+            if (flash != null) Destroy(flash.gameObject);
+            if (seal != null) Destroy(seal);
+            if (glow != null) Destroy(glow);
 
             // Name slam + tagline.
-            var nameT = Theme.Label(Theme.Canvas.transform, BossTitles[ti], 100, Theme.Player,
-                new Vector2(0.5f, 0.5f), new Vector2(0, 44), new Vector2(1700, 150));
+            var nameT = Theme.Label(Theme.Canvas.transform, BossTitles[ti], 104, Theme.Player,
+                new Vector2(0.5f, 0.5f), new Vector2(0, 44), new Vector2(1700, 160));
             if (Theme.TitleFont != null) nameT.font = Theme.TitleFont;
             var tagT = Theme.Label(Theme.Canvas.transform, BossTags[ti], 32, new Color(1, 1, 1, 0.82f),
-                new Vector2(0.5f, 0.5f), new Vector2(0, -42), new Vector2(1500, 70));
+                new Vector2(0.5f, 0.5f), new Vector2(0, -46), new Vector2(1500, 70));
             yield return new WaitForSecondsRealtime(1.5f);
             if (nameT != null) Destroy(nameT.gameObject);
             if (tagT != null) Destroy(tagT.gameObject);
@@ -2334,6 +2400,30 @@ namespace TrustIssues
             if (boss != null) boss.IntroHold = false;
             if (_player != null) _player.Unfreeze();
             SpawnGunPickup();
+        }
+
+        // A world-space sprite used by the summon cutscene (seal / glow).
+        GameObject MakeSummonSprite(string name, Sprite sp, Vector3 pos, Color col, int order)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(_levelRoot, false);
+            go.transform.position = pos;
+            var sr = go.AddComponent<SpriteRenderer>();
+            sr.sprite = sp; sr.color = col; sr.sortingOrder = order;
+            return go;
+        }
+
+        // A full-screen UI flash (fades out over the burst). Returns the Image.
+        Image FullFlash(Color col)
+        {
+            var go = new GameObject("Flash", typeof(RectTransform));
+            go.transform.SetParent(Theme.Canvas.transform, false);
+            var img = go.AddComponent<Image>();
+            img.color = col; img.raycastTarget = false;
+            var rt = img.rectTransform;
+            rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
+            rt.offsetMin = rt.offsetMax = Vector2.zero;
+            return img;
         }
 
         // A full-width cinematic letterbox bar pinned to the top or bottom edge.
