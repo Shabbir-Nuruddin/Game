@@ -665,13 +665,13 @@ namespace TrustIssues
             var rrt = _hpRoot.GetComponent<RectTransform>();
             rrt.anchorMin = rrt.anchorMax = new Vector2(0.5f, 1f);
             rrt.pivot = new Vector2(0.5f, 1f);
-            rrt.anchoredPosition = new Vector2(0, -28);
-            rrt.sizeDelta = new Vector2(860, 96);
+            rrt.anchoredPosition = new Vector2(0, -10);   // pinned to the very top; corner HUD sits below it
+            rrt.sizeDelta = new Vector2(820, 92);
 
             // Boss name ABOVE the bar (not crammed on top of it). Gothic title font,
             // sized to fit the width so it never clips into the bar below.
-            Theme.Label(_hpRoot.transform, names[_tier], 40, Theme.Player,
-                new Vector2(0.5f, 1f), new Vector2(0, -2), new Vector2(860, 48)).font = Theme.TitleFont;
+            Theme.Label(_hpRoot.transform, names[_tier], 34, Theme.Player,
+                new Vector2(0.5f, 1f), new Vector2(0, -2), new Vector2(820, 44)).font = Theme.TitleFont;
 
             // The bar itself sits in the lower portion of the root.
             var barGo = new GameObject("Bar", typeof(RectTransform));

@@ -1749,14 +1749,22 @@ namespace TrustIssues
         void UpdateHud()
         {
             if (_hud == null) return;
+            // In a boss arena the centred boss name + HP bar own the top of the screen,
+            // so keep the corner HUD MINIMAL (just your shield + ammo) — no FLOOR/DEATHS
+            // clutter overlapping the boss title. '*' pips render in the pixel font (♥ did not).
+            if (InBossRoom)
+            {
+                string shield = _bossHp > 0 ? "SHIELD " + new string('*', _bossHp) : "";
+                string ammoB = _player != null && _player.ammo > 0 ? "     AMMO " + _player.ammo : "";
+                _hud.text = shield + ammoB;
+                return;
+            }
             string left = _mode == Mode.Endless ? $"FLOOR {_levelIndex + 1}    "
                         : _mode == Mode.Daily ? $"NIGHT {_levelIndex + 1}/{DailyLen}    "
                         : _mode == Mode.Versus ? $"RACE {Net.RoomCode}  ({Net.PlayerCount})    "
                         : $"FLOOR {_levelIndex + 1}  •  {WorldNames[WorldOf(_levelIndex)]}    ";
             string hearts = _hearts >= 0 ? "    LIVES " + Mathf.Max(0, _hearts) : "";
-            string guard = InBossRoom && _bossHp > 0 ? "    GUARD " + new string('♥', _bossHp) : "";
-            string ammo = InBossRoom && _player != null && _player.ammo > 0 ? "    AMMO " + _player.ammo : "";
-            _hud.text = left + "DEATHS " + _deaths + hearts + guard + ammo;
+            _hud.text = left + "DEATHS " + _deaths + hearts;
         }
 
         // Lets the player controller refresh the ammo readout as a clip is spent.
@@ -1782,8 +1790,14 @@ namespace TrustIssues
             // Single blood-red lip across the top edge (not tiled into the stone).
             // Parented to the FLOOR (not the level root) so a collapsing fake floor
             // takes its lip down with it — no red line left floating in mid-air.
+            // On a huge boss-arena floor a full-width bright red line looked messy, so
+            // wide floors get a much subtler, darker, thinner lip.
+            bool wide = size.x > 15f;
+            Color lipCol = wide ? new Color(Theme.PlatEdge.r * 0.5f, Theme.PlatEdge.g * 0.4f, Theme.PlatEdge.b * 0.4f, 0.5f)
+                                : Theme.PlatEdge;
+            float lipH = wide ? 0.07f : 0.12f;
             var edge = Theme.Box("Edge", go.transform, pos + new Vector2(0, size.y / 2f - 0.06f),
-                new Vector2(size.x, 0.12f), Theme.PlatEdge, 2);
+                new Vector2(size.x, lipH), lipCol, 2);
             edge.transform.localPosition = new Vector3(0, size.y / 2f - 0.06f, 0);
             if (trapType.HasValue) go.AddComponent<Trap>().Init(trapType.Value);
         }
@@ -2359,21 +2373,23 @@ namespace TrustIssues
             var go = new GameObject("GunPickup");
             go.transform.SetParent(_levelRoot, false);
             go.transform.position = pos;
-            // A clean little stake-launcher (dark body + barrel + a pulsing red muzzle) —
-            // no glow disc, plus a floating label so it clearly reads as "grab this".
-            Theme.Box("PuBody", go.transform, pos, new Vector2(0.72f, 0.26f), Theme.Hex("3A3440"), 5);
-            var barrel = Theme.Box("PuBarrel", go.transform, pos, new Vector2(0.5f, 0.14f), Theme.Hex("7A7480"), 5);
-            barrel.transform.localPosition = new Vector3(0.3f, 0.02f, 0f);
-            var tip = Theme.Box("PuTip", go.transform, pos, new Vector2(0.14f, 0.2f), Theme.Danger, 6);
-            tip.transform.localPosition = new Vector3(0.56f, 0.02f, 0f);
+            // A bigger, clearer stake-launcher (grip + dark body + barrel + a pulsing
+            // red muzzle) so it reads at a glance, plus a floating "WEAPON" label.
+            var grip = Theme.Box("PuGrip", go.transform, pos, new Vector2(0.24f, 0.34f), Theme.Hex("2A2530"), 5);
+            grip.transform.localPosition = new Vector3(-0.24f, -0.22f, 0f);
+            Theme.Box("PuBody", go.transform, pos, new Vector2(1.02f, 0.38f), Theme.Hex("3A3440"), 5);
+            var barrel = Theme.Box("PuBarrel", go.transform, pos, new Vector2(0.72f, 0.2f), Theme.Hex("7A7480"), 5);
+            barrel.transform.localPosition = new Vector3(0.42f, 0.03f, 0f);
+            var tip = Theme.Box("PuTip", go.transform, pos, new Vector2(0.2f, 0.3f), Theme.Danger, 6);
+            tip.transform.localPosition = new Vector3(0.8f, 0.03f, 0f);
             var tp = tip.AddComponent<FaintPulse>(); tp.min = 0.5f; tp.max = 1f; tp.speed = 8f;
             var mark = new GameObject("PuMark"); mark.transform.SetParent(go.transform, false);
-            mark.transform.localPosition = new Vector3(0f, 0.7f, 0f);
+            mark.transform.localPosition = new Vector3(0f, 0.85f, 0f);
             var tm = mark.AddComponent<TextMesh>();
-            tm.text = "WEAPON"; tm.fontSize = 36; tm.characterSize = 0.06f; tm.fontStyle = FontStyle.Bold;
+            tm.text = "WEAPON"; tm.fontSize = 40; tm.characterSize = 0.09f; tm.fontStyle = FontStyle.Bold;
             tm.anchor = TextAnchor.LowerCenter; tm.alignment = TextAlignment.Center; tm.color = Theme.Coin;
             mark.GetComponent<MeshRenderer>().sortingOrder = 7;
-            var col = go.AddComponent<BoxCollider2D>(); col.isTrigger = true; col.size = new Vector2(1.5f, 1.5f);
+            var col = go.AddComponent<BoxCollider2D>(); col.isTrigger = true; col.size = new Vector2(2.0f, 1.9f);
             go.AddComponent<Bobber>();                 // gentle float so it reads as "grab me"
             go.AddComponent<GunPickup>().Init(BossClip);
             _gunPickup = go;
