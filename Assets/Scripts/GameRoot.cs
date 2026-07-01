@@ -333,6 +333,14 @@ namespace TrustIssues
             new Color(0.80f, 0.85f, 1.00f, 0.50f),
         };
 
+        // How visible the castle parallax is per theme — faded to a distant ruin in the
+        // open "void" modes (Endless) so they don't read as "the same castle" as Castle.
+        static readonly float[] ThemeCastleVis =
+        { 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.22f, 0.18f, 0.30f, 0.55f };
+        // Moon world-diameter per theme (Blood Moon looms huge; the arena's is small).
+        static readonly float[] ThemeMoonSize =
+        { 7.5f, 6.0f, 6.5f, 7.0f, 12.0f, 8.0f, 7.0f, 8.5f, 5.0f };
+
         public static int WorldOf(int floorIdx) => Mathf.Clamp((floorIdx / 10) % 4, 0, 3);
 
         int _curTheme = -1;
@@ -367,15 +375,22 @@ namespace TrustIssues
             if (idx == _curTheme) return;
             _curTheme = idx;
             var t = ThemeTint[idx];
+            float castleVis = ThemeCastleVis[idx];
             for (int i = 0; i < _bgSr.Count; i++)
             {
                 if (_bgSr[i] == null) continue;
                 var b = _bgBase[i];
-                _bgSr[i].color = new Color(b.r * t.r, b.g * t.g, b.b * t.b, b.a);
+                _bgSr[i].color = new Color(b.r * t.r, b.g * t.g, b.b * t.b, b.a * castleVis);
             }
             if (_skySr != null) _skySr.color = ThemeSky[idx];
             if (_washSr != null) _washSr.color = ThemeWash[idx];   // the actually-visible colour shift
-            if (_moonSr != null) _moonSr.color = ThemeMoon[idx];   // bold per-theme anchor
+            if (_moonSr != null && Theme.Moon != null)             // bold per-theme anchor (colour + size)
+            {
+                _moonSr.color = ThemeMoon[idx];
+                float mb = Theme.Moon.bounds.size.y;
+                float ms = mb > 0.0001f ? ThemeMoonSize[idx] / mb : 1f;
+                _moonSr.transform.localScale = new Vector3(ms, ms, 1f);
+            }
             if (_cam != null) _cam.backgroundColor = ThemeSky[idx];
             foreach (var m in _motes) if (m != null) m.Recolor(ThemeAccent[idx]);
         }
