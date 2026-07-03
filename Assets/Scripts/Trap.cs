@@ -457,6 +457,7 @@ namespace TrustIssues
             int tag = trapTag;
             if (tag < 0) { var tr = GetComponentInParent<Trap>(); if (tr != null) tag = (int)tr.type; }
             if (tag >= 0) Codex.Unlock((TrapType)tag);
+            Memory.RecordKill(tag);   // lifetime tally + streak → the nemesis system
             GameRoot.I?.Die(msg);
         }
         void OnTriggerEnter2D(Collider2D o)

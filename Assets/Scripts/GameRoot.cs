@@ -127,6 +127,7 @@ namespace TrustIssues
             // Toast when a new Bestiary page is revealed (drives the "gotta catch 'em all").
             Codex.OnUnlocked = t => ShowBanner("NEW BESTIARY PAGE", $"{Codex.Title(t)} — read it in the book");
             ResetProgressOncePerVersion();
+            Memory.SessionStart();   // snapshot absence/rage-quit BEFORE anything overwrites them
             SetupCamera();
             BuildBackdrop();
             ApplyDepthMode();   // place parallax/moon for flat or 2.5D per opt_25d
@@ -563,6 +564,8 @@ namespace TrustIssues
         {
             // Leaving a race: drop the room and the rival ghosts.
             if (_mode == Mode.Versus) { Net.Leave(); ClearGhosts(); _mode = Mode.Curated; }
+            Memory.RunEndedCleanly();   // back at the menu = not a rage-quit
+            Rumor.Disarm();
             _state = State.Menu;
             Time.timeScale = 1f;
             ApplyTheme(0);               // menu always shows the Castle mood
@@ -625,7 +628,21 @@ namespace TrustIssues
             if (Meta.Streak > 0 && Meta.StreakAlive)
                 Theme.Label(root, $"BLOOD MOON STREAK: {Meta.Streak} DAYS — keep it alive", 28, Theme.Coin,
                     new Vector2(0.5f, 0.5f), new Vector2(0, -338), new Vector2(1200, 46));
+
+            // The castle remembers: absence / rage-quit / nemesis greeting.
+            string greet = Memory.MenuGreeting();
+            if (greet != null)
+            {
+                Theme.Label(root, greet, 24, new Color(1f, 0.55f, 0.55f, 0.8f),
+                    new Vector2(0.5f, 0.5f), new Vector2(0, -382), new Vector2(1300, 40));
+                if (!_greetTracked)
+                {
+                    _greetTracked = true;
+                    Analytics.Track("haunt_greeting", new System.Collections.Generic.Dictionary<string, object>());
+                }
+            }
         }
+        bool _greetTracked;   // one analytics ping per session, not per menu visit
 
         // A compact difficulty chip that cycles Casual → Normal → Nightmare in place,
         // recolouring + relabelling itself. Shown on the menu and (via the same helper)
@@ -1355,11 +1372,12 @@ namespace TrustIssues
             Meta.RecordDailyPlay();                 // advance the daily streak + feed badges
             if (Meta.Streak >= 3) Badges.Award("streak3");
             if (Meta.Streak >= 7) Badges.Award("streak7");
+            Rumor.Arm(DailySeed());                 // tonight's hidden rule (shared worldwide)
             BeginRun(0);
             var now = System.DateTime.UtcNow;
             var left = now.Date.AddDays(1) - now;   // until tonight's run rotates
             ShowBanner($"TONIGHT'S BLOOD MOON — {now:MMM d}",
-                       $"a fresh nightmare every night • resets in {(int)left.TotalHours}h {left.Minutes}m");
+                       $"rumor: \"{Rumor.CrypticLine}\" • resets in {(int)left.TotalHours}h {left.Minutes}m");
             ShowHint($"BLOOD MOON — {Diff.StartHearts} lives, +1 per floor.  Jump, then hold {Controls.Name(Controls.Fly)}/FLY to glide as a bat.");
         }
 
@@ -1618,6 +1636,7 @@ namespace TrustIssues
         void BeginRun(int levelIndex)
         {
             if (_menuPanel != null) Destroy(_menuPanel);
+            Memory.RunStarted();   // if this flag survives to next boot, they rage-quit
             _levelIndex = levelIndex;
             _hasCheckpoint = false;
             _newBest = false;
@@ -1719,9 +1738,12 @@ namespace TrustIssues
                 BuildTrap(t);
             foreach (var pp in _level.Portals)
                 BuildPortals(pp);
+            _rumorFloorUsed = false;
             BuildReactiveTraps();   // the "Trust Issues" learned traps from past deaths
             PlaceTorches();         // gothic ambience — flickering wall sconces
             BuildAerialHazards();
+            if (_mode == Mode.Daily && _levelIndex == 1 && Rumor.HiddenDoor)
+                BuildHiddenDoor();  // tonight's rumor (2): the ghost door of night 2
 
             SpawnPlayer();
             SpawnReplayGhost();      // race your previous attempt
@@ -1752,11 +1774,54 @@ namespace TrustIssues
             });
         }
 
+        bool _rumorFloorUsed;    // rumor 1: only the FIRST fake floor of night 3 holds
+        bool _rumorMoonSpared;   // rumor 3: this floor had learned spikes that never armed
+
+        // A small gold crown + glow over the player's nemesis trap (the one that has
+        // killed them the most). The castle knows who your bully is — and says so.
+        void CrownNemesis(Vector2 pos)
+        {
+            var band = Theme.Box("NemCrown", _levelRoot, pos, new Vector2(0.34f, 0.12f),
+                new Color(1f, 0.8f, 0.25f, 0.9f), 4);
+            Theme.Box("NemCrownSpike", _levelRoot, pos + new Vector2(-0.10f, 0.10f),
+                new Vector2(0.08f, 0.14f), new Color(1f, 0.8f, 0.25f, 0.9f), 4);
+            Theme.Box("NemCrownSpike", _levelRoot, pos + new Vector2(0f, 0.13f),
+                new Vector2(0.08f, 0.2f), new Color(1f, 0.85f, 0.3f, 0.95f), 4);
+            Theme.Box("NemCrownSpike", _levelRoot, pos + new Vector2(0.10f, 0.10f),
+                new Vector2(0.08f, 0.14f), new Color(1f, 0.8f, 0.25f, 0.9f), 4);
+            var fp = band.AddComponent<FaintPulse>(); fp.min = 0.6f; fp.max = 1f; fp.speed = 4f;
+        }
+
+        // TONIGHT'S RUMOR (2): a ghost door hides just behind where night 2 begins.
+        // Walking into it is a RealExit — straight to the next night — and proof.
+        void BuildHiddenDoor()
+        {
+            Vector2 pos = _level.Spawn + new Vector2(-2.4f, 0.55f);
+            var sp = Assets.Sprite("door");
+            GameObject go = sp != null
+                ? Theme.SpriteBox("HiddenDoor", _levelRoot, pos, new Vector2(1.5f, 1.9f), sp, 1)
+                : Theme.Box("HiddenDoor", _levelRoot, pos, new Vector2(1.2f, 1.8f), Theme.Hex("2A3550"), 1);
+            var sr = go.GetComponent<SpriteRenderer>();
+            sr.color = new Color(0.65f, 0.75f, 1f, 0.4f);   // moonlit, barely-there
+            var fp = go.AddComponent<FaintPulse>(); fp.min = 0.25f; fp.max = 0.5f; fp.speed = 2.5f;
+            FitTrigger(go, 0.85f);
+            go.AddComponent<RumorZone>();                    // proof first…
+            go.AddComponent<Trap>().Init(TrapType.RealExit); // …then it whisks you onward
+        }
+
         // The "Trust Issues" reactive traps: a late-spike sprouts at each spot you
         // lingered on in a past attempt (banked in RecordReactiveTrap). A faint mark
         // makes it learnable on the retry. Always a jump-over (never blocks the floor).
         void BuildReactiveTraps()
         {
+            // TONIGHT'S RUMOR (3): the moon protects the marked — every spot the
+            // castle learned about you stays quiet tonight. Proof lands at the exit.
+            if (_mode == Mode.Daily && Rumor.MoonProtects)
+            {
+                if (_ghostTrapX.Count > 0) _rumorMoonSpared = true;
+                _reactiveAdded = false;
+                return;
+            }
             if (_reactiveAdded)   // the game just learned a new spot — it laughs at you
             { Audio.Play("troll", 0.5f); _reactiveAdded = false; }
             foreach (float gx in _ghostTrapX)
@@ -1964,10 +2029,30 @@ namespace TrustIssues
 
         void BuildTrap(TrapSpec t)
         {
+            // Nemesis crowning: the trap type that's killed you most wears a small
+            // gold crown — the castle knows exactly who your bully is.
+            if (_mode != Mode.Versus && Memory.Nemesis == (int)t.type)
+                CrownNemesis(t.pos + new Vector2(0f, t.size.y / 2f + 0.42f));
+
             switch (t.type)
             {
                 case TrapType.FakeFloor:
                 {
+                    // TONIGHT'S RUMOR (1): the first fake floor of night 3 holds true.
+                    // Built as a REAL platform (identical look either way); standing on
+                    // it proves the rumor via the trigger above it.
+                    if (_mode == Mode.Daily && _levelIndex == 2 && Rumor.FloorHolds && !_rumorFloorUsed)
+                    {
+                        _rumorFloorUsed = true;
+                        BuildStoneFloor("Platform", t.pos, t.size, null);
+                        var proof = new GameObject("RumorProof");
+                        proof.transform.SetParent(_levelRoot, false);
+                        proof.transform.position = t.pos + new Vector2(0f, t.size.y / 2f + 0.3f);
+                        var pc = proof.AddComponent<BoxCollider2D>();
+                        pc.isTrigger = true; pc.size = new Vector2(t.size.x, 0.55f);
+                        proof.AddComponent<RumorZone>();
+                        break;
+                    }
                     // Must look IDENTICAL to a real platform (same stone tile + lip).
                     BuildStoneFloor("FakeFloor", t.pos, t.size, TrapType.FakeFloor);
                     break;
@@ -2063,7 +2148,14 @@ namespace TrustIssues
                         ? Theme.SpriteBox("Saw", _levelRoot, t.pos, new Vector2(1.1f, 1.1f), sp, 3)
                         : Theme.Box("Saw", _levelRoot, t.pos, t.size, Theme.Danger, 3);
                     FitTrigger(go, 0.66f); // matches the visible blade
-                    var kz = go.AddComponent<KillZone>(); kz.msg = "Shredded.";
+                    // TONIGHT'S RUMOR (0): the saws lie — same spin, same slide,
+                    // but no kill. Touching one and living proves the rumor.
+                    if (_mode == Mode.Daily && Rumor.SawsLie)
+                        go.AddComponent<RumorZone>();
+                    else
+                    {
+                        var kz = go.AddComponent<KillZone>(); kz.msg = "Shredded.";
+                    }
                     var trap = go.AddComponent<Trap>();
                     trap.frames = frames;
                     trap.Init(TrapType.Saw);
@@ -2740,6 +2832,7 @@ namespace TrustIssues
                 if (_heartbeatTimer >= 15f)
                 {
                     _heartbeatTimer = 0f;
+                    Memory.Touch();   // "last seen" for the absence-aware greeting
                     Analytics.Track("heartbeat", new System.Collections.Generic.Dictionary<string, object>
                     {
                         { "mode", ModeName },
@@ -2849,6 +2942,8 @@ namespace TrustIssues
             if (_state != State.Play || _dying) return;
             _dying = true;
             _deaths++;
+            // If the nemesis trap just scored, its kill-streak taunt rides the roast.
+            if (msg != null) msg = Memory.DecorateRoast(msg);
             Vector2 deathPos = PlayerTransform != null ? (Vector2)PlayerTransform.position : Vector2.zero;
             Analytics.Track("death", new System.Collections.Generic.Dictionary<string, object>
             {
@@ -3003,6 +3098,7 @@ namespace TrustIssues
         // Out of hearts in Endless/Daily — end the run and show the result.
         void RunOver()
         {
+            Memory.RunEndedCleanly();   // reached a result screen = not a rage-quit
             _state = State.Win;
             if (_mode == Mode.Endless && _levelIndex > PlayerPrefs.GetInt("best_endless", 0))
             { PlayerPrefs.SetInt("best_endless", _levelIndex); PlayerPrefs.Save(); _newBest = true; }
@@ -3028,6 +3124,8 @@ namespace TrustIssues
             string brag = _mode == Mode.Endless
                 ? $"I reached FLOOR {_levelIndex + 1} of Endless Night in Trust Issues \U0001F987 — beat that"
                 : $"I fell on night {_levelIndex + 1} of tonight's Blood Moon \U0001F987";
+            if (_mode == Mode.Daily && Rumor.Discovered)
+                brag += $" — and I proved the rumor: \"{Rumor.CrypticLine}\"";
             ResultFooter(root, panel, brag, lbMode);
         }
 
@@ -3036,6 +3134,8 @@ namespace TrustIssues
         {
             if (_state != State.Play) return;
             if (_player != null) _player.Freeze();
+            // Rumor (3) proof: you crossed a floor whose learned spikes stayed quiet.
+            if (_mode == Mode.Daily && _rumorMoonSpared) { _rumorMoonSpared = false; Rumor.Discover(); }
 
             Analytics.Track("level_complete", new System.Collections.Generic.Dictionary<string, object>
             {
@@ -3136,6 +3236,7 @@ namespace TrustIssues
 
         IEnumerator WinRoutine()
         {
+            Memory.RunEndedCleanly();   // reached a result screen = not a rage-quit
             PlayerPrefs.SetInt("ti_level", 0); PlayerPrefs.Save();
             var panel = Overlay(new Color(0, 0, 0, 0.85f), out var root);
             bool daily = _mode == Mode.Daily;
@@ -3149,6 +3250,8 @@ namespace TrustIssues
             string brag = daily
                 ? $"I cleared tonight's Blood Moon in Trust Issues with {_deaths} deaths \U0001F987 — beat that"
                 : $"I escaped the castle in Trust Issues — {_deaths} deaths \U0001F987";
+            if (daily && Rumor.Discovered)
+                brag += $" — and I proved the rumor: \"{Rumor.CrypticLine}\"";
             ResultFooter(root, panel, brag, lbMode);
             yield break;
         }
