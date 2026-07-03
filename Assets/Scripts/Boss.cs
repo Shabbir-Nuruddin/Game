@@ -37,11 +37,18 @@ namespace TrustIssues
         int _tier, _hp, _hpMax;
         float _minX, _maxX;
         SpriteRenderer _sr;
+        BossAnimator _anim;                  // the ONE writer of colour/scale/lean (see BossAnimator.cs)
         Color _baseColor;
-        float _flash, _bob, _baseScaleX = 1f, _baseScaleY = 1f;
+        float _bob, _baseScaleX = 1f, _baseScaleY = 1f;
         bool _enraged, _dashing, _dead;
         float _faceDir = 1f;                 // current facing (-1/+1), smoothed with a deadzone
         int _step;                           // pattern counter — drives each boss's signature rotation
+        int _fakeouts;                       // Countess tell: fake-outs after the first pulse VIOLET (learnable)
+
+        // Phase escalation can INTERRUPT the running pattern (set by Hit, consumed by
+        // Brain) so crossing a threshold reads as the boss reacting NOW.
+        bool _phaseInterrupt, _patternDone;
+        Coroutine _currentPattern;
 
         // Multi-PHASE escalation: higher tiers have MORE phases, so the fight visibly
         // changes shape as you grind the boss down (not just a single enrage flip).
@@ -54,6 +61,7 @@ namespace TrustIssues
         Transform _hazards;                  // container for spawned spikes/bolts/bats (cleared on defeat)
 
         RectTransform _hpFill, _hpChip;
+        Image _chipImg;                      // tinted hotter each phase so the bar itself escalates
         float _fracTarget = 1f, _chipFrac = 1f;
         GameObject _hpRoot, _promptRoot;
         Text _promptText;
@@ -81,6 +89,11 @@ namespace TrustIssues
         {
             _sr = GetComponent<SpriteRenderer>();
             _baseColor = _sr != null ? _sr.color : Color.white;
+            // All colour/scale/lean writes go through the animator from here on —
+            // it holds off while the intro cutscene owns the transform.
+            _anim = gameObject.AddComponent<BossAnimator>();
+            _anim.Init(_sr, _baseColor, new Vector2(_baseScaleX, _baseScaleY), ArtFacesLeft);
+            _anim.Hold = IntroHold;
 
             // Bullet hurtbox. The collider size is LOCAL and gets multiplied by the
             // boss transform scale (≈2.6×), so divide the desired WORLD size by the
@@ -107,12 +120,7 @@ namespace TrustIssues
         {
             if (_dead) return;
             _bob += Time.deltaTime;
-
-            if (_flash > 0f)
-            {
-                _flash -= Time.deltaTime * 5f;
-                if (_sr != null) _sr.color = Color.Lerp(_baseColor, Color.white, Mathf.Clamp01(_flash));
-            }
+            if (_anim != null) _anim.Hold = IntroHold;
 
             var pl = Player;
             if (pl != null && !_dashing) FaceToward(pl.position.x);
@@ -208,14 +216,64 @@ namespace TrustIssues
                     Audio.PlayOr("boss_roar", "death", 0.7f);
                     GameRoot.I?.BossToast(_enraged ? "ENRAGED" : $"PHASE {_phase + 1}");
                     GameRoot.I?.SlowMoBurst(0.25f, 0.5f);   // a beat to read the shift
+                    // The final phase reads at a glance: a persistent dark-red rim
+                    // pulse on the body, and the HP bar's chip layer runs hot.
+                    if (_enraged) _anim?.SetRim(new Color(0.55f, 0.04f, 0.08f), 0.45f);
+                    if (_chipImg != null) _chipImg.color = _enraged
+                        ? new Color(1f, 0.45f, 0.3f, 0.9f) : new Color(1f, 0.72f, 0.5f, 0.88f);
                     yield return Wait(0.5f);
                 }
-                yield return RunRandomPattern();
+
+                // Run the pattern as a CHILD coroutine so crossing a phase threshold
+                // (detected in Hit) can cut it short — the boss reacts to the wound
+                // NOW instead of politely finishing its old move first.
+                _phaseInterrupt = false;
+                _patternDone = false;
+                _currentPattern = StartCoroutine(RunPattern(RunRandomPattern()));
+                while (!_patternDone && !_phaseInterrupt && !_dead) yield return null;
+                if (_dead) yield break;
+                if (_phaseInterrupt && !_patternDone)
+                {
+                    if (_currentPattern != null) StopCoroutine(_currentPattern);
+                    CleanupPattern();
+                    continue;   // loop top plays the escalation beat immediately
+                }
+
                 // ALWAYS leave a real shoot window — even enraged it never drops below
                 // ~0.7s, and the boss reads as VULNERABLE during it so players learn the
                 // rhythm: dodge the pattern, then punish in the opening.
                 float gap = Mathf.Max(0.7f, (_enraged ? 0.9f - _tier * 0.05f : 1.2f - _tier * 0.06f));
                 yield return OpenWindow(gap);
+            }
+        }
+
+        IEnumerator RunPattern(IEnumerator pattern)
+        {
+            yield return pattern;
+            _patternDone = true;
+        }
+
+        // A stopped pattern leaves its TELEGRAPH markers behind (its local cleanup
+        // never runs). Sweep them by name; live hazards (spikes/bolts/bats/lightning)
+        // stay and finish naturally so the interrupt never deletes a threat mid-dodge.
+        void CleanupPattern()
+        {
+            _dashing = false;
+            _anim?.ResetChannels();
+            if (_hazards == null) return;
+            for (int i = _hazards.childCount - 1; i >= 0; i--)
+            {
+                var child = _hazards.GetChild(i);
+                switch (child.name)
+                {
+                    case "SpikeWarn":
+                    case "BoltWarn":
+                    case "DashLane":
+                    case "SafeGlow":
+                    case "BossWarn":
+                        Destroy(child.gameObject);
+                        break;
+                }
             }
         }
 
@@ -449,8 +507,22 @@ namespace TrustIssues
                 var lsr = lane.GetComponent<SpriteRenderer>();
                 var lc = lsr.color; lc.a = 0.5f; lsr.color = lc;
                 lane.AddComponent<FaintPulse>();
+                // Direction chevrons along the lane (parented, so they die with it):
+                // two rotated slats forming a ">" that points the way the charge goes.
+                float dashDir = Mathf.Sign(toX - fromX);
+                for (int ci = 1; ci <= 3; ci++)
+                {
+                    float cx = Mathf.Lerp(fromX, toX, ci / 4f);
+                    var up = Theme.Box("ChevA", lane.transform, new Vector2(cx - dashDir * 0.12f, y + 0.14f),
+                        new Vector2(0.34f, 0.09f), Theme.Danger, 5);
+                    up.transform.rotation = Quaternion.Euler(0f, 0f, dashDir * -35f);
+                    var dn = Theme.Box("ChevB", lane.transform, new Vector2(cx - dashDir * 0.12f, y - 0.14f),
+                        new Vector2(0.34f, 0.09f), Theme.Danger, 5);
+                    dn.transform.rotation = Quaternion.Euler(0f, 0f, dashDir * 35f);
+                }
                 yield return Telegraph(0.45f);
                 if (lane != null) Destroy(lane);
+                _anim?.Lunge();   // release snap: stretch into the charge
                 float t = 0f;
                 while (t < 1f && !_dead)
                 {
@@ -464,12 +536,14 @@ namespace TrustIssues
         }
 
         // TROLL: a full attack wind-up... that fizzles. The instant you panic-dodge,
-        // a fast aimed bolt punishes the over-react.
+        // a fast aimed bolt punishes the over-react. After the FIRST fake, the wind-up
+        // pulses VIOLET instead of red — a tell you can learn ("violet = don't flinch"),
+        // which turns her from random-feeling into a duel you get better at.
         IEnumerator Pattern_FakeOut()
         {
-            yield return Telegraph(0.5f);
-            // the bait: flash to "fire" but do nothing
-            if (_sr != null) _sr.color = _baseColor;
+            Color pulse = _fakeouts++ == 0 ? Theme.Danger : new Color(0.72f, 0.32f, 0.95f);
+            yield return Telegraph(0.5f, pulse);
+            // the bait: "fire"... but nothing comes out
             Audio.PlayOr("click", "shoot", 0.5f);
             yield return Wait(0.45f);                 // you relax / scramble here
             var pl = Player; if (pl == null) yield break;
@@ -478,14 +552,21 @@ namespace TrustIssues
             yield return Wait(0.2f);
         }
 
-        // Bolts rain from the ceiling with weave-through gaps.
+        // Bolts rain from the ceiling with weave-through gaps. Each wave now shows a
+        // faint pale column over its safe gap for a beat BEFORE the bolts drop — the
+        // dodge is a read ("get to the light"), not a guess.
         IEnumerator Pattern_BoltRain()
         {
-            int waves = 2 + (_enraged ? 1 : 0);
+            int waves = 2 + (_enraged ? 1 : 0);   // snapshot at entry — see Pattern_GroundSpikes
             Warn(0.7f);                                          // "!" — bolts are about to rain
+            var parent = _hazards != null ? _hazards : transform.parent;
             for (int w = 0; w < waves && !_dead; w++)
             {
                 float gap = Random.Range(_minX + 2f, _maxX - 2f);
+                var glow = Theme.Box("SafeGlow", parent, new Vector2(gap, 1.5f),
+                    new Vector2(2.6f, 13f), new Color(0.75f, 0.9f, 1f, 0.13f), 4);
+                var gp = glow.AddComponent<FaintPulse>(); gp.min = 0.07f; gp.max = 0.18f; gp.speed = 7f;
+                yield return Wait(0.35f);
                 for (float x = _minX + 1f; x <= _maxX - 1f; x += 1.5f)
                 {
                     if (Mathf.Abs(x - gap) < 1.6f) continue;
@@ -493,6 +574,7 @@ namespace TrustIssues
                         .Init(Vector2.down, (7.5f + _tier) * Diff.BossSpeedMul, BoltFrames());
                 }
                 yield return Wait(0.7f);
+                if (glow != null) Destroy(glow);
             }
         }
 
@@ -515,22 +597,27 @@ namespace TrustIssues
         }
 
         // ---------- helpers ----------
-        IEnumerator Telegraph(float dur)
+        IEnumerator Telegraph(float dur) { return Telegraph(dur, Theme.Danger); }
+
+        // The pulse colour is a per-attack tell (the Countess's learnable violet
+        // fake-out, for example). Colour + the anticipation crouch both run through
+        // the animator so nothing fights the hit flash.
+        IEnumerator Telegraph(float dur, Color pulse)
         {
             dur *= Diff.BossTelegraphMul;        // Casual/Normal get longer, more readable wind-ups
             dur = Mathf.Max(0.45f, dur);         // anticipation never shrinks below a reaction floor,
                                                  // even on the hardest tiers (they get COMPLEXITY, not faster tells)
             Warn(dur);                           // pop a "!" + audio cue so the incoming one-shot is unmistakable
             Fx.Ring(transform.position, new Color(1f, 0.25f, 0.25f, 0.6f), 2.4f, dur);  // wind-up ring
+            _anim?.BeginTelegraph(pulse);
             float e = 0f;
             while (e < dur && !_dead)
             {
                 e += Time.deltaTime;
-                if (_sr != null) _sr.color = Color.Lerp(_baseColor, Theme.Danger, 0.5f + 0.5f * Mathf.Sin(Time.time * 32f));
                 transform.position = new Vector3(transform.position.x, HoverY, 0f);
                 yield return null;
             }
-            if (_sr != null) _sr.color = _baseColor;
+            _anim?.EndTelegraph();
         }
 
         // The shoot window between patterns: drift toward the player (keeps pressure on)
@@ -538,7 +625,7 @@ namespace TrustIssues
         // shoot. Same drift as Wait, plus the tell.
         IEnumerator OpenWindow(float dur)
         {
-            Color glow = Color.Lerp(_baseColor, Color.white, 0.4f);
+            _anim?.SetVulnerable(true);   // pale slow pulse = "THIS is the beat to shoot"
             float e = 0f;
             while (e < dur && !_dead)
             {
@@ -550,11 +637,9 @@ namespace TrustIssues
                     float nx = Mathf.MoveTowards(transform.position.x, tx, (1.6f + _tier * 0.5f) * Time.deltaTime);
                     transform.position = new Vector3(nx, HoverY, 0f);
                 }
-                if (_sr != null && _flash <= 0f)
-                    _sr.color = Color.Lerp(_baseColor, glow, 0.5f + 0.5f * Mathf.Sin(Time.time * 6f));
                 yield return null;
             }
-            if (_sr != null && _flash <= 0f) _sr.color = _baseColor;
+            _anim?.SetVulnerable(false);
         }
 
         // Drift toward the player while idle so it keeps the pressure on.
@@ -652,15 +737,9 @@ namespace TrustIssues
             ApplyFacing();
         }
 
-        // Facing reads via SpriteRenderer.flipX (so the transform scale — and thus the
-        // collider — is never inverted) PLUS a subtle lean toward the player, which is
-        // what actually sells direction on the near-front-facing boss art. Writes only
-        // flipX/rotation, never position, so it never fights Telegraph/Wait/Dash.
-        void ApplyFacing()
-        {
-            if (_sr != null) _sr.flipX = ArtFacesLeft ? (_faceDir > 0f) : (_faceDir < 0f);
-            transform.localRotation = Quaternion.Euler(0f, 0f, -_faceDir * 6f);
-        }
+        // Facing decisions live here (deadzone above); the actual flipX + lean writes
+        // belong to the animator so they can never fight squash/stretch or the intro.
+        void ApplyFacing() => _anim?.SetFacing(_faceDir);
 
         // Display name of this boss (matches the HP-bar title), for death-cause text.
         string BossName()
@@ -679,11 +758,14 @@ namespace TrustIssues
         {
             if (_dead) return;
             _hp = Mathf.Max(0, _hp - Mathf.Max(1, dmg));
-            _flash = 1f;
+            _anim?.HitFlash();
+            _anim?.Impact();
             if (!_everHit) { _everHit = true; HidePrompt(); }   // they've found the blaster
             Audio.PlayOr("boss_hit", "click", 0.6f);
             Fx.Burst(transform.position, new Color(0.8f, 0.2f, 0.95f, 0.95f), 6, 4.5f, 0.13f, 0.35f, 8f);
             UpdateHpBar();
+            // Crossing a phase threshold interrupts the running pattern (see Brain).
+            if (ComputePhase() > _phase) _phaseInterrupt = true;
             if (_hp <= 0) Defeat();
         }
 
@@ -752,6 +834,7 @@ namespace TrustIssues
             var chip = new GameObject("Chip", typeof(RectTransform)).AddComponent<Image>();
             chip.transform.SetParent(barGo.transform, false);
             chip.color = new Color(1f, 0.85f, 0.85f, 0.85f);
+            _chipImg = chip;
             _hpChip = chip.rectTransform;
             _hpChip.anchorMin = new Vector2(0, 0); _hpChip.anchorMax = new Vector2(1, 1);
             _hpChip.offsetMin = new Vector2(5, 5); _hpChip.offsetMax = new Vector2(-5, -5);
