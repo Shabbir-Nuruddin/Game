@@ -78,6 +78,13 @@ namespace TrustIssues
         const float CamY = -1.2f;
         const float NormalCamSize = 5.6f;   // platforming zoom; boss arenas pull back to show the whole room
 
+        // 2.5D depth mode (perspective camera + real-depth parallax + platform
+        // extrusions + cinematic dollies). Default ON; the settings toggle flips
+        // back to the classic flat camera instantly if a machine struggles.
+        public static bool Depth25 => PlayerPrefs.GetInt("opt_25d", 1) == 1;
+        CameraRig _rig;
+        Vector3 _moonBaseLocal, _moonBaseScale;   // flat-mode placement, rescaled for depth mode
+
         Text _hud, _toast;
         GameObject _menuPanel, _pausePanel, _touchPanel, _rotatePanel;
         Parallax _parallax;
@@ -122,8 +129,29 @@ namespace TrustIssues
             ResetProgressOncePerVersion();
             SetupCamera();
             BuildBackdrop();
+            ApplyDepthMode();   // place parallax/moon for flat or 2.5D per opt_25d
             BuildHUD();
             ShowMenu();
+        }
+
+        // Re-place everything whose position depends on the camera projection.
+        // Called at boot and live from the settings toggle. (Platform depth slices
+        // are per-level and appear on the next floor build.)
+        void ApplyDepthMode()
+        {
+            float dist = CameraRig.DistanceFor(NormalCamSize);
+            _parallax?.SetDepthMode(Depth25, dist);
+            if (_moonSr != null)
+            {
+                // A camera-child quad at local depth z shows tan(fov/2)·z half-height
+                // under perspective vs the fixed ortho size — scale position AND size
+                // by the ratio so the moon keeps its screen spot.
+                float f = Depth25
+                    ? CameraRig.HalfTan * Mathf.Abs(_moonBaseLocal.z) / NormalCamSize : 1f;
+                _moonSr.transform.localPosition =
+                    new Vector3(_moonBaseLocal.x * f, _moonBaseLocal.y * f, _moonBaseLocal.z);
+                _moonSr.transform.localScale = _moonBaseScale * f;
+            }
         }
 
         void SetupCamera()
@@ -134,11 +162,14 @@ namespace TrustIssues
                 var go = new GameObject("Main Camera"); go.tag = "MainCamera";
                 _cam = go.AddComponent<Camera>();
             }
-            _cam.orthographic = true;
-            _cam.orthographicSize = NormalCamSize;
-            _cam.transform.position = new Vector3(-1.5f, CamY, -10f);
             _cam.backgroundColor = Theme.Sky;
             _cam.clearFlags = CameraClearFlags.SolidColor;
+            // The rig owns placement/projection from here on (flat OR 2.5D); shake
+            // keeps perturbing the camera's local position under the rig parent —
+            // which also makes boss-fight shakes actually visible (the old direct
+            // position writes in LateUpdate stomped them every frame).
+            _rig = CameraRig.Attach(_cam);
+            _rig.SetFrame(-1.5f, CamY, NormalCamSize);
         }
 
         // A multi-layer gothic parallax castle. The source art is a blue ICE
@@ -184,6 +215,11 @@ namespace TrustIssues
                 var msr = moon.AddComponent<SpriteRenderer>();
                 msr.sprite = Theme.Moon; msr.sortingOrder = -8; msr.color = ThemeMoon[0];
                 _moonSr = msr;
+                // Remember flat-mode placement: depth mode pushes camera-child quads
+                // through a perspective projection, so the moon is rescaled about the
+                // view axis to keep the same screen spot/size (see ApplyDepthMode).
+                _moonBaseLocal = moon.transform.localPosition;
+                _moonBaseScale = moon.transform.localScale;
             }
 
             BuildAmbient();   // drifting motes so every backdrop has motion, not a still image
@@ -533,8 +569,7 @@ namespace TrustIssues
             Audio.Music("music", 0.3f);
             _hud.gameObject.SetActive(false);
             if (_touchPanel != null) { _touchPanel.SetActive(false); TouchInput.Clear(); }
-            _cam.orthographicSize = NormalCamSize;   // reset in case we left a zoomed-out boss arena
-            _cam.transform.position = new Vector3(-1.5f, CamY, -10f);
+            _rig.SetFrame(-1.5f, CamY, NormalCamSize);   // reset in case we left a zoomed-out boss arena
 
             // Destroy any existing menu panel FIRST — otherwise the previous
             // screen (e.g. the level-select map) leaks and stays on top, since
@@ -847,7 +882,8 @@ namespace TrustIssues
                 new Vector2(0.5f, 0.5f), new Vector2(0, -294), new Vector2(1200, 36));
             MakeToggle(root, new Vector2(-290, -348), "REPLAY GHOST", "opt_replay_ghost", 0);
             MakeToggle(root, new Vector2(290, -348), "ON-SCREEN PADS", "opt_touch", 0);
-            MakeToggle(root, new Vector2(0, -414), "UNLOCK ALL FLOORS", "opt_unlock_all", 0, 640f);
+            MakeToggle(root, new Vector2(-290, -414), "2.5D DEPTH", "opt_25d", 1, 560f, ApplyDepthMode);
+            MakeToggle(root, new Vector2(290, -414), "UNLOCK ALL FLOORS", "opt_unlock_all", 0);
 
             Theme.Button(root, "‹ BACK", new Color(1, 1, 1, 0.25f), Color.white, 44,
                 new Vector2(0.5f, 0f), new Vector2(0, 40), new Vector2(360, 100), ShowMenu);
@@ -956,7 +992,8 @@ namespace TrustIssues
 
         // A simple ON/OFF toggle button backed by a PlayerPrefs int (0/1). The caption
         // shows the live state; clicking flips and persists it.
-        void MakeToggle(Transform root, Vector2 pos, string label, string prefKey, int def, float width = 560f)
+        void MakeToggle(Transform root, Vector2 pos, string label, string prefKey, int def, float width = 560f,
+            System.Action onChanged = null)
         {
             Button btn = null;
             System.Func<string> caption = () =>
@@ -969,6 +1006,7 @@ namespace TrustIssues
                     PlayerPrefs.SetInt(prefKey, cur == 1 ? 0 : 1);
                     PlayerPrefs.Save();
                     if (!Audio.Muted) Audio.Play("click", 0.6f);
+                    onChanged?.Invoke();   // live-apply hooks (e.g. 2.5D re-placement)
                     var t = btn.GetComponentInChildren<Text>();
                     if (t != null) t.text = caption();
                 });
@@ -1189,6 +1227,28 @@ namespace TrustIssues
         public void ShakeCam(float amount, float dur)
         {
             if (_cam != null) StartCoroutine(Juice.Shake(_cam.transform, amount, dur));
+        }
+
+        // Cinematic dolly punch-in toward a world point (2.5D only): eases in and
+        // back out over `dur` on unscaled time so it plays through slow-mo beats.
+        // Used by the boss summon, the boss kill and the player-death punch.
+        public void CinematicPunch(Vector2 focus, float amount, float dur)
+        {
+            if (!Depth25 || _rig == null) return;
+            StartCoroutine(PunchRoutine(focus, amount, dur));
+        }
+
+        IEnumerator PunchRoutine(Vector2 focus, float amount, float dur)
+        {
+            float e = 0f;
+            while (e < dur)
+            {
+                e += Time.unscaledDeltaTime;
+                float k = Mathf.Sin(Mathf.Clamp01(e / dur) * Mathf.PI);   // in… hold… out
+                _rig.SetPunch(focus, amount * k);
+                yield return null;
+            }
+            _rig.SetPunch(focus, 0f);
         }
 
         // Big red full-screen pulse (boss enrage). Reuses the death-flash machinery.
@@ -1855,6 +1915,27 @@ namespace TrustIssues
             sr.sortingOrder = 1;
             var col = go.AddComponent<BoxCollider2D>();
             col.size = size;
+            // 2.5D: stacked darker copies behind the face read as extruded stone
+            // sides/tops under the perspective camera (same sortingOrder — the
+            // rig's orthographic transparency sort tie-breaks by depth). Children
+            // of the floor, so a collapsing fake floor takes its depth with it —
+            // fakes MUST stay indistinguishable from real platforms.
+            if (Depth25)
+            {
+                float[] shade = { 0.72f, 0.55f, 0.4f };
+                for (int i = 0; i < 3; i++)
+                {
+                    var slice = new GameObject("DepthSlice");
+                    slice.transform.SetParent(go.transform, false);
+                    slice.transform.localPosition = new Vector3(0f, 0f, 0.25f * (i + 1));
+                    var ssr = slice.AddComponent<SpriteRenderer>();
+                    ssr.sprite = Theme.StoneTile;
+                    ssr.drawMode = SpriteDrawMode.Tiled;
+                    ssr.size = size;                      // copy the SIZE, not the scale
+                    ssr.sortingOrder = 1;
+                    ssr.color = new Color(shade[i], shade[i], shade[i], 1f);
+                }
+            }
             // Single blood-red lip across the top edge (not tiled into the stone).
             // Parented to the FLOOR (not the level root) so a collapsing fake floor
             // takes its lip down with it — no red line left floating in mid-air.
@@ -2370,6 +2451,9 @@ namespace TrustIssues
             // and faster while energy sparks converge on it. ----
             var seal = Theme.Disc != null ? MakeSummonSprite("SummonSeal", Theme.Disc, bpos, new Color(1f, 0.2f, 0.22f, 0.95f), 3) : null;
             var glow = Theme.Moon != null ? MakeSummonSprite("SummonGlow", Theme.Moon, bpos, new Color(1f, 0.12f, 0.16f, 0.55f), 2) : null;
+            // 2.5D: the camera leans in on the summoning seal, releasing as the boss
+            // bursts into being (covers the ~1s spin + the 0.35s burst).
+            CinematicPunch(bpos, 0.55f, 1.6f);
             float sealB = (seal != null && Theme.Disc != null) ? Theme.Disc.bounds.size.y : 1f;
             float glowB = (glow != null && Theme.Moon != null) ? Theme.Moon.bounds.size.y : 1f;
             Audio.PlayOr("portal", "boss_roar", 0.6f);
@@ -2566,6 +2650,9 @@ namespace TrustIssues
         // The boss is dead: open the coffin so the player can leave, hush the theme.
         public void BossDefeated()
         {
+            // Savour the kill in 2.5D: lean in on the shatter during the slow-mo.
+            if (ActiveBoss != null)
+                CinematicPunch(ActiveBoss.transform.position, 0.35f, 1.1f);
             ActiveBoss = null;                        // bullets in flight stop probing it
             _bossGen++;                               // stop any pending pickup respawn
             if (_gunPickup != null) { Destroy(_gunPickup); _gunPickup = null; }
@@ -2599,21 +2686,21 @@ namespace TrustIssues
         {
             if (_player == null) return;
             if (InBossRoom) { PositionBossCam(); return; }
-            _cam.orthographicSize = NormalCamSize;
             float x = Mathf.Clamp(_player.transform.position.x, _camMin, _camMax);
-            _cam.transform.position = new Vector3(x, CamY, -10f);
+            _rig.SetFrame(x, CamY, NormalCamSize);
         }
 
         // Boss arenas pull the camera WAY back and lock it on the room centre, so the
         // entire battlefield — every telegraph, bolt and spike — is visible at once.
+        // The half-height/aspect math holds for the perspective rig too: width scales
+        // with height at the gameplay plane exactly like an ortho camera.
         void PositionBossCam()
         {
             const float halfArena = 14.2f;          // walls sit at ±13.2; show a little past them
             const float topY = 5.2f, botY = -3.6f;  // floor to the bolt-rain ceiling
             float sizeForWidth = halfArena / Mathf.Max(0.1f, _cam.aspect);
             float sizeForHeight = (topY - botY) / 2f;
-            _cam.orthographicSize = Mathf.Max(sizeForWidth, sizeForHeight);
-            _cam.transform.position = new Vector3(0f, (topY + botY) / 2f, -10f);
+            _rig.SetFrame(0f, (topY + botY) / 2f, Mathf.Max(sizeForWidth, sizeForHeight));
         }
 
         void LateUpdate()
@@ -2622,9 +2709,8 @@ namespace TrustIssues
             {
                 if (InBossRoom) { PositionBossCam(); return; }   // locked, no follow
                 float x = Mathf.Clamp(_player.transform.position.x, _camMin, _camMax);
-                var p = _cam.transform.position;
-                _cam.transform.position = new Vector3(
-                    Mathf.Lerp(p.x, x, 10f * Time.unscaledDeltaTime), CamY, -10f);
+                _rig.SetFrame(Mathf.Lerp(_rig.FrameX, x, 10f * Time.unscaledDeltaTime),
+                              CamY, NormalCamSize);
             }
         }
 
@@ -2821,6 +2907,7 @@ namespace TrustIssues
                 _player.Freeze();
             }
             StartCoroutine(Juice.Shake(_cam.transform, 0.45f, 0.22f));
+            CinematicPunch(deathPos, 0.18f, 0.3f);   // 2.5D: a quick lean toward the kill
             // NEAR-INSTANT retry — the heart of the "just one more try" loop.
             yield return new WaitForSecondsRealtime(0.18f);
             Destroy(_levelRoot.gameObject);
