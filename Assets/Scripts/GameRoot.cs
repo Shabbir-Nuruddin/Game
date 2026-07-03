@@ -61,6 +61,9 @@ namespace TrustIssues
         int _bossHp;          // chip-hits left in a boss arena (the rest of the game is one-shot)
         float _bossIFrames;   // brief mercy window after taking a boss chip hit
         int _bossGen;         // bumped each boss (re)build so stale pickup coroutines bail
+        // The live boss this arena, if any — Bullet runs its swept hit test against
+        // this directly (trigger events vs the transform-animated boss dropped hits).
+        public Boss ActiveBoss { get; private set; }
         GameObject _gunPickup;// the active weapon pickup in the arena (null while held)
         const int BossClip = 5;   // shots granted per weapon pickup
         int _bossIntroedTier = -1;// which boss already played its cutscene this run (skip on retries)
@@ -1635,6 +1638,7 @@ namespace TrustIssues
         void BuildLevel()
         {
             _dying = false;
+            ActiveBoss = null;   // the old level root (and any boss in it) is torn down below
             _recT.Clear(); _recP.Clear(); _recTimer = 0f;   // fresh recording for this attempt
             _level = CurrentLevel();
             _camMin = _level.CamMinX; _camMax = _level.CamMaxX;
@@ -2303,6 +2307,7 @@ namespace TrustIssues
             }
             var boss = go.AddComponent<Boss>();
             boss.Init(tier, _camMin - 4f, _camMax + 4f);
+            ActiveBoss = boss;
             Audio.Music("music_boss", 0.45f);
 
             int ti = Mathf.Clamp(tier, 1, 4);
@@ -2544,6 +2549,7 @@ namespace TrustIssues
         // The boss is dead: open the coffin so the player can leave, hush the theme.
         public void BossDefeated()
         {
+            ActiveBoss = null;                        // bullets in flight stop probing it
             _bossGen++;                               // stop any pending pickup respawn
             if (_gunPickup != null) { Destroy(_gunPickup); _gunPickup = null; }
             if (_player != null) { _player.canShoot = false; _player.ammo = 0; }

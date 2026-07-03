@@ -15,7 +15,9 @@ namespace TrustIssues
             _dir = Mathf.Sign(dir);
             var c = gameObject.AddComponent<BoxCollider2D>();
             c.isTrigger = true;
-            c.size = new Vector2(0.8f, 0.7f);    // tight hitbox (local; transform scales it down)
+            // Sized close to the 0.4x0.18 visual — this collider only has to hit the
+            // chunky candy walls now; the boss uses the swept test in Update instead.
+            c.size = new Vector2(0.5f, 0.3f);
             // A kinematic body so trigger events actually fire against the
             // static candy walls (2D triggers need a Rigidbody on one side).
             var rb = gameObject.AddComponent<Rigidbody2D>();
@@ -28,7 +30,27 @@ namespace TrustIssues
 
         void Update()
         {
+            Vector3 prev = transform.position;
             transform.position += Vector3.right * (_dir * 18f * Time.deltaTime);
+
+            // Boss hits use a SWEPT segment test (this frame's travel, relative to the
+            // boss so its own dash motion counts too) against the tall hurt column —
+            // the old trigger-event path (kinematic bullet vs a static trigger on a
+            // transform-animated boss) dropped hits, i.e. "the shot went through it".
+            var boss = GameRoot.I != null ? GameRoot.I.ActiveBoss : null;
+            if (boss != null && !boss.IntroHold)
+            {
+                Vector2 rel0 = (Vector2)(prev - boss.PrevPos);
+                Vector2 rel1 = (Vector2)(transform.position - boss.transform.position);
+                if (Boss.SegmentVsAabb(rel0, rel1, Vector2.zero,
+                                       Boss.BodyHalfW + 0.2f, Boss.HurtHalfH + 0.1f))
+                {
+                    boss.Hit(2);      // each collected shot bites — a clip is meaningful
+                    Destroy(gameObject);
+                    return;
+                }
+            }
+
             _life -= Time.deltaTime;
             if (_life <= 0f) Destroy(gameObject);
         }
@@ -38,13 +60,6 @@ namespace TrustIssues
             if (o.GetComponent<Breakable>() != null)
             {
                 Destroy(o.gameObject);
-                Destroy(gameObject);
-                return;
-            }
-            var boss = o.GetComponent<Boss>();
-            if (boss != null)
-            {
-                boss.Hit(2);          // each collected shot bites — a clip is meaningful
                 Destroy(gameObject);
             }
         }

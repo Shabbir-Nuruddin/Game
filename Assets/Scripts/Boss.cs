@@ -21,12 +21,18 @@ namespace TrustIssues
         // kill. Generous on purpose: the boss hovers above the floor, so this reaches
         // DOWN far enough that walking under/into it is lethal (players reported being
         // "inside the boss" without dying). The check below also shifts the centre down.
-        const float BodyHalfW = 1.15f, BodyHalfH = 1.65f;
+        public const float BodyHalfW = 1.15f;
+        const float BodyHalfH = 1.65f;
         const float BodyDrop = 0.5f;   // shift the kill box down toward the floor
         // The BULLET hurtbox is the same width but a TALL column: the boss hovers high
         // above the ground, so this lets your floor-level shots still reach it without
         // forcing a jump — while keeping side shots from phantom-hitting past the body.
-        const float HurtHalfH = 2.5f;
+        // Public: Bullet runs its own swept test against this column (see Combat.cs).
+        public const float HurtHalfH = 2.5f;
+
+        // Last frame's position, used by the swept contact/bullet tests so motion
+        // BETWEEN frames is covered (same idea as BossBolt's sweep, both directions).
+        public Vector3 PrevPos { get; private set; }
 
         int _tier, _hp, _hpMax;
         float _minX, _maxX;
@@ -64,8 +70,11 @@ namespace TrustIssues
             // scaled by difficulty so Casual clears in fewer clips, Nightmare is full.
             _hpMax = _hp = Mathf.Max(6, Mathf.RoundToInt((12 + _tier * 8) * Diff.BossHpMul));
             _maxPhase = _tier >= 3 ? 2 : 1;          // bigger bosses get an extra phase
-            _baseScaleX = Mathf.Abs(transform.localScale.x);
-            _baseScaleY = transform.localScale.y;
+            // Floor the base scale: a zero scale would explode the collider size math
+            // below into an infinite hurtbox.
+            _baseScaleX = Mathf.Max(0.01f, Mathf.Abs(transform.localScale.x));
+            _baseScaleY = Mathf.Max(0.01f, Mathf.Abs(transform.localScale.y));
+            PrevPos = transform.position;
         }
 
         void Start()
@@ -110,9 +119,13 @@ namespace TrustIssues
 
             // HP bar "chip": the pale trailing layer eases down toward the real value
             // so a hit reads as a quick white sliver draining, not an instant jump.
+            // Drain rate scales with the gap (with a floor) so even a single 2-damage
+            // chip on a fat HP pool stays visible for a beat instead of vanishing in
+            // a couple of frames.
             if (_hpChip != null && _chipFrac > _fracTarget)
             {
-                _chipFrac = Mathf.MoveTowards(_chipFrac, _fracTarget, Time.deltaTime * 0.9f);
+                float rate = Mathf.Max(0.06f, (_chipFrac - _fracTarget) * 2.5f);
+                _chipFrac = Mathf.MoveTowards(_chipFrac, _fracTarget, Time.deltaTime * rate);
                 _hpChip.anchorMax = new Vector2(0.005f + 0.99f * _chipFrac, 1f);
             }
 
@@ -123,15 +136,53 @@ namespace TrustIssues
                 var c = _promptText.color; c.a = a; _promptText.color = c;
             }
 
-            // One-shot contact: overlap the BODY (a generous AABB shifted down toward
-            // the floor) and you're dust. Disabled during the cinematic intro.
+            // One-shot contact: SWEPT test of the player's path this frame — taken
+            // RELATIVE to the boss, so a fast player, a dashing boss, or both at once
+            // can never tunnel through the body between frames (the old once-per-frame
+            // overlap poll was why you sometimes ran straight through unharmed).
+            // The player's own half-extents fatten the box (Minkowski sum), and the
+            // centre still shifts down toward the floor. Disabled during the intro.
             if (pl != null && !IntroHold)
             {
-                float dx = pl.position.x - transform.position.x;
-                float dy = pl.position.y - (transform.position.y - BodyDrop);
-                if (Mathf.Abs(dx) < BodyHalfW && Mathf.Abs(dy) < BodyHalfH)
+                if (!_prevInit) { _prevPlayer = pl.position; _prevInit = true; }
+                Vector2 rel0 = (Vector2)_prevPlayer - (Vector2)PrevPos;
+                Vector2 rel1 = (Vector2)pl.position - (Vector2)transform.position;
+                if (SegmentVsAabb(rel0, rel1, new Vector2(0f, -BodyDrop),
+                                  BodyHalfW + 0.30f, BodyHalfH + 0.45f))
                     GameRoot.I.HitPlayer($"Caught by {BossName()}.");
+                _prevPlayer = pl.position;
             }
+            PrevPos = transform.position;
+        }
+
+        Vector3 _prevPlayer; bool _prevInit;
+
+        // Does segment a→b touch the axis-aligned box (center c, half-extents hw/hh)?
+        // Standard slab test; shared by the contact kill above and Bullet (Combat.cs).
+        public static bool SegmentVsAabb(Vector2 a, Vector2 b, Vector2 c, float hw, float hh)
+        {
+            Vector2 d = b - a;
+            float tMin = 0f, tMax = 1f;
+            for (int axis = 0; axis < 2; axis++)
+            {
+                float da = axis == 0 ? d.x : d.y;
+                float aa = axis == 0 ? a.x : a.y;
+                float lo = (axis == 0 ? c.x - hw : c.y - hh);
+                float hi = (axis == 0 ? c.x + hw : c.y + hh);
+                if (Mathf.Abs(da) < 1e-6f)
+                {
+                    if (aa < lo || aa > hi) return false;   // parallel and outside the slab
+                }
+                else
+                {
+                    float t1 = (lo - aa) / da, t2 = (hi - aa) / da;
+                    if (t1 > t2) { float tmp = t1; t1 = t2; t2 = tmp; }
+                    tMin = Mathf.Max(tMin, t1);
+                    tMax = Mathf.Min(tMax, t2);
+                    if (tMin > tMax) return false;
+                }
+            }
+            return true;
         }
 
         // ---------- the attack brain ----------
@@ -142,6 +193,9 @@ namespace TrustIssues
             yield return Wait(1.1f);
             while (!_dead)
             {
+                // Defensive reset: if a dash pattern was ever cut short, don't let a
+                // stale flag freeze facing/drift for the rest of the fight.
+                _dashing = false;
                 // PHASE check: each crossed threshold is a telegraphed escalation event.
                 int newPhase = ComputePhase();
                 if (newPhase > _phase)
@@ -280,9 +334,10 @@ namespace TrustIssues
         IEnumerator Pattern_GroundSpikes()
         {
             var pl = Player; if (pl == null) yield break;
+            bool enraged = _enraged;                             // snapshot: a phase flip mid-pattern must not change the rules under the player
             Warn(0.7f);                                          // "!" — spikes are about to erupt
             float gapX = pl.position.x;                          // gap telegraphs on you...
-            float gapW = _enraged ? 2.0f : 2.4f;             // still tighter when enraged, but reachable
+            float gapW = enraged ? 2.0f : 2.4f;              // still tighter when enraged, but reachable
             float left = _minX + 1f, right = _maxX - 1f;
             var markers = new System.Collections.Generic.List<GameObject>();
             for (float x = left; x <= right; x += 1.4f)
@@ -375,7 +430,7 @@ namespace TrustIssues
         IEnumerator Pattern_Dash()
         {
             var pl = Player; if (pl == null) yield break;
-            int dashes = _enraged ? 2 : 1;
+            int dashes = _enraged ? 2 : 1;   // snapshot at entry — see Pattern_GroundSpikes
             for (int d = 0; d < dashes && !_dead; d++)
             {
                 pl = Player; if (pl == null) yield break;
@@ -533,7 +588,9 @@ namespace TrustIssues
             tm.anchor = TextAnchor.LowerCenter; tm.alignment = TextAlignment.Center;
             tm.color = new Color(1f, 0.85f, 0.1f);
             go.GetComponent<MeshRenderer>().sortingOrder = 30;   // above everything in the arena
-            go.AddComponent<WarnMark>().Init(Mathf.Max(0.25f, dur));
+            // Follow the boss: during a dash telegraph it repositions, and a "!" left
+            // hanging where the boss WAS points the player at empty air.
+            go.AddComponent<WarnMark>().Init(Mathf.Max(0.25f, dur), transform);
         }
 
         void SpawnBolt(Vector2 dir, float speed)
@@ -639,6 +696,7 @@ namespace TrustIssues
         void Defeat()
         {
             _dead = true;
+            _dashing = false;   // never leave a cut-short dash's flag behind
             Audio.PlayOr("boss_die", "win", 0.8f);
             // A satisfying shatter: sprite explosion + bursts + ring + screen shake.
             Fx.Explosion(transform.position, 4f);
@@ -817,13 +875,15 @@ namespace TrustIssues
     /// </summary>
     public class WarnMark : MonoBehaviour
     {
-        float _life, _max;
+        float _life, _max, _drift;
         TextMesh _tm;
+        Transform _follow;   // ride the boss so the "!" stays over the actual threat
 
-        public void Init(float dur)
+        public void Init(float dur, Transform follow = null)
         {
             _max = _life = dur;
             _tm = GetComponent<TextMesh>();
+            _follow = follow;
         }
 
         void Update()
@@ -832,7 +892,11 @@ namespace TrustIssues
             float t = Mathf.Clamp01(1f - _life / _max);
             float pop = Mathf.Min(1f, t * 5f);                       // quick scale-in
             transform.localScale = Vector3.one * (0.6f + 0.5f * pop);
-            transform.position += Vector3.up * (0.4f * Time.deltaTime);
+            _drift += 0.4f * Time.deltaTime;
+            if (_follow != null)
+                transform.position = _follow.position + Vector3.up * (1.7f + _drift);
+            else
+                transform.position += Vector3.up * (0.4f * Time.deltaTime);
             if (_tm != null)
             {
                 float blink = 0.55f + 0.45f * Mathf.Sin(Time.time * 22f);
