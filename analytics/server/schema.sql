@@ -31,3 +31,21 @@ CREATE TABLE IF NOT EXISTS scores (
   UNIQUE (mode, nick, day)
 );
 CREATE INDEX IF NOT EXISTS idx_scores_lookup ON scores (mode, day, value);
+
+-- Death echoes: where real players died, so OTHER players see their tombstones
+-- ("Heir-412 died here") — the asynchronous-multiplayer haunting layer. `day`
+-- is yyyymmdd for the daily Blood Moon; castle/endless write day=0 (all-time).
+-- Kept small: each level's list is pruned to the most recent ~200 on write.
+CREATE TABLE IF NOT EXISTS echoes (
+  id          bigserial PRIMARY KEY,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  mode        text NOT NULL,
+  level_index integer NOT NULL,
+  day         integer NOT NULL DEFAULT 0,
+  nick        text NOT NULL,
+  device_id   text,                 -- so players don't see their OWN ghosts
+  x           real NOT NULL,
+  y           real NOT NULL,
+  cause       text                  -- what killed them (shown as the whisper line)
+);
+CREATE INDEX IF NOT EXISTS idx_echoes_lookup ON echoes (mode, level_index, day, id DESC);

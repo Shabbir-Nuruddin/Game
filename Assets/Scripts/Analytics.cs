@@ -33,6 +33,10 @@ namespace TrustIssues
         static string _deviceId, _sessionId, _version;
         static bool _started;
 
+        // The anonymous per-device id, shared with the echo system so players are
+        // never shown their OWN tombstones.
+        public static string DeviceId => _deviceId ?? "";
+
         public static void Init()
         {
             if (_started) return;

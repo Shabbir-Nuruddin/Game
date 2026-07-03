@@ -507,21 +507,27 @@ namespace TrustIssues
                 var lsr = lane.GetComponent<SpriteRenderer>();
                 var lc = lsr.color; lc.a = 0.5f; lsr.color = lc;
                 lane.AddComponent<FaintPulse>();
-                // Direction chevrons along the lane (parented, so they die with it):
-                // two rotated slats forming a ">" that points the way the charge goes.
+                // Direction chevrons along the lane: two rotated slats forming a ">"
+                // that points the way the charge goes. Named "DashLane" so a phase
+                // interrupt's CleanupPattern sweeps them; siblings of the lane (NOT
+                // children — Theme.Box sizes via localScale, and a child would be
+                // stretched by the lane's arena-wide scale).
                 float dashDir = Mathf.Sign(toX - fromX);
+                var chevrons = new System.Collections.Generic.List<GameObject>();
                 for (int ci = 1; ci <= 3; ci++)
                 {
                     float cx = Mathf.Lerp(fromX, toX, ci / 4f);
-                    var up = Theme.Box("ChevA", lane.transform, new Vector2(cx - dashDir * 0.12f, y + 0.14f),
+                    var up = Theme.Box("DashLane", lane.transform.parent, new Vector2(cx - dashDir * 0.12f, y + 0.14f),
                         new Vector2(0.34f, 0.09f), Theme.Danger, 5);
                     up.transform.rotation = Quaternion.Euler(0f, 0f, dashDir * -35f);
-                    var dn = Theme.Box("ChevB", lane.transform, new Vector2(cx - dashDir * 0.12f, y - 0.14f),
+                    var dn = Theme.Box("DashLane", lane.transform.parent, new Vector2(cx - dashDir * 0.12f, y - 0.14f),
                         new Vector2(0.34f, 0.09f), Theme.Danger, 5);
                     dn.transform.rotation = Quaternion.Euler(0f, 0f, dashDir * 35f);
+                    chevrons.Add(up); chevrons.Add(dn);
                 }
                 yield return Telegraph(0.45f);
                 if (lane != null) Destroy(lane);
+                foreach (var ch in chevrons) if (ch != null) Destroy(ch);
                 _anim?.Lunge();   // release snap: stretch into the charge
                 float t = 0f;
                 while (t < 1f && !_dead)

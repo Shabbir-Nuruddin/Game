@@ -123,6 +123,69 @@ app.get('/leaderboard', async (req, res) => {
   }
 });
 
+// ---- Death echoes (open, like /score) ------------------------------------
+// The game reports where a player died (POST) and asks for other players'
+// recent deaths on a level (GET) to render as tombstones. Same contract as
+// the leaderboard: fail-soft, never block the game.
+app.use('/echo', cors());
+app.options('/echo', cors());
+app.use('/echo', express.json({ type: () => true, limit: '8kb' }));
+app.post('/echo', async (req, res) => {
+  try {
+    const b = req.body || {};
+    const mode = String(b.mode || '').slice(0, 16);
+    const level = Number.parseInt(b.level, 10);
+    const day = Number.parseInt(b.day, 10) || 0;
+    const nick = String(b.nick || 'Heir').slice(0, 24);
+    const device = b.device_id ? String(b.device_id).slice(0, 64) : null;
+    const x = Number.parseFloat(b.x);
+    const y = Number.parseFloat(b.y);
+    const cause = b.cause ? String(b.cause).slice(0, 96) : null;
+    if (!mode || !Number.isFinite(level) || !Number.isFinite(x) || !Number.isFinite(y))
+      return res.status(400).end();
+    await pool.query(
+      `INSERT INTO echoes (mode, level_index, day, nick, device_id, x, y, cause)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [mode, level, day, nick, device, x, y, cause],
+    );
+    // Opportunistic prune so a hot level never grows unbounded.
+    await pool.query(
+      `DELETE FROM echoes WHERE id IN (
+         SELECT id FROM echoes WHERE mode=$1 AND level_index=$2 AND day=$3
+         ORDER BY id DESC OFFSET 200)`,
+      [mode, level, day],
+    );
+    res.status(204).end();
+  } catch (err) {
+    console.error('echo insert failed:', err.message);
+    res.status(500).end();
+  }
+});
+
+app.use('/echoes', cors());
+app.get('/echoes', async (req, res) => {
+  try {
+    const mode = String(req.query.mode || '').slice(0, 16);
+    const level = Number.parseInt(req.query.level, 10);
+    const day = Number.parseInt(req.query.day, 10) || 0;
+    const device = req.query.device ? String(req.query.device).slice(0, 64) : null;
+    if (!mode || !Number.isFinite(level)) return res.json({ entries: [] });
+    const rows = await pool
+      .query(
+        `SELECT nick, x, y, cause FROM echoes
+         WHERE mode=$1 AND level_index=$2 AND day=$3
+           AND device_id IS DISTINCT FROM $4
+         ORDER BY id DESC LIMIT 40`,
+        [mode, level, day, device],
+      )
+      .then((r) => r.rows);
+    res.json({ entries: rows });
+  } catch (err) {
+    console.error('echoes read failed:', err.message);
+    res.json({ entries: [] }); // best-effort; never block the game
+  }
+});
+
 // ---- Auth gate for everything below (dashboard + read APIs) -------------
 function auth(req, res, next) {
   const user = process.env.DASH_USER;

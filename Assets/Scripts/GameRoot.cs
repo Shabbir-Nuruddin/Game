@@ -1665,6 +1665,7 @@ namespace TrustIssues
 
             SpawnPlayer();
             SpawnReplayGhost();      // race your previous attempt
+            SpawnDeathEchoes();      // tombstones of real other players who died here
             SnapCamera();
 
             // Boss arena setup (spawns the boss, gives the player a pip buffer +
@@ -1706,6 +1707,22 @@ namespace TrustIssues
                 var c = mk.GetComponent<SpriteRenderer>().color; c.a = 0.32f;
                 mk.GetComponent<SpriteRenderer>().color = c;
             }
+        }
+
+        // Tombstones of REAL other players who died on this floor, fetched from the
+        // analytics backend (session-cached, so death-retries don't refetch; offline
+        // or route-not-deployed -> silently nothing). The level-root token guards
+        // against the fetch landing after a rebuild/menu exit.
+        void SpawnDeathEchoes()
+        {
+            if (_mode == Mode.Versus) return;   // live races stay clean
+            var root = _levelRoot;
+            float spawnX = _level.Spawn.x, endX = _levelEndX;
+            Echo.Fetch(ModeName, _levelIndex, _mode == Mode.Daily ? DailySeed() : 0, list =>
+            {
+                if (root == null || root != _levelRoot) return;   // level was rebuilt meanwhile
+                Echo.SpawnMarkers(root, list, spawnX, endX);
+            });
         }
 
         // Wipe per-floor loop state (section checkpoint + learned traps + ghost
@@ -2746,13 +2763,22 @@ namespace TrustIssues
             if (_state != State.Play || _dying) return;
             _dying = true;
             _deaths++;
+            Vector2 deathPos = PlayerTransform != null ? (Vector2)PlayerTransform.position : Vector2.zero;
             Analytics.Track("death", new System.Collections.Generic.Dictionary<string, object>
             {
                 { "mode", ModeName },
                 { "level_index", _levelIndex },
                 { "cause", msg ?? "unknown" },
                 { "duration_ms", LevelDurationMs },
+                { "x", deathPos.x },
+                { "y", deathPos.y },
+                { "nick", Meta.Nick },
             });
+            // Feed the haunting layer: this death becomes a tombstone other players
+            // find on this floor. Versus stays clean — it's a live race.
+            if (_mode != Mode.Versus)
+                Echo.Report(ModeName, _levelIndex, _mode == Mode.Daily ? DailySeed() : 0,
+                            deathPos, msg ?? "unknown");
             if (_mode == Mode.Curated)
             {
                 PlayerPrefs.SetInt("castle_deaths", _deaths); PlayerPrefs.Save(); // persist lifetime tally
