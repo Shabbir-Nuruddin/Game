@@ -128,6 +128,7 @@ namespace TrustIssues
             Codex.OnUnlocked = t => ShowBanner("NEW BESTIARY PAGE", $"{Codex.Title(t)} — read it in the book");
             ResetProgressOncePerVersion();
             Memory.SessionStart();   // snapshot absence/rage-quit BEFORE anything overwrites them
+            Curse.Boot(Application.absoluteURL);   // did someone open a ?haunt= link?
             SetupCamera();
             BuildBackdrop();
             ApplyDepthMode();   // place parallax/moon for flat or 2.5D per opt_25d
@@ -628,6 +629,13 @@ namespace TrustIssues
             if (Meta.Streak > 0 && Meta.StreakAlive)
                 Theme.Label(root, $"BLOOD MOON STREAK: {Meta.Streak} DAYS — keep it alive", 28, Theme.Coin,
                     new Vector2(0.5f, 0.5f), new Vector2(0, -338), new Vector2(1200, 46));
+
+            // A pending curse outranks everything: name the challenger.
+            if (Curse.Pending != null)
+                Theme.Label(root,
+                    $"{Curse.Pending.nick} CURSED YOU from floor {Curse.Pending.floor + 1} of {Curse.Pending.mode}. Break it.",
+                    26, new Color(1f, 0.35f, 0.4f, 0.95f),
+                    new Vector2(0.5f, 0.5f), new Vector2(0, -412), new Vector2(1400, 44));
 
             // The castle remembers: absence / rage-quit / nemesis greeting.
             string greet = Memory.MenuGreeting();
@@ -1637,6 +1645,7 @@ namespace TrustIssues
         {
             if (_menuPanel != null) Destroy(_menuPanel);
             Memory.RunStarted();   // if this flag survives to next boot, they rage-quit
+            Curse.ClearBroken();   // counter-brag receipts don't carry across runs
             _levelIndex = levelIndex;
             _hasCheckpoint = false;
             _newBest = false;
@@ -1748,6 +1757,7 @@ namespace TrustIssues
             SpawnPlayer();
             SpawnReplayGhost();      // race your previous attempt
             SpawnDeathEchoes();      // tombstones of real other players who died here
+            SpawnCurseGhost();       // the friend who cursed you haunts their floor
             SnapCamera();
 
             // Boss arena setup (spawns the boss, gives the player a pip buffer +
@@ -1834,6 +1844,23 @@ namespace TrustIssues
             }
         }
 
+        // If a friend's curse targets THIS floor of THIS mode, their red ghost is
+        // waiting (visual + taunts only, never lethal — the menace is social).
+        void SpawnCurseGhost()
+        {
+            var d = Curse.Pending;
+            if (d == null || _mode == Mode.Versus) return;
+            if (d.mode != ModeName || d.floor != _levelIndex) return;
+            var frames = Assets.Grid("vamp_idle_sheet", 64, 3);
+            Sprite sp = (frames != null && frames.Length > 0) ? frames[0] : Theme.Square;
+            var go = Theme.SpriteBox("CurseGhost", _levelRoot,
+                _level.Spawn + new Vector2(2.2f, 1.1f), new Vector2(1.05f, 1.05f), sp, 3);
+            go.GetComponent<SpriteRenderer>().color = new Color(1f, 0.3f, 0.3f, 0.5f);
+            if (frames != null && frames.Length > 1) go.AddComponent<LoopAnim>().Init(frames, 6f);
+            go.AddComponent<Bobber>();
+            go.AddComponent<CurseGhost>().Init(d);
+        }
+
         // Tombstones of REAL other players who died on this floor, fetched from the
         // analytics backend (session-cached, so death-retries don't refetch; offline
         // or route-not-deployed -> silently nothing). The level-root token guards
@@ -1858,7 +1885,9 @@ namespace TrustIssues
             _linger.Clear(); _ghostTrapX.Clear(); _reactiveAdded = false;
             _lastT = null; _lastP = null; _recT.Clear(); _recP.Clear();
             _bossIntroedTier = -1;   // a fresh floor → the next boss plays its full cutscene
+            _floorDeaths = 0;        // per-floor death count (curse duels compare this)
         }
+        int _floorDeaths;
 
         // Gothic ambience: flickering torch sconces along the level with a warm glow.
         void PlaceTorches()
@@ -2942,6 +2971,7 @@ namespace TrustIssues
             if (_state != State.Play || _dying) return;
             _dying = true;
             _deaths++;
+            _floorDeaths++;
             // If the nemesis trap just scored, its kill-streak taunt rides the roast.
             if (msg != null) msg = Memory.DecorateRoast(msg);
             Vector2 deathPos = PlayerTransform != null ? (Vector2)PlayerTransform.position : Vector2.zero;
@@ -3136,6 +3166,15 @@ namespace TrustIssues
             if (_player != null) _player.Freeze();
             // Rumor (3) proof: you crossed a floor whose learned spikes stayed quiet.
             if (_mode == Mode.Daily && _rumorMoonSpared) { _rumorMoonSpared = false; Rumor.Discover(); }
+            // Curse duel: match-or-beat the sender's deaths on their floor to return it.
+            if (Curse.Pending != null && Curse.Pending.mode == ModeName &&
+                Curse.Pending.floor == _levelIndex && _floorDeaths <= Curse.Pending.deaths)
+            {
+                ShowBanner("CURSE RETURNED",
+                    $"{Curse.Pending.nick}'s ghost released — {_floorDeaths} deaths to their {Curse.Pending.deaths}");
+                Audio.PlayOr("levelup", "win", 0.7f);
+                Curse.MarkBroken();
+            }
 
             Analytics.Track("level_complete", new System.Collections.Generic.Dictionary<string, object>
             {
@@ -3273,11 +3312,32 @@ namespace TrustIssues
             if (nb != null)
                 Theme.Label(root, "NEW BADGE UNLOCKED — " + nb.name, 26, Color.white,
                     c, new Vector2(0, -54), new Vector2(1200, 44));
-            Theme.Button(root, "SHARE", new Color(0.5f, 0.12f, 0.16f), Color.white, 36,
-                c, new Vector2(-200, -150), new Vector2(330, 96),
-                () => StartCoroutine(ShareCard.CaptureAndShare("trust-issues.png", brag)));
-            Theme.Button(root, "LEADERBOARD", new Color(0.28f, 0.24f, 0.32f), Color.white, 32,
-                c, new Vector2(200, -150), new Vector2(330, 96), () => { Destroy(panel); ShowLeaderboard(lbMode); });
+            // Broke a friend's curse this run? The brag carries the receipt.
+            if (Curse.LastBroken != null)
+                brag += $" — and I broke {Curse.LastBroken.nick}'s curse";
+            string bragFinal = brag;
+            Theme.Button(root, "SHARE", new Color(0.5f, 0.12f, 0.16f), Color.white, 34,
+                c, new Vector2(-350, -150), new Vector2(310, 96),
+                () => StartCoroutine(ShareCard.CaptureAndShare("trust-issues.png", bragFinal)));
+            // Haunt a friend: a link that spawns YOUR ghost on this floor in THEIR game.
+            Theme.Button(root, "CURSE A FRIEND", new Color(0.32f, 0.08f, 0.4f), Color.white, 26,
+                c, new Vector2(0, -150), new Vector2(310, 96), () =>
+                {
+                    var d = new Curse.Data
+                    {
+                        nick = Meta.Nick, floor = _levelIndex, deaths = _floorDeaths,
+                        cause = Memory.LastKillerName, mode = ModeName,
+                    };
+                    Curse.ShareLink(Curse.BuildLink(d),
+                        $"I cursed you in Trust Issues \U0001F987 survive floor {_levelIndex + 1} with {_floorDeaths} deaths or less, or my ghost stays");
+                    Analytics.Track("curse_sent", new System.Collections.Generic.Dictionary<string, object>
+                    {
+                        { "floor", _levelIndex }, { "mode", ModeName },
+                    });
+                    BossToast("CURSE LINK READY — SEND IT");
+                });
+            Theme.Button(root, "LEADERBOARD", new Color(0.28f, 0.24f, 0.32f), Color.white, 30,
+                c, new Vector2(350, -150), new Vector2(310, 96), () => { Destroy(panel); ShowLeaderboard(lbMode); });
             Theme.Button(root, "MAIN MENU", new Color(1, 1, 1, 0.22f), Color.white, 34,
                 c, new Vector2(0, -270), new Vector2(420, 100),
                 () => { Destroy(panel); if (_levelRoot != null) Destroy(_levelRoot.gameObject); ShowMenu(); });

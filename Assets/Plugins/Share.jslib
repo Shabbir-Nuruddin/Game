@@ -23,5 +23,19 @@ mergeInto(LibraryManager.library, {
         if (navigator.clipboard && text) navigator.clipboard.writeText(text).catch(function () {});
       }
     } catch (e) { /* sharing is a nice-to-have */ }
+  },
+
+  // Share a plain link + text (the curse links). Web Share API when available,
+  // else copy "text url" to the clipboard. Best-effort, like TI_Share.
+  TI_ShareLink: function (urlPtr, textPtr) {
+    try {
+      var url = UTF8ToString(urlPtr);
+      var text = UTF8ToString(textPtr);
+      if (navigator.share) {
+        navigator.share({ url: url, text: text, title: 'Trust Issues' }).catch(function () {});
+      } else if (navigator.clipboard) {
+        navigator.clipboard.writeText(text + ' ' + url).catch(function () {});
+      }
+    } catch (e) { /* sharing is a nice-to-have */ }
   }
 });

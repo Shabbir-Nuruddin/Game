@@ -65,6 +65,16 @@ namespace TrustIssues
             _nemesisCache = -2;   // tallies changed
         }
 
+        /// <summary>Display name of whatever tagged trap killed you last ("" if none yet).</summary>
+        public static string LastKillerName
+        {
+            get
+            {
+                int k = PlayerPrefs.GetInt(LastKillerKey, -1);
+                return k >= 0 ? Codex.Title((TrapType)k) : "";
+            }
+        }
+
         /// <summary>The trap that's killed you most (needs 5+ lifetime kills), as (int)TrapType; -1 = none.</summary>
         public static int Nemesis
         {
