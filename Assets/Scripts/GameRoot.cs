@@ -604,19 +604,28 @@ namespace TrustIssues
             title.font = Theme.TitleFont;
             StartCoroutine(Pulse(title.transform));
 
-            // Difficulty selector — tap to cycle Casual → Normal → Nightmare.
-            MakeDifficultyChip(root, new Vector2(0, 252), new Vector2(460, 56));
+            // THE button. One click into the game — new players go straight to
+            // floor 1, returners resume. Pulses like the title so the eye lands
+            // on it first; the mode grid below is for players who want to choose.
+            var play = Theme.Button(root, PlayNowCaption(), new Color(0.62f, 0.10f, 0.14f), Color.white,
+                52, new Vector2(0.5f, 0.5f), new Vector2(0, 168), new Vector2(640, 118), PlayNow);
+            StartCoroutine(Pulse(play.transform));
 
-            // Four mode buttons — one consistent size, evenly spaced.
-            var dim = new Vector2(460, 78);
-            Theme.Button(root, "BLOOD MOON", new Color(0.6f, 0.08f, 0.12f), Color.white, 40,
-                new Vector2(0.5f, 0.5f), new Vector2(0, 150), dim, StartDaily);
-            Theme.Button(root, "THE CASTLE", new Color(0.28f, 0.24f, 0.32f), Color.white, 40,
-                new Vector2(0.5f, 0.5f), new Vector2(0, 50), dim, ShowLevelSelect);
-            Theme.Button(root, "ENDLESS NIGHT", Theme.Trick, Color.white, 40,
-                new Vector2(0.5f, 0.5f), new Vector2(0, -50), dim, StartEndless);
-            Theme.Button(root, "MULTIPLAYER", new Color(0.5f, 0.12f, 0.16f), Color.white, 40,
-                new Vector2(0.5f, 0.5f), new Vector2(0, -150), dim, ShowVersusLobby);
+            // Difficulty selector — tap to cycle Casual → Normal → Nightmare.
+            MakeDifficultyChip(root, new Vector2(0, 76), new Vector2(400, 48));
+
+            // Four mode buttons, demoted to a compact 2×2 grid under PLAY —
+            // same callbacks and behavior, just no longer the first decision a
+            // brand-new player is forced to make.
+            var dim = new Vector2(390, 64);
+            Theme.Button(root, "BLOOD MOON", new Color(0.6f, 0.08f, 0.12f), Color.white, 28,
+                new Vector2(0.5f, 0.5f), new Vector2(-205, 0), dim, StartDaily);
+            Theme.Button(root, "THE CASTLE", new Color(0.28f, 0.24f, 0.32f), Color.white, 28,
+                new Vector2(0.5f, 0.5f), new Vector2(205, 0), dim, ShowLevelSelect);
+            Theme.Button(root, "ENDLESS NIGHT", Theme.Trick, Color.white, 28,
+                new Vector2(0.5f, 0.5f), new Vector2(-205, -76), dim, StartEndless);
+            Theme.Button(root, "MULTIPLAYER", new Color(0.5f, 0.12f, 0.16f), Color.white, 28,
+                new Vector2(0.5f, 0.5f), new Vector2(205, -76), dim, ShowVersusLobby);
 
             // Secondary row — Wardrobe / Bestiary / Settings / Leaderboard.
             var sdim = new Vector2(284, 60);
@@ -1386,6 +1395,44 @@ namespace TrustIssues
             {
                 { "mode", mode }, { "source", _modeSelectSource }, { "floor", floor },
             });
+        }
+
+        // A player with no history: brand-new device, or someone who bounced off
+        // the menu before ever committing to a mode. Both get the "straight into
+        // floor 1" treatment.
+        bool FreshPlayer => Memory.IsFirstSession ||
+                            (CastleUnlocked == 0 && PlayerPrefs.GetString("ti_last_mode", "") == "");
+
+        /// <summary>
+        /// The one-click entrance. New players drop straight into Castle floor 1
+        /// (via StartGame, so the control hint fires); returning players resume
+        /// whatever they last played. Deliberately does NOT auto-route to a
+        /// pending cursed floor — the curse label + level select own that path,
+        /// and the one big button must stay predictable.
+        /// </summary>
+        void PlayNow()
+        {
+            _modeSelectSource = "play_button";
+            if (FreshPlayer) StartGame(0);
+            else switch (PlayerPrefs.GetString("ti_last_mode", "Curated"))
+            {
+                case "Endless": StartEndless(); break;
+                case "Daily":   StartDaily();   break;
+                default:        StartGame(Mathf.Min(CastleUnlocked, Levels.Count - 1)); break;
+            }
+            _modeSelectSource = "menu";
+        }
+
+        // What the big button promises — mirrors PlayNow's routing exactly.
+        string PlayNowCaption()
+        {
+            if (FreshPlayer) return "PLAY";
+            switch (PlayerPrefs.GetString("ti_last_mode", "Curated"))
+            {
+                case "Endless": return "CONTINUE — ENDLESS NIGHT";
+                case "Daily":   return "CONTINUE — BLOOD MOON";
+                default:        return $"CONTINUE — FLOOR {Mathf.Min(CastleUnlocked, Levels.Count - 1) + 1}";
+            }
         }
 
         void StartGame(int levelIndex)
