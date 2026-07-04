@@ -95,11 +95,17 @@ namespace TrustIssues
             catch { return null; }   // malformed / hand-mangled → silently no curse
         }
 
-        static string San(string s)
+        /// <summary>
+        /// Canonical sanitizer for ALL user-adjacent wire text (nicks, causes,
+        /// modes) across the curse AND echo layers — one shared cap so the two
+        /// systems agree on what fits (echoes used to allow 60 while curses cut
+        /// at 24, so a name that displayed fine couldn't re-encode into a link).
+        /// </summary>
+        public static string San(string s, int max = 60)
         {
             if (string.IsNullOrEmpty(s)) return "";
             s = s.Replace("|", "").Replace("<", "").Replace(">", "").Trim();
-            return s.Length > 24 ? s.Substring(0, 24) : s;
+            return s.Length > max ? s.Substring(0, max) : s;
         }
 
         static string ParamFromUrl(string url, string name)
@@ -126,15 +132,21 @@ namespace TrustIssues
         // ---- share bridge ----
 
 #if UNITY_WEBGL && !UNITY_EDITOR
-        [DllImport("__Internal")] static extern void TI_ShareLink(string url, string text);
+        [DllImport("__Internal")] static extern int TI_ShareLink(string url, string text);
 #endif
-        /// <summary>Web Share the link (clipboard fallback in the browser AND in the editor).</summary>
-        public static void ShareLink(string url, string text)
+        /// <summary>
+        /// Web Share the link, reporting what actually happened so callers can
+        /// toast honestly instead of always claiming success:
+        ///   2 = native share sheet opened, 1 = copied to clipboard,
+        ///   0 = every path failed (show the raw link so it's still shareable).
+        /// </summary>
+        public static int ShareLink(string url, string text)
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            TI_ShareLink(url, text);
+            return TI_ShareLink(url, text);
 #else
             GUIUtility.systemCopyBuffer = text + " " + url;
+            return 1;   // editor/standalone: the copy is synchronous and guaranteed
 #endif
         }
     }

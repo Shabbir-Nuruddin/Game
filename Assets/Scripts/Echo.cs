@@ -143,7 +143,13 @@ namespace TrustIssues
             slab.AddComponent<EchoMarker>().Init(e.nick, e.cause);
         }
 
-        class EchoRunner : MonoBehaviour { }
+        class EchoRunner : MonoBehaviour
+        {
+            // If the runner object ever dies (editor teardown, stray cleanup),
+            // clear the static so the lazy factory rebuilds instead of holding a
+            // dead reference whose coroutines silently never run.
+            void OnDestroy() { if (_runner == this) _runner = null; }
+        }
     }
 
     /// <summary>
@@ -165,16 +171,16 @@ namespace TrustIssues
             go.transform.SetParent(transform.parent, false);
             go.transform.position = transform.position + Vector3.up * 0.55f;
             _tm = go.AddComponent<TextMesh>();
-            string line = $"{Sanitize(nick)} died here";
-            if (!string.IsNullOrEmpty(cause)) line += "\n" + Sanitize(cause);
+            // Curse.San is the shared wire-text sanitizer — echo text comes from
+            // the server, so the markup stripping is a free defensive win here.
+            string line = $"{Curse.San(nick)} died here";
+            if (!string.IsNullOrEmpty(cause)) line += "\n" + Curse.San(cause);
             _tm.text = line;
             _tm.fontSize = 48; _tm.characterSize = 0.045f;
             _tm.anchor = TextAnchor.LowerCenter; _tm.alignment = TextAlignment.Center;
             _tm.color = new Color(0.75f, 0.8f, 1f, 0f);
             go.GetComponent<MeshRenderer>().sortingOrder = 6;
         }
-
-        static string Sanitize(string s) => string.IsNullOrEmpty(s) ? "" : (s.Length > 60 ? s.Substring(0, 60) : s);
 
         void Update()
         {

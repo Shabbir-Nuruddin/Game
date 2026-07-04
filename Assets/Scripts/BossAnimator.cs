@@ -38,6 +38,7 @@ namespace TrustIssues
             _base = baseColor;
             _baseScale = baseScale;
             _artFacesLeft = artFacesLeft;
+            Apply();
         }
 
         // ---- channels ----
@@ -48,7 +49,7 @@ namespace TrustIssues
         public void BeginTelegraph(Color pulse) { _telegraphing = true; _teleColor = pulse; Anticipate(); }
         public void EndTelegraph()        { _telegraphing = false; _squashTarget = Vector2.one; }
         public void SetVulnerable(bool v) { _vulnerable = v; }
-        public void SetRim(Color rim, float amount) { _rim = rim; _rimAmt = Mathf.Clamp01(amount); }
+        public void SetRim(Color rim, float amount) { _rim = rim; _rimAmt = Mathf.Clamp01(amount); Apply(); }
         public void SetFacing(float dir)  { if (Mathf.Abs(dir) > 0.01f) _faceDir = Mathf.Sign(dir); }
 
         // Called when a pattern is interrupted mid-flight (phase escalation): drop
@@ -60,6 +61,22 @@ namespace TrustIssues
             _squashTarget = Vector2.one;
         }
 
+        // The single place the boss colour is decided (priority compose). Channel
+        // setters call Apply() so a change lands the SAME frame it's set — the
+        // enrage rim used to lag its "ENRAGED" toast by one LateUpdate.
+        Color Compose()
+        {
+            Color baseEff = _rimAmt > 0f
+                ? Color.Lerp(_base, _rim, _rimAmt * (0.7f + 0.3f * Mathf.Sin(Time.time * 3f)))
+                : _base;
+            if (_hitFlash > 0f)  return Color.Lerp(baseEff, Color.white, Mathf.Clamp01(_hitFlash));
+            if (_telegraphing)   return Color.Lerp(baseEff, _teleColor, 0.5f + 0.5f * Mathf.Sin(Time.time * 32f));
+            if (_vulnerable)     return Color.Lerp(baseEff, Color.Lerp(baseEff, Color.white, 0.4f), 0.5f + 0.5f * Mathf.Sin(Time.time * 6f));
+            return baseEff;
+        }
+
+        void Apply() { if (!Hold && _sr != null) _sr.color = Compose(); }
+
         void LateUpdate()
         {
             // Decay runs even while held/telegraphing so a flash can never stick.
@@ -67,15 +84,7 @@ namespace TrustIssues
             if (Hold || _sr == null) return;
 
             // ---- colour (priority compose) ----
-            Color baseEff = _rimAmt > 0f
-                ? Color.Lerp(_base, _rim, _rimAmt * (0.7f + 0.3f * Mathf.Sin(Time.time * 3f)))
-                : _base;
-            Color c;
-            if (_hitFlash > 0f)      c = Color.Lerp(baseEff, Color.white, Mathf.Clamp01(_hitFlash));
-            else if (_telegraphing)  c = Color.Lerp(baseEff, _teleColor, 0.5f + 0.5f * Mathf.Sin(Time.time * 32f));
-            else if (_vulnerable)    c = Color.Lerp(baseEff, Color.Lerp(baseEff, Color.white, 0.4f), 0.5f + 0.5f * Mathf.Sin(Time.time * 6f));
-            else                     c = baseEff;
-            _sr.color = c;
+            _sr.color = Compose();
 
             // ---- squash/stretch (multiplicative over the true scale) ----
             _squash = Vector2.Lerp(_squash, _squashTarget, 1f - Mathf.Exp(-9f * Time.deltaTime));

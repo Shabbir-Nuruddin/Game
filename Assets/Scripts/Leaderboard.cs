@@ -84,6 +84,11 @@ namespace TrustIssues
             onResult?.Invoke(list);
         }
 
-        class LbRunner : MonoBehaviour { }
+        class LbRunner : MonoBehaviour
+        {
+            // Same contract as EchoRunner: a destroyed runner must clear the
+            // static so the lazy factory can rebuild it.
+            void OnDestroy() { if (_runner == this) _runner = null; }
+        }
     }
 }

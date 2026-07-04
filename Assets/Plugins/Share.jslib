@@ -25,17 +25,31 @@ mergeInto(LibraryManager.library, {
     } catch (e) { /* sharing is a nice-to-have */ }
   },
 
-  // Share a plain link + text (the curse links). Web Share API when available,
-  // else copy "text url" to the clipboard. Best-effort, like TI_Share.
+  // Share a plain link + text (the curse links). Returns what actually happened
+  // so C# can toast honestly: 2 = native share sheet, 1 = copied to clipboard,
+  // 0 = every path failed. The execCommand path covers browsers with neither
+  // Web Share nor async clipboard (old browsers, insecure-context hosting).
   TI_ShareLink: function (urlPtr, textPtr) {
     try {
       var url = UTF8ToString(urlPtr);
       var text = UTF8ToString(textPtr);
+      var payload = text + ' ' + url;
       if (navigator.share) {
         navigator.share({ url: url, text: text, title: 'Trust Issues' }).catch(function () {});
-      } else if (navigator.clipboard) {
-        navigator.clipboard.writeText(text + ' ' + url).catch(function () {});
+        return 2;
       }
-    } catch (e) { /* sharing is a nice-to-have */ }
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(payload).catch(function () {});
+        return 1;
+      }
+      var ta = document.createElement('textarea');
+      ta.value = payload;
+      ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      var ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return ok ? 1 : 0;
+    } catch (e) { return 0; }
   }
 });

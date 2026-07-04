@@ -32,6 +32,7 @@ namespace TrustIssues
         static readonly List<string> _queue = new List<string>(); // each entry = one event JSON object
         static string _deviceId, _sessionId, _version;
         static bool _started;
+        static AnalyticsRunner _runner;
 
         // The anonymous per-device id, shared with the echo system so players are
         // never shown their OWN tombstones.
@@ -39,7 +40,14 @@ namespace TrustIssues
 
         public static void Init()
         {
-            if (_started) return;
+            if (_started)
+            {
+                // Editor "Enter Play Mode without domain reload": statics survive
+                // but scene objects don't — if the flush runner died, rebuild it
+                // so events don't silently queue forever.
+                if (_runner == null) CreateRunner();
+                return;
+            }
             _started = true;
 
             _deviceId = PlayerPrefs.GetString(DeviceKey, "");
@@ -58,10 +66,15 @@ namespace TrustIssues
                 foreach (var line in saved.Split('\n'))
                     if (!string.IsNullOrEmpty(line)) _queue.Add(line);
 
-            // A hidden, persistent object drives the flush loop + final beacon.
+            CreateRunner();
+        }
+
+        // A hidden, persistent object drives the flush loop + final beacon.
+        static void CreateRunner()
+        {
             var go = new GameObject("Analytics");
             UnityEngine.Object.DontDestroyOnLoad(go);
-            go.AddComponent<AnalyticsRunner>();
+            _runner = go.AddComponent<AnalyticsRunner>();
         }
 
         /// <summary>Queue an event. Props values may be string/bool/int/float.</summary>
@@ -194,6 +207,15 @@ namespace TrustIssues
     /// <summary>Drives the periodic flush and the on-close beacon.</summary>
     public class AnalyticsRunner : MonoBehaviour
     {
+        static AnalyticsRunner _instance;
+        void Awake()
+        {
+            // Two flush loops would double-send the queue — first one wins.
+            if (_instance != null && _instance != this) { Destroy(gameObject); return; }
+            _instance = this;
+        }
+        void OnDestroy() { if (_instance == this) _instance = null; }
+
         IEnumerator Start()
         {
             var wait = new WaitForSecondsRealtime(5f);

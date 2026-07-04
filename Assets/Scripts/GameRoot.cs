@@ -3334,13 +3334,18 @@ namespace TrustIssues
                         nick = Meta.Nick, floor = _levelIndex, deaths = _floorDeaths,
                         cause = Memory.LastKillerName, mode = ModeName,
                     };
-                    Curse.ShareLink(Curse.BuildLink(d),
+                    string link = Curse.BuildLink(d);
+                    int shared = Curse.ShareLink(link,
                         $"I cursed you in Trust Issues \U0001F987 survive floor {_levelIndex + 1} with {_floorDeaths} deaths or less, or my ghost stays");
                     Analytics.Track("curse_sent", new System.Collections.Generic.Dictionary<string, object>
                     {
-                        { "floor", _levelIndex }, { "mode", ModeName },
+                        { "floor", _levelIndex }, { "mode", ModeName }, { "share_result", shared },
                     });
-                    BossToast("CURSE LINK READY — SEND IT");
+                    // Toast what actually happened — the old toast claimed success
+                    // even on browsers where every share path failed.
+                    BossToast(shared == 2 ? "CURSE LINK READY — SEND IT"
+                            : shared == 1 ? "CURSE LINK COPIED — PASTE IT ANYWHERE"
+                                          : "COPY BLOCKED — LINK: " + link);
                 });
             Theme.Button(root, "LEADERBOARD", new Color(0.28f, 0.24f, 0.32f), Color.white, 30,
                 c, new Vector2(350, -150), new Vector2(310, 96), () => { Destroy(panel); ShowLeaderboard(lbMode); });
