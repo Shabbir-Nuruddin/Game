@@ -110,11 +110,15 @@ namespace TrustIssues
         {
             I = this;
             Analytics.Init();
+            Memory.SessionStart();   // snapshot absence/rage-quit BEFORE anything overwrites them
             Analytics.Track("session_start", new System.Collections.Generic.Dictionary<string, object>
             {
                 { "platform", Application.platform.ToString() },
                 { "mobile", Application.isMobilePlatform },
                 { "screen", Screen.width + "x" + Screen.height },
+                // The join key for the whole first-60-seconds funnel: every other
+                // event of a new player's session hangs off this flag.
+                { "first_session", Memory.IsFirstSession },
             });
             // Real mobile only. On WebGL, `Input.touchSupported` is true on any
             // touch-capable LAPTOP, which wrongly showed phone buttons in the
@@ -128,7 +132,6 @@ namespace TrustIssues
             // Toast when a new Bestiary page is revealed (drives the "gotta catch 'em all").
             Codex.OnUnlocked = t => ShowBanner("NEW BESTIARY PAGE", $"{Codex.Title(t)} — read it in the book");
             ResetProgressOncePerVersion();
-            Memory.SessionStart();   // snapshot absence/rage-quit BEFORE anything overwrites them
             Curse.Boot(Application.absoluteURL);   // did someone open a ?haunt= link?
             SetupCamera();
             BuildBackdrop();
@@ -650,8 +653,22 @@ namespace TrustIssues
                     Analytics.Track("haunt_greeting", new System.Collections.Generic.Dictionary<string, object>());
                 }
             }
+
+            // Funnel: how many sessions actually reach an interactive menu (the
+            // gap between session_start and this is load/boot bounce).
+            if (!_menuShownTracked)
+            {
+                _menuShownTracked = true;
+                Analytics.Track("menu_shown", new System.Collections.Generic.Dictionary<string, object>
+                {
+                    { "returning", !Memory.IsFirstSession },
+                    { "has_curse", Curse.Pending != null },
+                });
+            }
         }
-        bool _greetTracked;   // one analytics ping per session, not per menu visit
+        bool _greetTracked;      // one analytics ping per session, not per menu visit
+        bool _menuShownTracked;  // same contract for the funnel's menu_shown
+        bool _firstInputTracked; // ...and for the first gameplay keypress
 
         // A compact difficulty chip that cycles Casual → Normal → Nightmare in place,
         // recolouring + relabelling itself. Shown on the menu and (via the same helper)
@@ -1359,10 +1376,23 @@ namespace TrustIssues
             if (t != null) Destroy(t.gameObject);
         }
 
+        // Funnel: which mode a session commits to, and via which path. PlayNow
+        // flips the source to "play_button" around its routing so the same
+        // starters report honestly for both entrances.
+        string _modeSelectSource = "menu";
+        void TrackModeSelected(string mode, int floor)
+        {
+            Analytics.Track("mode_selected", new System.Collections.Generic.Dictionary<string, object>
+            {
+                { "mode", mode }, { "source", _modeSelectSource }, { "floor", floor },
+            });
+        }
+
         void StartGame(int levelIndex)
         {
             Audio.Play("click");
             _mode = Mode.Curated;
+            TrackModeSelected("Curated", levelIndex);
             BeginRun(levelIndex);
             if (levelIndex == 0)
             {
@@ -1378,6 +1408,7 @@ namespace TrustIssues
         {
             Audio.Play("click");
             _mode = Mode.Daily;
+            TrackModeSelected("Daily", 0);
             Meta.RecordDailyPlay();                 // advance the daily streak + feed badges
             if (Meta.Streak >= 3) Badges.Award("streak3");
             if (Meta.Streak >= 7) Badges.Award("streak7");
@@ -1394,6 +1425,7 @@ namespace TrustIssues
         {
             Audio.Play("click");
             _mode = Mode.Endless;
+            TrackModeSelected("Endless", 0);
             _endlessSeed = new System.Random().Next(1, 1000000);
             BeginRun(0);
             ShowBanner("ENDLESS NIGHT", $"checkpoint every {Diff.CheckpointEvery} floors • you never truly die • how deep can you go?");
@@ -1407,6 +1439,7 @@ namespace TrustIssues
         void ShowVersusLobby()
         {
             Audio.Play("click");
+            TrackModeSelected("Versus", 0);
             _state = State.Menu;
             if (_menuPanel != null) Destroy(_menuPanel);
             _menuPanel = Overlay(new Color(0.05f, 0.01f, 0.03f, 0.9f), out var root);
@@ -1648,6 +1681,14 @@ namespace TrustIssues
             Memory.RunStarted();   // if this flag survives to next boot, they rage-quit
             Curse.ClearBroken();   // counter-brag receipts don't carry across runs
             _levelIndex = levelIndex;
+            _level1StartTracked = false;   // one level1_start per RUN, not per respawn
+            // Remember what they chose so the menu's PLAY button can resume it
+            // next session (Versus needs a lobby, so it never resumes).
+            if (_mode != Mode.Versus)
+            {
+                PlayerPrefs.SetString("ti_last_mode", ModeName);
+                PlayerPrefs.Save();
+            }
             _hasCheckpoint = false;
             _newBest = false;
             ResetFloorState();
@@ -1787,7 +1828,21 @@ namespace TrustIssues
                 { "mode", ModeName },
                 { "level_index", _levelIndex },
             });
+            // Funnel: floor 1 of the campaign is THE make-or-break moment for a
+            // new player. Once per run (death respawns rebuild the level but must
+            // not refire). Tab-close abandons are derived server-side (a
+            // level1_start with no level1_complete) — the FlushBeacon blur/close
+            // hooks guarantee this start event ships even if the tab dies.
+            if (_mode == Mode.Curated && _levelIndex == 0 && !_level1StartTracked)
+            {
+                _level1StartTracked = true;
+                Analytics.Track("level1_start", new System.Collections.Generic.Dictionary<string, object>
+                {
+                    { "first_session", Memory.IsFirstSession },
+                });
+            }
         }
+        bool _level1StartTracked;
 
         bool _rumorFloorUsed;    // rumor 1: only the FIRST fake floor of night 3 holds
         bool _rumorMoonSpared;   // rumor 3: this floor had learned spikes that never armed
@@ -2863,6 +2918,16 @@ namespace TrustIssues
             // and lets the dashboard see sessions that never reach an exit.
             if (_state == State.Play)
             {
+                // Funnel: the moment the player actually starts PLAYING (vs. only
+                // watching) — the last step of the first-60-seconds funnel.
+                if (!_firstInputTracked && Input.anyKeyDown)
+                {
+                    _firstInputTracked = true;
+                    Analytics.Track("first_input", new System.Collections.Generic.Dictionary<string, object>
+                    {
+                        { "ms_since_boot", (int)(Time.realtimeSinceStartup * 1000f) },
+                    });
+                }
                 _heartbeatTimer += Time.unscaledDeltaTime;
                 if (_heartbeatTimer >= 15f)
                 {
@@ -3189,6 +3254,13 @@ namespace TrustIssues
                 { "duration_ms", LevelDurationMs },
                 { "deaths", _deaths },
             });
+            // Funnel: floor 1 conversion — the counterpart of level1_start.
+            if (_mode == Mode.Curated && _levelIndex == 0)
+                Analytics.Track("level1_complete", new System.Collections.Generic.Dictionary<string, object>
+                {
+                    { "duration_ms", LevelDurationMs },
+                    { "deaths", _floorDeaths },
+                });
 
             // Versus: first to the coffin wins. Tell the room and show the result.
             if (_mode == Mode.Versus)
@@ -3535,6 +3607,14 @@ namespace TrustIssues
         void QuitToMenu()
         {
             if (_pausePanel != null) Destroy(_pausePanel);
+            // Funnel: an explicit floor-1 walk-away (tab-closes are derived
+            // server-side from a level1_start with no level1_complete).
+            if (_mode == Mode.Curated && _levelIndex == 0)
+                Analytics.Track("level1_abandon", new System.Collections.Generic.Dictionary<string, object>
+                {
+                    { "duration_ms", LevelDurationMs },
+                    { "deaths", _floorDeaths },
+                });
             Analytics.Track("run_end", new System.Collections.Generic.Dictionary<string, object>
             {
                 { "mode", ModeName },

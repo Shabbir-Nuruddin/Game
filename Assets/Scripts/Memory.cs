@@ -59,6 +59,13 @@ namespace TrustIssues
         public static void RunEndedCleanly() { PlayerPrefs.SetInt(InRunKey, 0); PlayerPrefs.Save(); }
 
         /// <summary>
+        /// True only on the very first boot on this device: SessionStart found no
+        /// last-seen record. Drives the "PLAY drops you straight into floor 1"
+        /// path, the longer control hints, and the first_session funnel prop.
+        /// </summary>
+        public static bool IsFirstSession => _sessionStarted && _absenceHours < 0.0;
+
+        /// <summary>
         /// Called by KillZone on every kill it lands (tag &lt; 0 = untagged: breaks any
         /// streak but tallies nothing). Feeds the lifetime tally + the streak.
         /// </summary>
