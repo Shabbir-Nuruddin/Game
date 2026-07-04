@@ -99,24 +99,31 @@ namespace TrustIssues
         /// within 1.5u) and kept clear of the spawn and the exit so a grave never
         /// blocks the read of the actual level.
         /// </summary>
-        public static void SpawnMarkers(Transform parent, List<Entry> list, float spawnX, float endX)
+        public static void SpawnMarkers(Transform parent, List<Entry> list, float spawnX, float endX,
+                                        float minX, float maxX)
         {
             if (parent == null || list == null || list.Count == 0) return;
             var placed = new List<float>();
             foreach (var e in list)
             {
                 if (placed.Count >= 3) break;
-                if (Mathf.Abs(e.x - spawnX) < 3f || Mathf.Abs(e.x - endX) < 3f) continue;
+                // The server's X is from a floor we didn't necessarily generate (or
+                // hostile data) — clamp into THIS floor's span. Clamp a local, not
+                // e.x: entries live in the session cache and shouldn't be rewritten.
+                // A far-out-of-bounds grave pins to the edge and then usually gets
+                // dropped by the spawn/exit exclusion below — that's the intent.
+                float x = Mathf.Clamp(e.x, minX + 0.6f, maxX - 0.6f);
+                if (Mathf.Abs(x - spawnX) < 3f || Mathf.Abs(x - endX) < 3f) continue;
                 bool crowded = false;
                 foreach (float px in placed)
-                    if (Mathf.Abs(e.x - px) < 1.5f) { crowded = true; break; }
+                    if (Mathf.Abs(x - px) < 1.5f) { crowded = true; break; }
                 if (crowded) continue;
-                placed.Add(e.x);
-                BuildMarker(parent, e);
+                placed.Add(x);
+                BuildMarker(parent, e, x);
             }
         }
 
-        static void BuildMarker(Transform parent, Entry e)
+        static void BuildMarker(Transform parent, Entry e, float x)
         {
             // Deaths can happen mid-air (falls, bolts) — the grave still stands on
             // the ground near where they fell.
@@ -126,11 +133,11 @@ namespace TrustIssues
             // from the same box factory as everything else. The cross boxes are
             // SIBLINGS, not children — Theme.Box sizes via localScale, so parenting
             // a box to a box distorts it by the parent's scale.
-            var slab = Theme.Box("EchoGrave", parent, new Vector2(e.x, y), new Vector2(0.52f, 0.66f),
+            var slab = Theme.Box("EchoGrave", parent, new Vector2(x, y), new Vector2(0.52f, 0.66f),
                 new Color(0.24f, 0.2f, 0.3f, 0.55f), 0);
-            Theme.Box("EchoCrossV", parent, new Vector2(e.x, y + 0.1f), new Vector2(0.08f, 0.3f),
+            Theme.Box("EchoCrossV", parent, new Vector2(x, y + 0.1f), new Vector2(0.08f, 0.3f),
                 new Color(0.5f, 0.45f, 0.6f, 0.5f), 0);
-            Theme.Box("EchoCrossH", parent, new Vector2(e.x, y + 0.16f), new Vector2(0.2f, 0.07f),
+            Theme.Box("EchoCrossH", parent, new Vector2(x, y + 0.16f), new Vector2(0.2f, 0.07f),
                 new Color(0.5f, 0.45f, 0.6f, 0.5f), 0);
             var fp = slab.AddComponent<FaintPulse>(); fp.min = 0.35f; fp.max = 0.6f; fp.speed = 3f;
             slab.AddComponent<EchoMarker>().Init(e.nick, e.cause);

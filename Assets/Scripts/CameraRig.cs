@@ -61,6 +61,8 @@ namespace TrustIssues
 
         void LateUpdate()
         {
+            if (_cam == null) return;   // rig outlived its camera (teardown frame) — do nothing
+
             bool depth = GameRoot.Depth25;   // read live so the settings toggle applies instantly
 
             float half = _half * (1f - _punch * 0.45f);

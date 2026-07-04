@@ -35,6 +35,7 @@ namespace TrustIssues
 
         // ---- core feel & loop (Round 4) ----
         float _levelEndX;                                  // right edge of the floor (near-miss calc)
+        float _levelStartX;                                // left edge — clamps server-sourced echo graves
         // Reactive "Trust Issues" traps: where the player lingered safely → on retry
         // a late-spike appears there. Accumulates with deaths; resets per floor.
         readonly System.Collections.Generic.Dictionary<int, float> _linger = new();
@@ -1732,10 +1733,14 @@ namespace TrustIssues
             _camMin = _level.CamMinX; _camMax = _level.CamMaxX;
             _levelRoot = new GameObject("Level").transform;
 
-            // Right edge of the floor — used for the near-miss narrator.
-            _levelEndX = _level.Spawn.x;
+            // Floor extents — right edge feeds the near-miss narrator, both edges
+            // clamp echo graves whose X comes from the server.
+            _levelEndX = _levelStartX = _level.Spawn.x;
             foreach (var p in _level.Platforms)
+            {
                 _levelEndX = Mathf.Max(_levelEndX, p.pos.x + p.size.x / 2f);
+                _levelStartX = Mathf.Min(_levelStartX, p.pos.x - p.size.x / 2f);
+            }
 
             ThemeBackdrop();   // pick the backdrop by mode + progress (distinct per mode)
 
@@ -1870,10 +1875,11 @@ namespace TrustIssues
             if (_mode == Mode.Versus) return;   // live races stay clean
             var root = _levelRoot;
             float spawnX = _level.Spawn.x, endX = _levelEndX;
+            float minX = _levelStartX, maxX = _levelEndX;
             Echo.Fetch(ModeName, _levelIndex, _mode == Mode.Daily ? DailySeed() : 0, list =>
             {
                 if (root == null || root != _levelRoot) return;   // level was rebuilt meanwhile
-                Echo.SpawnMarkers(root, list, spawnX, endX);
+                Echo.SpawnMarkers(root, list, spawnX, endX, minX, maxX);
             });
         }
 

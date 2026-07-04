@@ -39,11 +39,21 @@ namespace TrustIssues
             _absenceHours = last > 0 ? (Now - last) / 3600.0 : -1.0;
             _wasRageQuit = PlayerPrefs.GetInt(InRunKey, 0) == 1;
             PlayerPrefs.SetInt(InRunKey, 0);
-            Touch();
+            Touch();   // Touch() flushes, which also persists the rage-quit reset above —
+                       // without it a single rage-quit greets the player forever.
         }
 
-        /// <summary>"Still here" — called from the gameplay heartbeat.</summary>
-        public static void Touch() => PlayerPrefs.SetString(LastSeenKey, Now.ToString());
+        /// <summary>
+        /// "Still here" — called from the gameplay heartbeat. Saves every call: on
+        /// WebGL prefs only reach IndexedDB on Save(), and tab close (this game's
+        /// primary exit) is exactly the moment a deferred save can never capture.
+        /// The absence greeting tiers depend on last-seen being fresh at that moment.
+        /// </summary>
+        public static void Touch()
+        {
+            PlayerPrefs.SetString(LastSeenKey, Now.ToString());
+            PlayerPrefs.Save();
+        }
 
         public static void RunStarted()      { PlayerPrefs.SetInt(InRunKey, 1); PlayerPrefs.Save(); }
         public static void RunEndedCleanly() { PlayerPrefs.SetInt(InRunKey, 0); PlayerPrefs.Save(); }
@@ -55,14 +65,23 @@ namespace TrustIssues
         public static void RecordKill(int tag)
         {
             _lastKillFrame = Time.frameCount;
-            if (tag < 0) { PlayerPrefs.SetInt(NemLastKey, -1); PlayerPrefs.SetInt(NemStreakKey, 0); return; }
-            PlayerPrefs.SetInt(LastKillerKey, tag);
-            string k = "ti_kill_" + tag;
-            PlayerPrefs.SetInt(k, PlayerPrefs.GetInt(k, 0) + 1);
-            int streak = PlayerPrefs.GetInt(NemLastKey, -1) == tag ? PlayerPrefs.GetInt(NemStreakKey, 0) + 1 : 1;
-            PlayerPrefs.SetInt(NemLastKey, tag);
-            PlayerPrefs.SetInt(NemStreakKey, streak);
-            _nemesisCache = -2;   // tallies changed
+            if (tag < 0)
+            {
+                // Untagged kill: breaks the streak but tallies nothing.
+                PlayerPrefs.SetInt(NemLastKey, -1);
+                PlayerPrefs.SetInt(NemStreakKey, 0);
+            }
+            else
+            {
+                PlayerPrefs.SetInt(LastKillerKey, tag);
+                string k = "ti_kill_" + tag;
+                PlayerPrefs.SetInt(k, PlayerPrefs.GetInt(k, 0) + 1);
+                int streak = PlayerPrefs.GetInt(NemLastKey, -1) == tag ? PlayerPrefs.GetInt(NemStreakKey, 0) + 1 : 1;
+                PlayerPrefs.SetInt(NemLastKey, tag);
+                PlayerPrefs.SetInt(NemStreakKey, streak);
+                _nemesisCache = -2;   // tallies changed
+            }
+            PlayerPrefs.Save();   // nemesis data must survive a tab close (WebGL)
         }
 
         /// <summary>Display name of whatever tagged trap killed you last ("" if none yet).</summary>
