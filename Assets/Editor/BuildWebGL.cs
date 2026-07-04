@@ -15,6 +15,12 @@ namespace TrustIssues.EditorTools
         [MenuItem("Trust Issues/Build WebGL")]
         public static void Build()
         {
+            // Cache the .data file (the bulk of the download) in IndexedDB —
+            // repeat visits skip most of the transfer. Unity invalidates by
+            // content hash, so stale-build worries stay Unity's problem, not
+            // ours (which is why this beats hand-rolling a Service Worker).
+            PlayerSettings.WebGL.dataCaching = true;
+
             var options = new BuildPlayerOptions
             {
                 scenes = new[] { "Assets/scene.unity" },

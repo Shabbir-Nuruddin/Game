@@ -29,6 +29,65 @@
       display: block;
       background: #0E0A12;
     }
+
+    /* ---- Loading splash: a pure-CSS castle night so the first thing a player
+       sees is the game's mood, not a blank page. All vmin units so it scales
+       in itch embeds and fullscreen without media queries. ---- */
+    #ti-splash {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      pointer-events: none;
+      z-index: 1;
+      transition: opacity 0.4s;
+    }
+    /* The blood moon — same #E23B3B as the title, slow breathing pulse. */
+    #ti-moon {
+      position: absolute;
+      left: 64%;
+      top: 10%;
+      width: 26vmin;
+      height: 26vmin;
+      border-radius: 50%;
+      background: radial-gradient(circle,
+        #E23B3B 0%, rgba(226, 59, 59, 0.55) 34%, rgba(226, 59, 59, 0.18) 58%, transparent 72%);
+      animation: ti-moonpulse 6s ease-in-out infinite;
+    }
+    @keyframes ti-moonpulse {
+      0%, 100% { transform: scale(1);    opacity: 0.85; }
+      50%      { transform: scale(1.06); opacity: 1; }
+    }
+    /* Castle skyline — battlements + towers as one clip-path, in the in-game
+       low-sky colour so the Unity menu backdrop feels like a continuation. */
+    #ti-castle {
+      position: absolute;
+      left: 0; right: 0; bottom: 0;
+      height: 30vmin;
+      background: #1C1020;
+      clip-path: polygon(
+        0% 100%, 0% 38%, 3% 38%, 3% 26%, 6% 26%, 6% 38%, 9% 38%, 9% 55%,
+        14% 55%, 14% 48%, 16% 48%, 16% 55%, 20% 55%, 20% 40%, 22% 34%, 24% 40%, 24% 55%,
+        30% 55%, 30% 62%, 38% 62%, 38% 44%, 40% 44%, 40% 38%, 42% 30%, 44% 38%, 44% 44%, 46% 44%, 46% 62%,
+        54% 62%, 54% 50%, 57% 50%, 57% 44%, 60% 44%, 60% 50%, 63% 50%, 63% 62%,
+        70% 62%, 70% 46%, 72% 40%, 74% 46%, 74% 62%,
+        80% 62%, 80% 52%, 83% 52%, 83% 58%, 86% 58%, 86% 52%, 89% 52%, 89% 62%,
+        93% 62%, 93% 42%, 95% 42%, 95% 34%, 97% 34%, 97% 42%, 100% 42%, 100% 100%);
+    }
+    /* Two blurred fog bands drifting at different speeds — cheap parallax. */
+    .ti-fog {
+      position: absolute;
+      width: 160%;
+      height: 12vmin;
+      background: linear-gradient(90deg,
+        transparent 0%, rgba(160, 130, 170, 0.10) 30%,
+        rgba(160, 130, 170, 0.16) 50%, rgba(160, 130, 170, 0.10) 70%, transparent 100%);
+      filter: blur(8px);
+    }
+    #ti-fog1 { bottom: 16vmin; left: -60%; animation: ti-drift1 40s ease-in-out infinite alternate; }
+    #ti-fog2 { bottom: 6vmin;  left: -20%; animation: ti-drift2 60s ease-in-out infinite alternate; }
+    @keyframes ti-drift1 { from { transform: translateX(0); } to { transform: translateX(28vw); } }
+    @keyframes ti-drift2 { from { transform: translateX(0); } to { transform: translateX(-24vw); } }
+
     /* Loading bar */
     #unity-loading-bar {
       position: absolute;
@@ -39,6 +98,8 @@
       color: #E23B3B;
       font-family: Arial, Helvetica, sans-serif;
       letter-spacing: 2px;
+      z-index: 2;
+      transition: opacity 0.4s;
     }
     #unity-progress-track {
       margin: 14px auto 0;
@@ -53,6 +114,22 @@
       height: 100%;
       background: #7A1622;
     }
+    #ti-pct {
+      margin-top: 8px;
+      font-size: 13px;
+      color: rgba(226, 59, 59, 0.85);
+      min-height: 16px;
+    }
+    #ti-tip {
+      margin-top: 26px;
+      font-size: 14px;
+      letter-spacing: 1px;
+      color: rgba(235, 220, 225, 0.65);
+      min-height: 18px;
+      max-width: 78vw;
+      transition: opacity 0.3s;
+    }
+
     /* Fullscreen button — bottom-right, fades unless hovered. */
     #unity-fullscreen-button {
       position: absolute;
@@ -77,15 +154,23 @@
       border-radius: 2px;
       box-sizing: border-box;
     }
-    #unity-warning { position: absolute; left: 50%; top: 8px; transform: translateX(-50%); }
+    #unity-warning { position: absolute; left: 50%; top: 8px; transform: translateX(-50%); z-index: 6; }
   </style>
 </head>
 <body>
   <div id="unity-container">
     <canvas id="unity-canvas" tabindex="-1"></canvas>
+    <div id="ti-splash">
+      <div id="ti-moon"></div>
+      <div id="ti-fog1" class="ti-fog"></div>
+      <div id="ti-castle"></div>
+      <div id="ti-fog2" class="ti-fog"></div>
+    </div>
     <div id="unity-loading-bar">
       <div>TRUST ISSUES</div>
       <div id="unity-progress-track"><div id="unity-progress-fill"></div></div>
+      <div id="ti-pct"></div>
+      <div id="ti-tip"></div>
     </div>
     <div id="unity-warning"></div>
     <button id="unity-fullscreen-button" title="Fullscreen"></button>
@@ -96,6 +181,63 @@
     var loadingBar = document.querySelector("#unity-loading-bar");
     var progressFill = document.querySelector("#unity-progress-fill");
     var fullscreenButton = document.querySelector("#unity-fullscreen-button");
+    var splash = document.querySelector("#ti-splash");
+    var pctLabel = document.querySelector("#ti-pct");
+    var tipLabel = document.querySelector("#ti-tip");
+
+    // ---- Load-funnel telemetry (same collect endpoint the game uses). ----
+    // Unity's device_id lives in PlayerPrefs (IndexedDB), unreadable from here,
+    // so template events carry their own localStorage id — the load funnel
+    // joins to in-game events at the AGGREGATE level (counts of load_started
+    // vs load_complete vs session_start), not per-device. Best-effort only.
+    var TI_COLLECT = "https://trust-issues-analytics.onrender.com/collect";
+    var tiDevice = "";
+    try {
+      tiDevice = localStorage.getItem("ti_web_device") || "";
+      if (!tiDevice) {
+        tiDevice = Math.random().toString(36).slice(2) + Date.now().toString(36);
+        localStorage.setItem("ti_web_device", tiDevice);
+      }
+    } catch (e) { /* private mode — stay anonymous */ }
+    var tiSession = Math.random().toString(36).slice(2);
+    var tiT0 = performance.now();
+    function tiSend(name, props) {
+      try {
+        // Mirrors the C# client's batch shape: array of {name, ids, ts, props},
+        // posted as text/plain (a CORS "simple" request, no preflight).
+        var body = JSON.stringify([{
+          name: name, session_id: tiSession, device_id: tiDevice,
+          app_version: "web-template", ts: new Date().toISOString(),
+          props: props || {}
+        }]);
+        if (!(navigator.sendBeacon && navigator.sendBeacon(TI_COLLECT, body)))
+          fetch(TI_COLLECT, { method: "POST", headers: { "Content-Type": "text/plain" }, body: body, keepalive: true }).catch(function () {});
+      } catch (e) { /* telemetry is a nice-to-have */ }
+    }
+    tiSend("load_started", { url: location.pathname });
+
+    // ---- Rotating tips: something to read during the download. All real
+    // mechanics, so the wait doubles as a tutorial. Random start so repeat
+    // visitors don't always see tip #1. ----
+    var TIPS = [
+      "Press R to restart a floor instantly",
+      "The castle remembers where you camp — keep moving",
+      "Jump, then hold the FLY key to glide as a bat",
+      "Your nemesis trap wears a little gold crown",
+      "Cleared castle floors stay unlocked — die free",
+      "Every telegraph is honest. Trust the tells, not the floor",
+      "The Blood Moon rotates at midnight UTC — streaks unlock skins"
+    ];
+    var tipIndex = Math.floor(Math.random() * TIPS.length);
+    tipLabel.textContent = TIPS[tipIndex];
+    var tipTimer = setInterval(function () {
+      tipLabel.style.opacity = "0";
+      setTimeout(function () {
+        tipIndex = (tipIndex + 1) % TIPS.length;
+        tipLabel.textContent = TIPS[tipIndex];
+        tipLabel.style.opacity = "1";
+      }, 300);
+    }, 3500);
 
     function unityShowBanner(msg, type) {
       var warning = document.querySelector("#unity-warning");
@@ -130,18 +272,37 @@
     }
     window.addEventListener("resize", resize);
 
+    var sentHalf = false;
     var script = document.createElement("script");
     script.src = buildUrl + "/{{{ LOADER_FILENAME }}}";
     script.onload = function () {
       createUnityInstance(canvas, config, function (progress) {
-        progressFill.style.width = (100 * progress) + "%";
+        // Unity's progress hits ~0.9 at download-complete then stalls through
+        // the WASM compile — map it so the bar reads 100% honestly and the
+        // remaining dead zone gets a label instead of a stuck number.
+        var mapped = Math.min(progress / 0.9, 1);
+        progressFill.style.width = (100 * mapped) + "%";
+        pctLabel.textContent = mapped >= 1 ? "waking the castle…" : Math.round(100 * mapped) + "%";
+        if (!sentHalf && progress >= 0.5) {
+          sentHalf = true;
+          tiSend("load_progress_50", { ms: Math.round(performance.now() - tiT0) });
+        }
       }).then(function (unityInstance) {
-        loadingBar.style.display = "none";
+        tiSend("load_complete", { ms: Math.round(performance.now() - tiT0) });
+        clearInterval(tipTimer);
+        // Fade the whole splash out instead of blinking it away.
+        loadingBar.style.opacity = "0";
+        splash.style.opacity = "0";
+        setTimeout(function () {
+          loadingBar.style.display = "none";
+          splash.style.display = "none";
+        }, 450);
         resize();
         fullscreenButton.onclick = function () {
           unityInstance.SetFullscreen(1);
         };
       }).catch(function (message) {
+        tiSend("load_failed", { message: String(message).slice(0, 200) });
         unityShowBanner(message, "error");
       });
     };
