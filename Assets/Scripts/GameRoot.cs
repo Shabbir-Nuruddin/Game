@@ -1352,11 +1352,13 @@ namespace TrustIssues
             if (img != null) Destroy(img.gameObject);
         }
 
-        void ShowHint(string msg)
+        // `hold` = seconds before the fade starts. A brand-new player reading a
+        // controls hint for the first time needs more than the veteran default.
+        void ShowHint(string msg, float hold = 2.5f)
         {
             var t = Theme.Label(Theme.Canvas.transform, msg, 34, new Color(1, 1, 1, 0.7f),
                 new Vector2(0.5f, 0f), new Vector2(0, 80), new Vector2(1400, 60));
-            StartCoroutine(FadeOutLabel(t, 2.5f));
+            StartCoroutine(FadeOutLabel(t, hold));
         }
 
         // A larger one-shot banner near the top of the screen (gothic title + a small
@@ -1447,7 +1449,8 @@ namespace TrustIssues
                              : Skins.Current.airJumps > 0 ? "   •   double-jump" : "";
                 ShowHint(_isMobile
                     ? "‹ › move   •   JUMP   •   trust nothing"
-                    : $"← → / A D move   •   {Controls.Name(Controls.Jump)} jump" + extra + "   •   R restart   •   trust nothing");
+                    : $"← → / A D move   •   {Controls.Name(Controls.Jump)} jump" + extra + "   •   R restart   •   trust nothing",
+                    Memory.IsFirstSession ? 6f : 2.5f);   // first-timers get time to actually read it
             }
         }
 
@@ -1848,6 +1851,7 @@ namespace TrustIssues
                 BuildHiddenDoor();  // tonight's rumor (2): the ghost door of night 2
 
             SpawnPlayer();
+            SpawnFirstSessionPrompts(); // faint in-world key hints, first boot + floor 1 only
             SpawnReplayGhost();      // race your previous attempt
             SpawnDeathEchoes();      // tombstones of real other players who died here
             SpawnCurseGhost();       // the friend who cursed you haunts their floor
@@ -1966,6 +1970,31 @@ namespace TrustIssues
             if (frames != null && frames.Length > 1) go.AddComponent<LoopAnim>().Init(frames, 6f);
             go.AddComponent<Bobber>();
             go.AddComponent<CurseGhost>().Init(d);
+        }
+
+        // Two faint key prompts floating in the world on a brand-new player's very
+        // first floor: "← →" over the spawn, the jump key just before the first
+        // gap. Parented under the level root so they tear down with everything
+        // else; TextMesh styling matches the echo tombstone labels. Floor 1's
+        // layout is fixed (plat 5 / gap 2.3 / ...), so offsets from Spawn are safe.
+        void SpawnFirstSessionPrompts()
+        {
+            if (!(Memory.IsFirstSession && _mode == Mode.Curated && _levelIndex == 0)) return;
+            MakeWorldPrompt("← →", _level.Spawn + new Vector2(0f, 1.35f));
+            MakeWorldPrompt($"{Controls.Name(Controls.Jump)} ↑", _level.Spawn + new Vector2(3.6f, 1.5f));
+        }
+
+        void MakeWorldPrompt(string text, Vector2 pos)
+        {
+            var go = new GameObject("FirstSessionPrompt");
+            go.transform.SetParent(_levelRoot, false);
+            go.transform.position = pos;
+            var tm = go.AddComponent<TextMesh>();
+            tm.text = text;
+            tm.fontSize = 48; tm.characterSize = 0.045f;
+            tm.anchor = TextAnchor.LowerCenter; tm.alignment = TextAlignment.Center;
+            tm.color = new Color(1f, 1f, 1f, 0.45f);   // present, not shouting
+            go.GetComponent<MeshRenderer>().sortingOrder = 6;
         }
 
         // Tombstones of REAL other players who died on this floor, fetched from the
