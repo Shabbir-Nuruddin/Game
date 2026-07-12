@@ -40,3 +40,6 @@ sysinfo.txt
 # Node dependencies / secrets for the analytics server
 node_modules/
 .env
+
+# Android/Gradle native build cache (headless compile-check scratch)
+.utmp/

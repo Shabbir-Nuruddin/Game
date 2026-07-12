@@ -217,5 +217,18 @@ namespace TrustIssues
         }
 
         public static void StopMusic() { if (_music != null) _music.Stop(); }
+
+        // Like Music, but if the theme-specific track is missing it falls back to
+        // the generic one — so per-theme music can be dropped in track-by-track
+        // without ever leaving a floor silent.
+        public static void MusicOr(string name, string fallback, float volume = 0.35f)
+        {
+            Ensure();
+            var c = Assets.Clip(name) ?? Assets.Clip(fallback);
+            if (c == null) { _music.Stop(); return; }
+            _musicBase = volume;
+            if (_music.clip == c && _music.isPlaying) { _music.volume = volume * MasterMusic * MusicVol; return; }
+            _music.clip = c; _music.volume = volume * MasterMusic * MusicVol; _music.Play();
+        }
     }
 }

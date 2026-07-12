@@ -19,11 +19,21 @@ namespace TrustIssues
 
         public static void Reload()
         {
-            Jump  = (KeyCode)PlayerPrefs.GetInt("key_jump",  (int)KeyCode.Space);
-            Dash  = (KeyCode)PlayerPrefs.GetInt("key_dash",  (int)KeyCode.K);
-            Shoot = (KeyCode)PlayerPrefs.GetInt("key_shoot", (int)KeyCode.F);
-            Fly   = (KeyCode)PlayerPrefs.GetInt("key_fly",   (int)KeyCode.LeftShift);
+            Jump  = Sane((KeyCode)PlayerPrefs.GetInt("key_jump",  (int)KeyCode.Space),     KeyCode.Space);
+            Dash  = Sane((KeyCode)PlayerPrefs.GetInt("key_dash",  (int)KeyCode.K),         KeyCode.K);
+            Shoot = Sane((KeyCode)PlayerPrefs.GetInt("key_shoot", (int)KeyCode.F),         KeyCode.F);
+            Fly   = Sane((KeyCode)PlayerPrefs.GetInt("key_fly",   (int)KeyCode.LeftShift), KeyCode.LeftShift);
         }
+
+        // OS-reserved keys must never be bindings: the browser eats them (WebGL), and
+        // a rebind capture that misfired on one left players with a "RightMeta" jump
+        // key and prompts reading "RightMeta ↑". A stored bad key falls back to the
+        // action's default.
+        public static bool Bindable(KeyCode k) =>
+            k != KeyCode.None && k != KeyCode.Escape && k != KeyCode.Menu &&
+            !((int)k >= (int)KeyCode.RightMeta && (int)k <= (int)KeyCode.RightWindows); // Meta/Cmd/Win block (309–312)
+
+        static KeyCode Sane(KeyCode stored, KeyCode def) => Bindable(stored) ? stored : def;
 
         public static KeyCode Get(string action) => action switch
         {
@@ -36,6 +46,7 @@ namespace TrustIssues
 
         public static void Set(string action, KeyCode key)
         {
+            if (!Bindable(key)) return;   // never persist an OS-reserved key
             switch (action)
             {
                 case "jump":  Jump  = key; PlayerPrefs.SetInt("key_jump",  (int)key); break;

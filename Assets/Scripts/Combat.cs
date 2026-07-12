@@ -40,6 +40,13 @@ namespace TrustIssues
             var boss = GameRoot.I != null ? GameRoot.I.ActiveBoss : null;
             if (boss != null && !boss.IntroHold)
             {
+                // Decoys soak the shot FIRST (Countess's Mirror Waltz): popping one
+                // wastes the bullet and triggers its telegraphed revenge volley.
+                if (boss.TryInterceptDecoy(prev, transform.position))
+                {
+                    Destroy(gameObject);
+                    return;
+                }
                 Vector2 rel0 = (Vector2)(prev - boss.PrevPos);
                 Vector2 rel1 = (Vector2)(transform.position - boss.transform.position);
                 if (Boss.SegmentVsAabb(rel0, rel1, Vector2.zero,

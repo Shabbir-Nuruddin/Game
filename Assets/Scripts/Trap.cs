@@ -80,10 +80,15 @@ namespace TrustIssues
                 var go = sp != null
                     ? Theme.SpriteBox(chand ? "Chandelier" : "RockHead", transform, pos, size, sp, 4)
                     : Theme.Box(chand ? "Chandelier" : "RockHead", transform, pos, size,
-                                chand ? Theme.Hex("3A2A12") : Theme.Trick, 4);
+                                chand ? Theme.Hex("7A5A30") : Theme.Trick, 4);
                 if (sp != null && !chand) go.GetComponent<SpriteRenderer>().color = new Color(0.5f, 0.45f, 0.5f);
-                if (chand && sp == null) // a couple of candle dots so the box reads as a chandelier
+                if (chand && sp == null) // fallback art: a bronze frame, candles, and a chain
                 {
+                    // The old dark frame vanished against the night sky, so all players
+                    // saw was three floating gold "candles" — a mystery object. A
+                    // brighter frame + a chain up to the ceiling reads as "hanging
+                    // chandelier", i.e. "this thing can DROP".
+                    Theme.Box("Chain", go.transform, (Vector2)pos + new Vector2(0f, 2.2f), new Vector2(0.08f, 4f), Theme.Hex("4A3A28"), 3);
                     Theme.Box("Candle", go.transform, (Vector2)pos + new Vector2(-0.7f, 0.5f), new Vector2(0.14f, 0.4f), Theme.Coin, 5);
                     Theme.Box("Candle", go.transform, (Vector2)pos + new Vector2(0.0f, 0.55f), new Vector2(0.14f, 0.4f), Theme.Coin, 5);
                     Theme.Box("Candle", go.transform, (Vector2)pos + new Vector2(0.7f, 0.5f), new Vector2(0.14f, 0.4f), Theme.Coin, 5);

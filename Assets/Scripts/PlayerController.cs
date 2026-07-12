@@ -20,6 +20,13 @@ namespace TrustIssues
         public float coyoteTime = 0.10f;
         public float jumpBuffer = 0.10f;
 
+        // Momentum: velocity eases toward the input instead of snapping to it.
+        // Ground is near-instant (precision stays king); the AIR is where inertia
+        // lives — you carry your launch speed through a jump and a mid-air
+        // turn-around takes a beat, so leaps must be committed to.
+        public float groundAccel = 90f, groundDecel = 100f;
+        public float airAccel = 45f, airDecel = 16f;
+
         // Optional sprite animation (set by GameRoot if art is present).
         public SpriteRenderer bodyRenderer;
         public Sprite idleSprite, walkSprite, jumpSprite;
@@ -80,6 +87,10 @@ namespace TrustIssues
             _rb.gravityScale = fallGravity;
             _rb.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
             _rb.interpolation = RigidbodyInterpolation2D.Interpolate;
+            // Frictionless body: with the default material, pressing into a wall
+            // mid-air generated enough friction to cancel gravity — you could hang
+            // on any wall forever. Zero friction means walls are just walls.
+            _col.sharedMaterial = new PhysicsMaterial2D("PlayerNoFriction") { friction = 0f, bounciness = 0f };
             _visual = transform.childCount > 0 ? transform.GetChild(0) : transform;
             _baseX = Mathf.Abs(_visual.localScale.x);
             _baseY = _visual.localScale.y;
@@ -279,7 +290,15 @@ namespace TrustIssues
             _wasGrounded = _grounded;
 
             var v = _rb.linearVelocity;
-            v.x = _inputX * moveSpeed * moveMul;
+            // Momentum model: ease toward the wanted speed. Grounded accel is high
+            // enough to feel instant; in the air you keep your launch velocity and
+            // steering fights inertia (airDecel is LOW, so releasing the stick
+            // mid-jump lets you sail on instead of dropping like a brick).
+            float wantX = _inputX * moveSpeed * moveMul;
+            float rate = _grounded
+                ? (Mathf.Abs(wantX) > 0.01f ? groundAccel : groundDecel)
+                : (Mathf.Abs(wantX) > 0.01f ? airAccel : airDecel);
+            v.x = Mathf.MoveTowards(v.x, wantX, rate * Time.fixedDeltaTime);
 
             if (_grounded) _airJumpsLeft = extraAirJumps;   // refill double-jumps on landing
 

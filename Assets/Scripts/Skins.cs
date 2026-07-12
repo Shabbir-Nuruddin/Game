@@ -16,6 +16,7 @@ namespace TrustIssues
         public bool pinkman;                 // use the Pink-Man set instead of the vampire
         public Color tint = Color.white;
         public System.Func<bool> unlocked;   // null => always unlocked
+        public int price;                    // > 0 => buyable with blood shards in the Crypt Shop
 
         // Signature trait/ability — turns each skin into a playstyle. STRICTLY
         // mobility/utility, never invulnerability — you can never phase through a
@@ -56,6 +57,20 @@ namespace TrustIssues
                           ability = "Dash + Double-Jump", dash = true, airJumps = 1,
                           unlockHint = "Defeat all four bosses",
                           unlocked = () => Badges.Has("boss4") },
+            // ---- Crypt Shop skins: bought with blood shards, deliberately plain
+            // stats ("Balanced") — purchased power would break cosmetics-only.
+            new SkinDef { id = "bone",    name = "Bone Pale",      tint = Theme.Hex("D8D8E8"),
+                          ability = "Balanced — pure style", price = 300,
+                          unlockHint = "300 shards in the Crypt Shop",
+                          unlocked = () => false },   // ownership check in IsUnlocked
+            new SkinDef { id = "nosferatu", name = "Nosferatu",    tint = Theme.Hex("9FBF8F"),
+                          ability = "Balanced — pure style", price = 450,
+                          unlockHint = "450 shards in the Crypt Shop",
+                          unlocked = () => false },
+            new SkinDef { id = "royal",   name = "Royal Blood",    pinkman = true, tint = Theme.Hex("B03A8C"),
+                          ability = "Balanced — pure style", price = 600,
+                          unlockHint = "600 shards in the Crypt Shop",
+                          unlocked = () => false },
         };
 
         // A SpriteRenderer multiplies its colour onto the art, so a fully-saturated
@@ -66,7 +81,9 @@ namespace TrustIssues
         // live player and the Wardrobe preview so they always match.
         public static Color Shade(SkinDef s) => Color.Lerp(Color.white, s.tint, 0.5f);
 
-        public static bool IsUnlocked(SkinDef s) => s.unlocked == null || s.unlocked();
+        // Achievement lambda OR bought in the Crypt Shop (own_skin_* pref).
+        public static bool IsUnlocked(SkinDef s) =>
+            s.unlocked == null || s.unlocked() || PlayerPrefs.GetInt("own_skin_" + s.id, 0) == 1;
 
         public static SkinDef Get(string id) => All.Find(s => s.id == id) ?? All[0];
 

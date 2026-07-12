@@ -185,6 +185,31 @@ namespace TrustIssues
             }
         }
 
+        // A plain filled white circle with a soft anti-aliased rim — tint it via
+        // Image.color. Used for the round on-screen phone buttons, where a square
+        // hides too much of the playfield behind it.
+        static Sprite _circle;
+        public static Sprite Circle
+        {
+            get
+            {
+                if (_circle != null) return _circle;
+                const int S = 96;
+                float c = (S - 1) / 2f, R = c - 1f;
+                var tex = new Texture2D(S, S) { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
+                for (int y = 0; y < S; y++)
+                    for (int x = 0; x < S; x++)
+                    {
+                        float d = Mathf.Sqrt((x - c) * (x - c) + (y - c) * (y - c));
+                        // ~1.5px alpha falloff at the edge so the disc isn't jagged
+                        tex.SetPixel(x, y, new Color(1f, 1f, 1f, Mathf.Clamp01((R - d) / 1.5f)));
+                    }
+                tex.Apply();
+                _circle = Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), S);
+                return _circle;
+            }
+        }
+
         static Sprite _grad;
         /// <summary>A soft vertical gradient sprite for backdrops (1 world unit).</summary>
         public static Sprite Gradient(Color top, Color bottom)

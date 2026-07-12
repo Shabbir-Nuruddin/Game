@@ -20,6 +20,9 @@ namespace TrustIssues
         float _hitFlash;                        // 1 -> 0, decays fast
         bool _telegraphing; Color _teleColor;   // hot pulse during a wind-up
         bool _vulnerable;                       // pale slow pulse during the shoot window
+        bool _shield;                           // arcane sheen while shots deflect (Warlock)
+        bool _stun;                             // hot gold pulse + dizzy wobble (Ghoul wall-slam)
+        float _ghost = 1f;                      // alpha multiplier: teleport shimmer / form dissolve
 
         Vector2 _baseScale = Vector2.one;       // the boss's true transform scale (≈2.6)
         Vector2 _squash = Vector2.one;          // current multiplicative squash
@@ -51,28 +54,45 @@ namespace TrustIssues
         public void SetVulnerable(bool v) { _vulnerable = v; }
         public void SetRim(Color rim, float amount) { _rim = rim; _rimAmt = Mathf.Clamp01(amount); Apply(); }
         public void SetFacing(float dir)  { if (Mathf.Abs(dir) > 0.01f) _faceDir = Mathf.Sign(dir); }
+        public void SetShielded(bool v)   { _shield = v; Apply(); }
+        // Stunned = slumped squash + the wobble in LateUpdate; the gold pulse says
+        // "free hits" from across the arena.
+        public void SetStunned(bool v)    { _stun = v; _squashTarget = v ? new Vector2(1.12f, 0.88f) : Vector2.one; Apply(); }
+        public void SetGhost(float a)     { _ghost = Mathf.Clamp01(a); Apply(); }
 
         // Called when a pattern is interrupted mid-flight (phase escalation): drop
         // every transient channel so nothing is left mid-pulse or mid-crouch.
+        // (Shield is deliberately cleared too — Boss.CleanupPattern re-asserts it
+        // from the authoritative _shielded state right after.)
         public void ResetChannels()
         {
             _telegraphing = false;
             _vulnerable = false;
+            _stun = false;
+            _shield = false;
+            _ghost = 1f;
             _squashTarget = Vector2.one;
         }
 
         // The single place the boss colour is decided (priority compose). Channel
         // setters call Apply() so a change lands the SAME frame it's set — the
         // enrage rim used to lag its "ENRAGED" toast by one LateUpdate.
+        // Priority: hit flash > shield > telegraph > stun > vulnerable > base(+rim).
+        // Ghost multiplies the final alpha so a dissolve dims ANY state uniformly.
         Color Compose()
         {
             Color baseEff = _rimAmt > 0f
                 ? Color.Lerp(_base, _rim, _rimAmt * (0.7f + 0.3f * Mathf.Sin(Time.time * 3f)))
                 : _base;
-            if (_hitFlash > 0f)  return Color.Lerp(baseEff, Color.white, Mathf.Clamp01(_hitFlash));
-            if (_telegraphing)   return Color.Lerp(baseEff, _teleColor, 0.5f + 0.5f * Mathf.Sin(Time.time * 32f));
-            if (_vulnerable)     return Color.Lerp(baseEff, Color.Lerp(baseEff, Color.white, 0.4f), 0.5f + 0.5f * Mathf.Sin(Time.time * 6f));
-            return baseEff;
+            Color c;
+            if (_hitFlash > 0f)    c = Color.Lerp(baseEff, Color.white, Mathf.Clamp01(_hitFlash));
+            else if (_shield)      c = Color.Lerp(baseEff, new Color(0.45f, 0.65f, 1f), 0.30f + 0.10f * Mathf.Sin(Time.time * 4f));
+            else if (_telegraphing) c = Color.Lerp(baseEff, _teleColor, 0.5f + 0.5f * Mathf.Sin(Time.time * 32f));
+            else if (_stun)        c = Color.Lerp(baseEff, new Color(1f, 0.85f, 0.35f), 0.45f + 0.25f * Mathf.Sin(Time.time * 10f));
+            else if (_vulnerable)  c = Color.Lerp(baseEff, Color.Lerp(baseEff, Color.white, 0.4f), 0.5f + 0.5f * Mathf.Sin(Time.time * 6f));
+            else                   c = baseEff;
+            c.a *= _ghost;
+            return c;
         }
 
         void Apply() { if (!Hold && _sr != null) _sr.color = Compose(); }
@@ -91,9 +111,11 @@ namespace TrustIssues
             transform.localScale = new Vector3(_baseScale.x * _squash.x, _baseScale.y * _squash.y, 1f);
 
             // ---- facing: flip via the renderer (never the scale — that would
-            // invert colliders) plus the subtle lean that sells direction ----
+            // invert colliders) plus the subtle lean that sells direction, and a
+            // dizzy wobble on top while stunned (seeing stars) ----
             _sr.flipX = _artFacesLeft ? (_faceDir > 0f) : (_faceDir < 0f);
-            transform.localRotation = Quaternion.Euler(0f, 0f, -_faceDir * 6f);
+            float wobble = _stun ? Mathf.Sin(Time.time * 9f) * 7f : 0f;
+            transform.localRotation = Quaternion.Euler(0f, 0f, -_faceDir * 6f + wobble);
         }
     }
 }

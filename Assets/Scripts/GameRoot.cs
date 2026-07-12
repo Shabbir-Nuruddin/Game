@@ -319,6 +319,11 @@ namespace TrustIssues
         //   8 Arena                                   (Versus)
         static readonly string[] ThemeNames =
         { "THE CASTLE", "THE CRYPT", "THE SWAMP", "THE THRONE", "BLOOD MOON", "THE ABYSS", "THE VOID", "THE INFERNO", "THE ARENA" };
+        // Per-theme gameplay music (drop Resources/audio/music_<x>.mp3 in whenever
+        // it's ready — until then every theme quietly falls back to "music" via
+        // Audio.MusicOr, so a missing track never leaves a floor silent).
+        static readonly string[] ThemeMusic =
+        { "music_castle", "music_crypt", "music_swamp", "music_throne", "music_bloodmoon", "music_abyss", "music_void", "music_inferno", "music_arena" };
         // Tint MULTIPLIED over the (dark crimson) parallax art — strong enough that each
         // theme reads as a different place, not a faint colour wash.
         static readonly Color[] ThemeTint =
@@ -473,8 +478,54 @@ namespace TrustIssues
                 new Color(0, 0, 0, 0.45f), Color.white, 40,
                 new Vector2(1f, 1f), new Vector2(-70, -64), new Vector2(96, 96), ToggleMute);
 
+            // Blood-shard counter (top-right, left of the mute button). The diamond
+            // icon is a 45°-rotated Image — the pixel font has no ♦ glyph (same
+            // reason the hearts HUD uses '*' pips).
+            _shardHud = new GameObject("Shards", typeof(RectTransform));
+            _shardHud.transform.SetParent(Theme.Canvas.transform, false);
+            var srt = _shardHud.GetComponent<RectTransform>();
+            srt.anchorMin = srt.anchorMax = new Vector2(1f, 1f); srt.pivot = new Vector2(1f, 1f);
+            srt.anchoredPosition = new Vector2(-130, -50); srt.sizeDelta = new Vector2(240, 60);
+            var dia = new GameObject("Dia", typeof(RectTransform)).AddComponent<Image>();
+            dia.transform.SetParent(_shardHud.transform, false);
+            dia.color = Theme.Coin; dia.raycastTarget = false;
+            var drt = dia.rectTransform;
+            drt.anchorMin = drt.anchorMax = new Vector2(0f, 0.5f); drt.pivot = new Vector2(0.5f, 0.5f);
+            drt.anchoredPosition = new Vector2(24, 0); drt.sizeDelta = new Vector2(20, 20);
+            drt.localRotation = Quaternion.Euler(0, 0, 45f);
+            _shardText = Theme.Label(_shardHud.transform, Currency.Balance.ToString(), 38, Theme.Coin,
+                new Vector2(0f, 0.5f), new Vector2(140, 0), new Vector2(190, 56), TextAnchor.MiddleLeft);
+            _shardText.raycastTarget = false;
+            _shardHud.SetActive(false);                    // shown alongside _hud during play
+            Currency.OnEarned += OnShardsEarned;
+
             BuildTouchControls();
             BuildRotatePanel();
+        }
+
+        GameObject _shardHud;
+        Text _shardText;
+
+        // HUD reaction to any shard gain: tick the number, pop the counter. Uses
+        // unscaled time because deaths freeze-frame the game (HitStop).
+        void OnShardsEarned(int amount, string source)
+        {
+            if (_shardText != null) _shardText.text = Currency.Balance.ToString();
+            if (_shardHud != null && _shardHud.activeInHierarchy)
+                StartCoroutine(PopOnce(_shardHud.transform));
+        }
+
+        IEnumerator PopOnce(Transform t)
+        {
+            float e = 0f;
+            while (e < 0.22f && t != null)
+            {
+                e += Time.unscaledDeltaTime;
+                float s = 1f + Mathf.Sin(Mathf.Clamp01(e / 0.22f) * Mathf.PI) * 0.25f;
+                t.localScale = new Vector3(s, s, 1f);
+                yield return null;
+            }
+            if (t != null) t.localScale = Vector3.one;
         }
 
         Button _muteBtn;
@@ -513,16 +564,20 @@ namespace TrustIssues
             rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
             rt.offsetMin = rt.offsetMax = Vector2.zero;
 
-            // Movement: faint, transparent arrows bottom-left.
-            MakeTouch("‹", -1, new Vector2(0f, 0f), new Vector2(180, 180), new Vector2(210, 210), 0.16f);
-            MakeTouch("›", 1, new Vector2(0f, 0f), new Vector2(440, 180), new Vector2(210, 210), 0.16f);
-            // Action cluster bottom-right. JUMP is always there; the rest are shown
+            // Small circular pads hugging the corners so they hide as little of the
+            // playfield as possible (TouchButton pads the HIT zone ~25% past the
+            // visual, so "small" stays comfortably tappable). Positions keep every
+            // hit zone clear of its neighbours — overlapping zones would fire two
+            // actions with one finger. Movement arrows bottom-left…
+            MakeTouch("‹", -1, new Vector2(0f, 0f), new Vector2(145, 145), new Vector2(150, 150), 0.16f);
+            MakeTouch("›", 1, new Vector2(0f, 0f), new Vector2(345, 145), new Vector2(150, 150), 0.16f);
+            // …action cluster bottom-right. JUMP is always there; the rest are shown
             // contextually (bat in Blood Moon/Endless, dash if the skin grants it,
-            // SHOOT only in boss arenas) via UpdateTouchLayout().
-            MakeTouch("JUMP", 0, new Vector2(1f, 0f), new Vector2(-200, 180), new Vector2(250, 250), 0.18f);
-            _btnFly   = MakeTouch("BAT",   3, new Vector2(1f, 0f), new Vector2(-450, 180), new Vector2(170, 170), 0.20f);
-            _btnDash  = MakeTouch("DASH",  4, new Vector2(1f, 0f), new Vector2(-200, 430), new Vector2(160, 160), 0.18f);
-            _btnShoot = MakeTouch("SHOOT", 2, new Vector2(1f, 0f), new Vector2(-450, 430), new Vector2(170, 170), 0.22f);
+            // SHOOT only while holding a loaded gun) via UpdateTouchLayout().
+            MakeTouch("JUMP", 0, new Vector2(1f, 0f), new Vector2(-150, 145), new Vector2(170, 170), 0.18f);
+            _btnFly   = MakeTouch("BAT",   3, new Vector2(1f, 0f), new Vector2(-360, 120), new Vector2(130, 130), 0.20f);
+            _btnDash  = MakeTouch("DASH",  4, new Vector2(1f, 0f), new Vector2(-140, 350), new Vector2(130, 130), 0.18f);
+            _btnShoot = MakeTouch("SHOOT", 2, new Vector2(1f, 0f), new Vector2(-360, 310), new Vector2(130, 130), 0.22f);
             _touchPanel.SetActive(false);
         }
 
@@ -533,19 +588,28 @@ namespace TrustIssues
         // Settings (handy for testing the layout on desktop).
         bool TouchControlsOn => Application.isMobilePlatform || PlayerPrefs.GetInt("opt_touch", 0) == 1;
 
-        // Show only the action buttons that are usable right now. Called whenever a
-        // level (re)builds so the cluster matches the current mode/arena.
+        // Show only the action buttons that are usable right now. Polled every frame
+        // from Update() (and still called on level builds / gun events), so the
+        // cluster tracks live state in EVERY mode — a gun picked up mid-arena grows
+        // a SHOOT button the same frame, an emptied clip removes it, a skin swap
+        // adds/removes DASH. All SetActive calls are change-guarded so the per-frame
+        // poll costs nothing when nothing changed.
         void UpdateTouchLayout()
         {
             if (_touchPanel == null) return;
             bool show = TouchControlsOn && _state == State.Play;
-            _touchPanel.SetActive(show);
+            if (_touchPanel.activeSelf != show) _touchPanel.SetActive(show);
             if (!show) return;
             // BAT only in modes that allow flight; DASH only if the equipped skin grants
             // it; SHOOT only while you actually HOLD a weapon (ammo > 0) in a boss arena.
-            if (_btnFly != null)   _btnFly.SetActive(_player != null && _player.canFly);
-            if (_btnDash != null)  _btnDash.SetActive(_player != null && _player.dashEnabled);
-            if (_btnShoot != null) _btnShoot.SetActive(_player != null && _player.canShoot && _player.ammo > 0);
+            SyncTouchButton(_btnFly,   _player != null && _player.canFly);
+            SyncTouchButton(_btnDash,  _player != null && _player.dashEnabled);
+            SyncTouchButton(_btnShoot, _player != null && _player.canShoot && _player.ammo > 0);
+        }
+
+        static void SyncTouchButton(GameObject btn, bool on)
+        {
+            if (btn != null && btn.activeSelf != on) btn.SetActive(on);
         }
 
         GameObject MakeTouch(string label, int dir, Vector2 anchor, Vector2 pos, Vector2 size, float alpha)
@@ -553,12 +617,13 @@ namespace TrustIssues
             var go = new GameObject("Touch_" + label, typeof(RectTransform));
             go.transform.SetParent(_touchPanel.transform, false);
             var img = go.AddComponent<Image>();
+            img.sprite = Theme.Circle;   // round pad, not a screen-hogging square
             img.color = new Color(1f, 1f, 1f, alpha);
             var rt = img.rectTransform;
             rt.anchorMin = rt.anchorMax = anchor; rt.pivot = new Vector2(0.5f, 0.5f);
             rt.anchoredPosition = pos; rt.sizeDelta = size;
             go.AddComponent<TouchButton>().dir = dir;
-            int fontSize = (dir == -1 || dir == 1) ? 90 : (label.Length > 3 ? 30 : 40);
+            int fontSize = (dir == -1 || dir == 1) ? 64 : (label.Length > 4 ? 20 : 24);
             Theme.Label(go.transform, label, fontSize, new Color(1, 1, 1, 0.9f),
                 new Vector2(0.5f, 0.5f), Vector2.zero, size);
             return go;
@@ -576,6 +641,7 @@ namespace TrustIssues
             ApplyTheme(0);               // menu always shows the Castle mood
             Audio.Music("music", 0.3f);
             _hud.gameObject.SetActive(false);
+            if (_shardHud != null) _shardHud.SetActive(false);
             if (_touchPanel != null) { _touchPanel.SetActive(false); TouchInput.Clear(); }
             _rig.SetFrame(-1.5f, CamY, NormalCamSize);   // reset in case we left a zoomed-out boss arena
 
@@ -627,16 +693,33 @@ namespace TrustIssues
             Theme.Button(root, "MULTIPLAYER", new Color(0.5f, 0.12f, 0.16f), Color.white, 28,
                 new Vector2(0.5f, 0.5f), new Vector2(205, -76), dim, ShowVersusLobby);
 
-            // Secondary row — Wardrobe / Bestiary / Settings / Leaderboard.
-            var sdim = new Vector2(284, 60);
-            Theme.Button(root, "WARDROBE", new Color(1, 1, 1, 0.12f), new Color(1, 1, 1, 0.85f), 28,
-                new Vector2(0.5f, 0.5f), new Vector2(-486, -262), sdim, ShowWardrobe);
-            Theme.Button(root, $"BESTIARY {Codex.KnownCount()}/{Codex.Total}", new Color(1, 1, 1, 0.12f), new Color(1, 1, 1, 0.85f), 26,
-                new Vector2(0.5f, 0.5f), new Vector2(-162, -262), sdim, ShowCodex);
-            Theme.Button(root, "SETTINGS", new Color(1, 1, 1, 0.12f), new Color(1, 1, 1, 0.85f), 28,
-                new Vector2(0.5f, 0.5f), new Vector2(162, -262), sdim, ShowSettings);
-            Theme.Button(root, "LEADERBOARD", new Color(1, 1, 1, 0.12f), new Color(1, 1, 1, 0.85f), 26,
-                new Vector2(0.5f, 0.5f), new Vector2(486, -262), sdim, () => ShowLeaderboard("daily"));
+            // NIGHTLY TITHE: the first menu visit of each UTC day pays out, scaled
+            // by the Blood Moon streak — granted BEFORE the shop button reads the
+            // balance, so its caption already includes today's payout.
+            int tithe = Currency.GrantDailyIfDue();
+
+            // Secondary row — Shop / Wardrobe / Bestiary / Settings / Leaderboard.
+            // The SHOP leads and wears gold with a live balance: it's the standing
+            // ad for the death economy ("your deaths bought you something").
+            var sdim = new Vector2(260, 60);
+            Theme.Button(root, $"SHOP  {Currency.Balance}", new Color(0.5f, 0.38f, 0.1f, 0.4f), Theme.Coin, 26,
+                new Vector2(0.5f, 0.5f), new Vector2(-520, -262), sdim, ShowShop);
+            Theme.Button(root, "WARDROBE", new Color(1, 1, 1, 0.12f), new Color(1, 1, 1, 0.85f), 26,
+                new Vector2(0.5f, 0.5f), new Vector2(-260, -262), sdim, ShowWardrobe);
+            Theme.Button(root, $"BESTIARY {Codex.KnownCount()}/{Codex.Total}", new Color(1, 1, 1, 0.12f), new Color(1, 1, 1, 0.85f), 24,
+                new Vector2(0.5f, 0.5f), new Vector2(0, -262), sdim, ShowCodex);
+            Theme.Button(root, "SETTINGS", new Color(1, 1, 1, 0.12f), new Color(1, 1, 1, 0.85f), 26,
+                new Vector2(0.5f, 0.5f), new Vector2(260, -262), sdim, ShowSettings);
+            Theme.Button(root, "LEADERBOARD", new Color(1, 1, 1, 0.12f), new Color(1, 1, 1, 0.85f), 24,
+                new Vector2(0.5f, 0.5f), new Vector2(520, -262), sdim, () => ShowLeaderboard("daily"));
+
+            // The tithe banner — the "come back tomorrow" hook with teeth.
+            if (tithe > 0)
+            {
+                var titheLbl = Theme.Label(root, $"NIGHTLY TITHE: +{tithe} BLOOD SHARDS", 28, Theme.Coin,
+                    new Vector2(0.5f, 0.5f), new Vector2(0, -168), new Vector2(1200, 46));
+                StartCoroutine(Pulse(titheLbl.transform));
+            }
 
             // Daily streak — the "come back tomorrow" hook (bottom strip).
             if (Meta.Streak > 0 && Meta.StreakAlive)
@@ -934,8 +1017,7 @@ namespace TrustIssues
                 new Vector2(0.5f, 0.5f), new Vector2(0, -294), new Vector2(1200, 36));
             MakeToggle(root, new Vector2(-290, -348), "REPLAY GHOST", "opt_replay_ghost", 0);
             MakeToggle(root, new Vector2(290, -348), "ON-SCREEN PADS", "opt_touch", 0);
-            MakeToggle(root, new Vector2(-290, -414), "2.5D DEPTH", "opt_25d", 1, 560f, ApplyDepthMode);
-            MakeToggle(root, new Vector2(290, -414), "UNLOCK ALL FLOORS", "opt_unlock_all", 0);
+            MakeToggle(root, new Vector2(0, -414), "2.5D DEPTH", "opt_25d", 1, 560f, ApplyDepthMode);
 
             Theme.Button(root, "‹ BACK", new Color(1, 1, 1, 0.25f), Color.white, 44,
                 new Vector2(0.5f, 0f), new Vector2(0, 40), new Vector2(360, 100), ShowMenu);
@@ -965,7 +1047,7 @@ namespace TrustIssues
                 KeyCode picked = KeyCode.None;
                 foreach (KeyCode kc in System.Enum.GetValues(typeof(KeyCode)))
                 {
-                    if (kc == KeyCode.None || (int)kc >= 323) continue; // skip mouse/joystick codes
+                    if (kc == KeyCode.None || (int)kc >= 323 || !Controls.Bindable(kc)) continue; // skip mouse/joystick + OS keys
                     if (Input.GetKeyDown(kc)) { picked = kc; break; }
                 }
                 if (picked != KeyCode.None)
@@ -1152,8 +1234,8 @@ namespace TrustIssues
 
             // Each floor is a blood-seal medallion. Floors are LOCKED until you
             // clear the one before — locked nodes are dark and not clickable.
-            // The "unlock all" test toggle opens every floor (jump straight to bosses).
-            int unlocked = PlayerPrefs.GetInt("opt_unlock_all", 0) == 1 ? Levels.Count - 1 : CastleUnlocked;
+            // Progress is the ONLY key: the old "unlock all" test toggle is gone.
+            int unlocked = CastleUnlocked;
             for (int i = 0; i < Levels.Count; i++)
             {
                 int lvl = i;
@@ -1449,7 +1531,7 @@ namespace TrustIssues
                              : Skins.Current.airJumps > 0 ? "   •   double-jump" : "";
                 ShowHint(_isMobile
                     ? "‹ › move   •   JUMP   •   trust nothing"
-                    : $"← → / A D move   •   {Controls.Name(Controls.Jump)} jump" + extra + "   •   R restart   •   trust nothing",
+                    : $"← → / A D move   •   {Controls.Name(Controls.Jump)} jump   •   hold {Controls.Name(Controls.Fly)} to glide" + extra + "   •   R restart   •   trust nothing",
                     Memory.IsFirstSession ? 6f : 2.5f);   // first-timers get time to actually read it
             }
         }
@@ -1749,6 +1831,11 @@ namespace TrustIssues
             // back to start); Endless/Daily get a difficulty-scaled pool of lives.
             _hearts = (_mode == Mode.Curated || _mode == Mode.Versus) ? -1 : Diff.StartHearts;
             _hud.gameObject.SetActive(true);
+            if (_shardHud != null)
+            {
+                _shardHud.SetActive(true);
+                if (_shardText != null) _shardText.text = Currency.Balance.ToString();
+            }
             if (_touchPanel != null) _touchPanel.SetActive(TouchControlsOn); // refined per-level by UpdateTouchLayout
             _state = State.Play;
             Analytics.Track("mode_start", new System.Collections.Generic.Dictionary<string, object>
@@ -1797,12 +1884,17 @@ namespace TrustIssues
 
         // Bump this to force EVERY player (each browser has its own save) back to
         // Floor 1 on their next load — used for a fresh start across friends.
-        const int ProgressVersion = 2;
+        // v3: removed the "unlock all floors" test toggle and reset everyone to
+        // Castle floor 1 (last-mode cleared so PLAY routes to the Castle, not a
+        // resumed Endless/Blood Moon run).
+        const int ProgressVersion = 3;
         static void ResetProgressOncePerVersion()
         {
             if (PlayerPrefs.GetInt("progress_version", 0) == ProgressVersion) return;
             PlayerPrefs.SetInt("castle_unlocked", 0);
             PlayerPrefs.SetInt("ti_level", 0);
+            PlayerPrefs.DeleteKey("opt_unlock_all");   // the retired test toggle
+            PlayerPrefs.DeleteKey("ti_last_mode");     // PLAY starts fresh in the Castle
             PlayerPrefs.SetInt("progress_version", ProgressVersion);
             PlayerPrefs.Save();
         }
@@ -1861,7 +1953,14 @@ namespace TrustIssues
             // the blaster, plays the boss theme). Normal floors disarm the blaster
             // and silence any lingering boss music.
             if (InBossRoom) SetupBoss(_level.BossTier);
-            else { if (_player != null) _player.canShoot = false; Audio.StopMusic(); }
+            else
+            {
+                if (_player != null) _player.canShoot = false;
+                // Resume/switch to this theme's track — idempotent if it's already
+                // playing, so it also quietly restores after a boss fight ends.
+                int mi = Mathf.Clamp(_curTheme, 0, ThemeMusic.Length - 1);
+                Audio.MusicOr(ThemeMusic[mi], "music", 0.3f);
+            }
             UpdateHud();
             UpdateTouchLayout();   // match the on-screen action cluster to this floor
 
@@ -2023,6 +2122,7 @@ namespace TrustIssues
             _lastT = null; _lastP = null; _recT.Clear(); _recP.Clear();
             _bossIntroedTier = -1;   // a fresh floor → the next boss plays its full cutscene
             _floorDeaths = 0;        // per-floor death count (curse duels compare this)
+            Currency.ResetFloorPayouts();   // a new floor re-opens the death-shard window
         }
         int _floorDeaths;
 
@@ -2538,12 +2638,13 @@ namespace TrustIssues
             }
 
             _player = go.AddComponent<PlayerController>();
-            _player.canFly = _mode != Mode.Curated; // The Castle is pure precision — no bat flight
+            _player.canFly = true;   // bat glide everywhere — the Castle gets it back (meter still gates it)
             // Skin-granted abilities (dash / double-jump / speed / phase).
             _player.moveMul = skin.moveMul;
             _player.jumpMul = skin.jumpMul;
             _player.dashEnabled = skin.dash;
             _player.extraAirJumps = skin.airJumps;
+            Shop.AttachTrail(go);   // equipped cosmetic wake (pure Fx, no gameplay)
             _playerVisual = vis;
             if (bodySr != null)
             {
@@ -2615,13 +2716,15 @@ namespace TrustIssues
         // ==================== boss arenas ====================
         // Per-boss intro flavour — reinforces that the four fights are distinct.
         static readonly string[] BossTitles = { "", "THE GHOUL", "THE COUNTESS", "THE WARLOCK", "THE VAMPIRE LORD" };
+        // Each tag now teaches the boss's SIGNATURE mechanic, not just flavour —
+        // the intro card is the one guaranteed read before the fight.
         static readonly string[] BossTags =
         {
             "",
-            "a lumbering bruiser — bait the charge, then punish",
-            "a trickster duelist — don't flinch at her fake-outs",
-            "he owns the air — weave the rain, grab the gun",
-            "the full nightmare — dodge everything, then strike",
+            "a grounded bruiser — bait his charge into the wall",
+            "a teleporting trickster — only the real one flinches",
+            "an anchored storm — his shield falls when the spell ends",
+            "wears every face you've beaten — remember your lessons",
         };
 
         void SetupBoss(int tier)
@@ -2986,8 +3089,14 @@ namespace TrustIssues
                 }
             }
 
+            // Keep the phone action cluster honest every frame (change-guarded, so
+            // this is free when nothing changed): SHOOT only while a collected gun
+            // still has ammo, DASH only with a dash-granting skin, BAT only where
+            // flight is allowed. Rebuild-time-only updates missed mid-level changes.
+            UpdateTouchLayout();
+
             if ((_state == State.Play || _state == State.Paused) &&
-                (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.P)))
+                Input.GetKeyDown(KeyCode.Escape))   // Esc ONLY — P was hijacking a letter key mid-play
                 TogglePause();
 
             // "Still playing" ping every 15s — powers the time-spent-per-level view
@@ -3132,15 +3241,31 @@ namespace TrustIssues
                 { "y", deathPos.y },
                 { "nick", Meta.Nick },
             });
+            // Did you die RIGHT before the exit? The narrator twists the knife (and
+            // the shard payout sweetens it) — computed here so both can use it.
+            bool nearMiss = _player != null && _levelEndX > 0f &&
+                            _player.transform.position.x > _levelEndX - 6f;
             // Feed the haunting layer: this death becomes a tombstone other players
-            // find on this floor. Versus stays clean — it's a live race.
+            // find on this floor — wearing your equipped gravestone taunt, if any.
+            // Versus stays clean — it's a live race.
             if (_mode != Mode.Versus)
                 Echo.Report(ModeName, _levelIndex, _mode == Mode.Daily ? DailySeed() : 0,
-                            deathPos, msg ?? "unknown");
+                            deathPos, (msg ?? "unknown") + Shop.TauntSuffix());
             if (_mode == Mode.Curated)
             {
                 PlayerPrefs.SetInt("castle_deaths", _deaths); PlayerPrefs.Save(); // persist lifetime tally
                 if (_deaths >= 100) Badges.Award("die100");
+            }
+            // The castle pays for blood: shards per death (capped per floor-visit so
+            // clearing always beats farming) — a failed try still moves the meta on.
+            if (_mode != Mode.Versus)
+            {
+                int shardPay = Currency.DeathPayout(nearMiss);
+                if (shardPay > 0)
+                {
+                    Currency.Earn(shardPay, "death");
+                    ShardFloater.Spawn(deathPos, shardPay);
+                }
             }
             if (_hearts > 0) _hearts--;     // lose a heart (Endless/Daily); Curated = -1 (infinite)
 
@@ -3153,12 +3278,23 @@ namespace TrustIssues
             FlashRed();
             StartCoroutine(HitStop(0.08f));        // a punchy freeze-frame on impact
             UpdateHud();
-            // Did you die RIGHT before the exit? The narrator twists the knife.
-            bool nearMiss = _player != null && _levelEndX > 0f &&
-                            _player.transform.position.x > _levelEndX - 6f;
             RecordReactiveTrap();                  // the game LEARNS where you felt safe
             string roast = Juice.Roast(cause, _deaths, _levelIndex + 1, nearMiss);
             Voice.Speak(roast);                    // the game mocks you OUT LOUD (WebGL TTS)
+            // Every 10th death, dangle the next unlock — the moment a bored player
+            // quits is exactly when the shop should whisper. Rides the hint bar so
+            // the roast toast (and the instant retry) stay untouched.
+            if (_deaths % 10 == 0 && _mode != Mode.Versus)
+            {
+                var nxt = Shop.NextUnlock();
+                if (nxt != null)
+                {
+                    int need = Shop.UnlockPrice(nxt) - Currency.Balance;
+                    ShowHint(need > 0
+                        ? $"{need} more shards until {Shop.UnlockName(nxt)} — the Crypt Shop waits"
+                        : $"You can afford {Shop.UnlockName(nxt)}. The Crypt Shop waits.", 2.2f);
+                }
+            }
             StartCoroutine(DieRoutine(roast));
         }
 
@@ -3175,6 +3311,7 @@ namespace TrustIssues
                 Fx.Explosion(deathPos, 1.7f);     // a quick blast under the gore
                 GoreBurst(deathPos);
                 BloodSplash(deathPos);
+                Shop.PlayDeathFx(deathPos);       // equipped cosmetic death effect, layered on top
                 _player.PlayDeath();
                 _player.Freeze();
             }
@@ -3343,6 +3480,7 @@ namespace TrustIssues
             {
                 if (_raceOver) return;
                 _raceOver = true;
+                Currency.Earn(10, "versus_win");   // winner's purse (losses pay nothing)
                 Net.SendWin();
                 VersusResult(true);
                 return;
@@ -3357,6 +3495,18 @@ namespace TrustIssues
                 ShakeCam(0.22f, 0.18f);
             }
             if (_hearts >= 0) _hearts = Mathf.Min(Diff.MaxHearts, _hearts + 1); // bank a heart per floor
+
+            // Floor cleared → shards: +10 base, +15 more the FIRST time a Castle
+            // floor falls, +5 for the under-5-deaths goal. Paid before the mode
+            // branches so every non-Versus mode earns the same way.
+            {
+                bool firstClear = _mode == Mode.Curated &&
+                    (_levelIndex + 1 == Levels.Count ? !Badges.Has("castle_clear")
+                                                     : _levelIndex >= CastleUnlocked);
+                int shardPay = 10 + (firstClear ? 15 : 0) + (_floorDeaths < 5 ? 5 : 0);
+                Currency.Earn(shardPay, firstClear ? "first_clear" : "floor_clear");
+                if (_player != null) ShardFloater.Spawn(_player.transform.position, shardPay);
+            }
 
             if (_mode == Mode.Endless)
             {
@@ -3425,6 +3575,10 @@ namespace TrustIssues
             ResetFloorState();          // new floor — clear section checkpoint + learned traps
             _state = State.Play;
             BuildLevel();
+            // The standing bargain, restated as each Castle floor opens: clean
+            // floors pay extra (the +5 goal chip in ReachExit).
+            if (_mode == Mode.Curated)
+                ShowHint("BONUS: under 5 deaths on this floor → +5 shards", 2f);
         }
 
         IEnumerator WinRoutine()
@@ -3466,6 +3620,17 @@ namespace TrustIssues
             if (nb != null)
                 Theme.Label(root, "NEW BADGE UNLOCKED — " + nb.name, 26, Color.white,
                     c, new Vector2(0, -54), new Vector2(1200, 44));
+            // The "next unlock" teaser: every result screen names the goal your
+            // shards are working toward — the research-backed anti-boredom line.
+            var nxt = Shop.NextUnlock();
+            if (nxt != null)
+            {
+                int bal = Currency.Balance, price = Shop.UnlockPrice(nxt);
+                Theme.Label(root, bal >= price
+                        ? $"{bal} BLOOD SHARDS — {Shop.UnlockName(nxt)} is affordable NOW"
+                        : $"{bal} BLOOD SHARDS — {price - bal} more until {Shop.UnlockName(nxt)}",
+                    20, Theme.Coin, c, new Vector2(0, -89), new Vector2(1400, 26));
+            }
             // Broke a friend's curse this run? The brag carries the receipt.
             if (Curse.LastBroken != null)
                 brag += $" — and I broke {Curse.LastBroken.nick}'s curse";
@@ -3544,7 +3709,9 @@ namespace TrustIssues
             var pmFrames = Assets.Sheet("pinkman_idle", 32);
             Sprite pmSp = (pmFrames != null && pmFrames.Length > 0) ? pmFrames[0] : null;
 
-            int cols = 4; float spX = 350f, spY = 268f, startX = -((cols - 1) * spX) / 2f, startY = 170f;
+            // 3 rows now (the Crypt Shop skins joined the roster) — tightened row
+            // spacing so the bottom row clears the BACK button.
+            int cols = 4; float spX = 350f, spY = 240f, startX = -((cols - 1) * spX) / 2f, startY = 200f;
             for (int i = 0; i < Skins.All.Count; i++)
             {
                 var s = Skins.All[i];
@@ -3559,9 +3726,12 @@ namespace TrustIssues
                 // The whole card is one button (Image + Button). We build its contents
                 // ourselves so the sprite, name and ability each get their own line and
                 // never overlap. Empty label text — the children below are the content.
+                // Locked PRICED skins route to the Crypt Shop (that's where they're
+                // bought); other locked skins just restate their achievement hint.
                 var card = Theme.Button(root, "", bg, Color.white, 1, c, pos, new Vector2(320, 236),
                     unlocked ? (System.Action)(() => { Skins.Equip(sid); Destroy(panel); ShowWardrobe(); })
-                             : (System.Action)(() => ShowHint(sdef.unlockHint)));
+                    : sdef.price > 0 ? (System.Action)(() => { Destroy(panel); ShowShop(); })
+                                     : (System.Action)(() => ShowHint(sdef.unlockHint)));
                 var ct = card.transform;
 
                 // Gold ring around the equipped card so the current pick is obvious.
@@ -3615,6 +3785,143 @@ namespace TrustIssues
 
             Theme.Button(root, "‹ BACK", new Color(1, 1, 1, 0.25f), Color.white, 40,
                 new Vector2(0.5f, 0f), new Vector2(0, 40), new Vector2(360, 100), () => { Destroy(panel); ShowMenu(); });
+        }
+
+        // ==================== the Crypt Shop ====================
+        // Where blood shards go: purchasable skins + death effects + trails +
+        // gravestone taunts. Cosmetics ONLY — the shop sells looks and trash talk,
+        // never power. Cards follow the Wardrobe pattern (whole card = one button).
+        void ShowShop()
+        {
+            Audio.Play("click");
+            Analytics.Track("shop_open", new System.Collections.Generic.Dictionary<string, object>
+            {
+                { "balance", Currency.Balance },
+            });
+            var c = new Vector2(0.5f, 0.5f);
+            var panel = Overlay(new Color(0.04f, 0.02f, 0.06f, 0.92f), out var root);
+            Theme.Label(root, "THE CRYPT SHOP", 70, Theme.Player, c, new Vector2(0, 420), new Vector2(1400, 120)).font = Theme.TitleFont;
+            Theme.Label(root, $"{Currency.Balance} BLOOD SHARDS — the castle takes shards, never skill", 28, Theme.Coin,
+                c, new Vector2(0, 348), new Vector2(1400, 50));
+
+            // Skin preview art (same sources as the Wardrobe previews).
+            var vampFrames = Assets.Grid("vamp_idle_sheet", 64, 3);
+            Sprite vampSp = (vampFrames != null && vampFrames.Length > 0) ? vampFrames[0] : null;
+            var pmFrames = Assets.Sheet("pinkman_idle", 32);
+            Sprite pmSp = (pmFrames != null && pmFrames.Length > 0) ? pmFrames[0] : null;
+
+            // One flat list: the priced skins first (the aspirational shelf), then
+            // death effects, trails, and taunts from the Shop catalog.
+            int cols = 4; float spX = 350f, spY = 244f, startX = -((cols - 1) * spX) / 2f, startY = 196f;
+            int slot = 0;
+
+            foreach (var s in Skins.All)
+            {
+                if (s.price <= 0) continue;
+                var sd = s;
+                bool owned = Skins.IsUnlocked(sd);
+                bool equipped = owned && Skins.CurrentId == sd.id;
+                ShopCard(root, panel, slot++, cols, spX, spY, startX, startY,
+                    sd.name, "skin — pure style", sd.price, owned, equipped,
+                    sd.pinkman ? pmSp : vampSp, Skins.Shade(sd),
+                    buy: () => { if (Shop.BuySkin(sd)) Skins.Equip(sd.id); },
+                    equip: () => Skins.Equip(sd.id));
+            }
+            foreach (var it in Shop.All)
+            {
+                var item = it;
+                bool owned = Shop.Owns(item.id);
+                bool equipped = owned && Shop.Equipped(item.kind) == item.id;
+                ShopCard(root, panel, slot++, cols, spX, spY, startX, startY,
+                    item.name, item.desc, item.price, owned, equipped,
+                    null, item.tint,
+                    buy: () => { if (Shop.Buy(item)) Shop.Equip(item.kind, item.id); },
+                    // Owned items TOGGLE: tap to wear, tap again to take off.
+                    equip: () => Shop.Equip(item.kind, equipped ? "" : item.id));
+            }
+
+            Theme.Button(root, "‹ BACK", new Color(1, 1, 1, 0.25f), Color.white, 40,
+                new Vector2(0.5f, 0f), new Vector2(0, 40), new Vector2(360, 100), () => { Destroy(panel); ShowMenu(); });
+        }
+
+        // One shop card: preview (sprite or a tinted diamond), name, flavor line,
+        // and a state footer — BUY (gold, affordable) / NEED N MORE (dim) /
+        // EQUIPPED / tap to wear. Any successful action rebuilds the screen.
+        void ShopCard(Transform root, GameObject panel, int slot, int cols,
+            float spX, float spY, float startX, float startY,
+            string name, string desc, int price, bool owned, bool equipped,
+            Sprite preview, Color tint, System.Action buy, System.Action equip)
+        {
+            var c = new Vector2(0.5f, 0.5f);
+            int r = slot / cols, col = slot % cols;
+            var pos = new Vector2(startX + col * spX, startY - r * spY);
+            bool affordable = Currency.Balance >= price;
+            var bg = equipped ? new Color(0.42f, 0.11f, 0.15f, 0.96f)
+                   : owned ? new Color(0.16f, 0.13f, 0.2f, 0.95f)
+                   : affordable ? new Color(0.22f, 0.18f, 0.1f, 0.95f) : new Color(0.1f, 0.1f, 0.13f, 0.95f);
+
+            var card = Theme.Button(root, "", bg, Color.white, 1, c, pos, new Vector2(320, 224), () =>
+            {
+                if (owned) { equip(); Audio.Play("click", 0.7f); }
+                else if (affordable)
+                {
+                    buy();
+                    Audio.PlayOr("levelup", "win", 0.7f);
+                    if (_shardText != null) _shardText.text = Currency.Balance.ToString();
+                }
+                else { ShowHint($"{price - Currency.Balance} more shards — the castle pays for blood"); return; }
+                Destroy(panel); ShowShop();   // rebuild so every card reflects the new state
+            });
+            var ct = card.transform;
+
+            if (equipped)   // same gold ring the Wardrobe uses for the current pick
+            {
+                var ring = new GameObject("EquipRing", typeof(RectTransform)).AddComponent<Image>();
+                ring.transform.SetParent(ct, false); ring.raycastTarget = false;
+                var frame = Theme.NineSlice("panel_frame", 16);
+                if (frame != null) { ring.sprite = frame; ring.type = Image.Type.Sliced; ring.pixelsPerUnitMultiplier = 0.12f; }
+                ring.color = Theme.Coin;
+                var rrt = ring.rectTransform; rrt.anchorMin = Vector2.zero; rrt.anchorMax = Vector2.one;
+                rrt.offsetMin = new Vector2(-4, -4); rrt.offsetMax = new Vector2(4, 4);
+            }
+
+            // Preview: the skin sprite when there is one, else a tinted diamond
+            // swatch (death effects / trails / taunts have no sprite of their own).
+            if (preview != null)
+            {
+                var pv = new GameObject("Preview", typeof(RectTransform)).AddComponent<Image>();
+                pv.transform.SetParent(ct, false);
+                pv.sprite = preview; pv.preserveAspect = true; pv.raycastTarget = false;
+                pv.color = owned ? tint : new Color(0.05f, 0.04f, 0.06f, 0.95f);   // mystery silhouette until bought
+                var prt = pv.rectTransform;
+                prt.anchorMin = prt.anchorMax = new Vector2(0.5f, 0.5f); prt.pivot = new Vector2(0.5f, 0.5f);
+                prt.anchoredPosition = new Vector2(0, 52); prt.sizeDelta = new Vector2(96, 96);
+            }
+            else
+            {
+                var sw = new GameObject("Swatch", typeof(RectTransform)).AddComponent<Image>();
+                sw.transform.SetParent(ct, false); sw.raycastTarget = false;
+                sw.color = tint;
+                var srt2 = sw.rectTransform;
+                srt2.anchorMin = srt2.anchorMax = new Vector2(0.5f, 0.5f); srt2.pivot = new Vector2(0.5f, 0.5f);
+                srt2.anchoredPosition = new Vector2(0, 52); srt2.sizeDelta = new Vector2(52, 52);
+                srt2.localRotation = Quaternion.Euler(0, 0, 45f);
+            }
+
+            Theme.Label(ct, name, 27, owned || affordable ? Color.white : new Color(1, 1, 1, 0.55f),
+                c, new Vector2(0, -20), new Vector2(304, 34)).raycastTarget = false;
+            var descL = Theme.Label(ct, desc, 16, new Color(1, 1, 1, 0.55f),
+                c, new Vector2(0, -50), new Vector2(290, 40));
+            descL.horizontalOverflow = HorizontalWrapMode.Wrap;
+            descL.raycastTarget = false;
+
+            string footer = equipped ? "EQUIPPED — tap to remove"
+                          : owned ? "tap to wear"
+                          : affordable ? $"BUY — {price}" : $"NEED {price - Currency.Balance} MORE";
+            Theme.Label(ct, footer, 19,
+                equipped ? Theme.Exit : owned ? new Color(1, 1, 1, 0.5f)
+                         : affordable ? Theme.Coin : new Color(1, 0.5f, 0.5f, 0.7f),
+                c, new Vector2(0, -86), new Vector2(300, 28)).raycastTarget = false;
         }
 
         // ==================== pause ====================

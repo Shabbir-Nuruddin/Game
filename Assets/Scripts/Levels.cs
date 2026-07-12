@@ -305,7 +305,9 @@ namespace TrustIssues
             return b.Finish();
         }
 
-        // 7 — the pendulum blade swings across; time your dash beneath it.
+        // 7 — the pendulum blade swings across; time your run beneath it. The tail
+        // pairs it with a spike, then replays floor 6's saw — so 7 is strictly
+        // meaner than 6 (the old version was a difficulty DIP).
         static Level L7()
         {
             var b = new B();
@@ -313,23 +315,29 @@ namespace TrustIssues
             b.Gap(2.4f);
             float p2 = b.Plat(5f); b.Pendulum(p2);
             b.Gap(2.4f);
-            float p3 = b.Plat(4.5f); b.Spike(p3);
+            float p3 = b.Plat(5f); b.Pendulum(p3 - 1.2f); b.Spike(p3 + 1.2f);
+            b.Gap(2.4f);
+            float p4 = b.Plat(4.5f); b.Saw(p4);
             return b.Finish();
         }
 
-        // 8 — the chandelier drops when you pass under. Don't loiter.
+        // 8 — the chandelier drops when you pass under. Don't loiter. Then the
+        // floor lies again (fake floor) into a saw+spike pinch and a pendulum.
         static Level L8()
         {
             var b = new B();
             b.Plat(4.5f);
             b.Gap(2.4f);
             float p2 = b.Plat(5f); b.Chandelier(p2);
+            b.FakeFloor(2f);
+            float p3 = b.Plat(5f); b.Saw(p3 - 1.2f); b.Spike(p3 + 1.2f);
             b.Gap(2.4f);
-            float p3 = b.Plat(4.5f); b.Saw(p3);
+            float p4 = b.Plat(4.5f); b.Pendulum(p4);
             return b.Finish();
         }
 
-        // 9 — growing blood-spikes pulse up and down. Cross while they're low.
+        // 9 — growing blood-spikes pulse up and down. Cross while they're low —
+        // then a grow-spike/dart pincer and one last lying floor before the gate.
         static Level L9()
         {
             var b = new B();
@@ -337,7 +345,9 @@ namespace TrustIssues
             b.Gap(2.4f);
             float p2 = b.Plat(5f); b.GrowSpike(p2);
             b.Gap(2.4f);
-            float p3 = b.Plat(4.5f); b.Dart(p3);
+            float p3 = b.Plat(5f); b.GrowSpike(p3 - 1.2f); b.Dart(p3 + 1.2f);
+            b.FakeFloor(2f);
+            float p4 = b.Plat(4.5f); b.Spike(p4);
             return b.Finish();
         }
 
@@ -366,7 +376,7 @@ namespace TrustIssues
             float p2 = b.Plat(5f); b.Bat(p2);
             b.Gap(2.4f);
             float p3 = b.Plat(4.5f); b.Spike(p3);
-            b.Gap(2.4f);
+            b.FakeFloor(2f);                       // the crypt lies too
             float p4 = b.Plat(4.5f); b.Dart(p4);
             return b.Finish();
         }
@@ -379,7 +389,7 @@ namespace TrustIssues
             b.Gap(2.5f);
             float p2 = b.Plat(5f); b.Saw(p2); b.Bat(p2 + 1.6f);
             b.Gap(2.5f);
-            float p3 = b.Plat(4.5f); b.LateSpike(p3);
+            float p3 = b.Plat(4.5f); b.LateSpike(p3); b.Bat(p3 + 1.4f);
             b.Gap(2.5f);
             float p4 = b.Plat(4.5f); b.Chandelier(p4);
             return b.Finish();
@@ -408,7 +418,7 @@ namespace TrustIssues
             float p2 = b.Plat(5f); b.Surprise(p2);
             b.Gap(2.5f);
             float p3 = b.Plat(4.5f); b.Pendulum(p3);
-            b.Gap(2.5f);
+            b.FakeFloor(2f);                       // sunbeam, blade, THEN the lying floor
             float p4 = b.Plat(4.5f); b.LateSpike(p4);
             return b.Finish();
         }
@@ -451,7 +461,7 @@ namespace TrustIssues
             b.Gap(2.5f);
             float p3 = b.Plat(5f); b.FlameJet(p3 - 1.3f); b.Spike(p3 + 1.3f);
             b.Gap(2.5f);
-            float p4 = b.Plat(4.5f); b.Dart(p4);
+            float p4 = b.Plat(5f); b.FlameJet(p4 - 1.3f); b.Dart(p4 + 1.3f);
             return b.Finish();
         }
 
