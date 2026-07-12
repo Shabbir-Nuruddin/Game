@@ -1809,6 +1809,10 @@ namespace TrustIssues
         // restarting/respawning within a run keeps it.
         void BeginRun(int levelIndex)
         {
+            // Hard guarantee: whatever state timeScale was left in (a stray
+            // pause, an orientation-check race — see the Update() rotate-panel
+            // comment) a freshly started run must never inherit frozen time.
+            Time.timeScale = 1f;
             if (_menuPanel != null) Destroy(_menuPanel);
             Memory.RunStarted();   // if this flag survives to next boot, they rage-quit
             Curse.ClearBroken();   // counter-brag receipts don't carry across runs
@@ -2790,7 +2794,20 @@ namespace TrustIssues
                 // cutscene unfreezes the player and drops the first weapon at its end.
                 _bossIntroedTier = tier;
                 StartCoroutine(BossIntro(ti, boss, go));
+                StartCoroutine(BossIntroWatchdog());
             }
+        }
+
+        // Safety net for BossIntro: the full cutscene runs ~3.5s. If anything
+        // stalls it (a device quirk, a coroutine that silently dies), the
+        // player must never be stuck frozen — walking into a boss floor
+        // (which happens automatically every time Castle is resumed on an
+        // unbeaten boss) would otherwise look exactly like "the game is
+        // broken, my character won't move."
+        IEnumerator BossIntroWatchdog()
+        {
+            yield return new WaitForSecondsRealtime(9f);
+            if (_player != null) _player.Unfreeze();
         }
 
         // A short cinematic before a boss fight: letterbox bars slide in, the boss
@@ -3092,7 +3109,19 @@ namespace TrustIssues
                 {
                     _rotatePanel.SetActive(portrait);
                     if (portrait) { _rotatePanel.transform.SetAsLastSibling(); Time.timeScale = 0f; }
-                    else if (_state == State.Play) Time.timeScale = 1f;
+                    // Resume whenever we're not deliberately paused. The old
+                    // `_state == State.Play` guard left Time.timeScale stuck at 0
+                    // FOREVER if a brief orientation misread (a WebGL canvas
+                    // resize/viewport-bar hiccup — common right after opening a
+                    // big new UI panel) landed while still on a menu screen: the
+                    // very next level you entered inherited timeScale=0, so
+                    // gravity and every jump/move calculation (they run in
+                    // FixedUpdate, which Unity never calls when timeScale is 0)
+                    // silently stopped — the character hangs frozen mid-air and
+                    // no button does anything. This hit Castle far more than
+                    // Blood Moon/Endless because only Castle's Level Select is an
+                    // extra screen transition between the main menu and Play.
+                    else if (_state != State.Paused) Time.timeScale = 1f;
                 }
             }
 
