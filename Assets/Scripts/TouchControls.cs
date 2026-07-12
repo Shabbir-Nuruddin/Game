@@ -8,6 +8,7 @@ namespace TrustIssues
     {
         public static float X;       // -1 left, +1 right, 0 none
         public static bool FlyHeld;  // held while the FLY/BAT button is pressed
+        public static bool JumpHeld; // held while the JUMP button is pressed (variable jump height)
         static bool _jump, _fire, _dash;
         public static void QueueJump() => _jump = true;
         public static bool ConsumeJump() { if (_jump) { _jump = false; return true; } return false; }
@@ -15,7 +16,7 @@ namespace TrustIssues
         public static bool ConsumeFire() { if (_fire) { _fire = false; return true; } return false; }
         public static void QueueDash() => _dash = true;
         public static bool ConsumeDash() { if (_dash) { _dash = false; return true; } return false; }
-        public static void Clear() { X = 0f; _jump = false; _fire = false; _dash = false; FlyHeld = false; }
+        public static void Clear() { X = 0f; _jump = false; _fire = false; _dash = false; FlyHeld = false; JumpHeld = false; }
     }
 
     /// <summary>
@@ -95,7 +96,10 @@ namespace TrustIssues
                     if (held) TouchInput.X = dir;
                     else if (Mathf.Approximately(TouchInput.X, dir)) TouchInput.X = 0f;
                     break;
-                case 0: if (tapped) TouchInput.QueueJump(); break;
+                case 0:
+                    if (tapped) TouchInput.QueueJump();
+                    TouchInput.JumpHeld = held;   // release early = shorter hop
+                    break;
                 case 2: if (tapped) TouchInput.QueueFire(); break;
                 case 3: TouchInput.FlyHeld = held; break;
                 case 4: if (tapped) TouchInput.QueueDash(); break;
@@ -107,6 +111,7 @@ namespace TrustIssues
         void OnDisable()
         {
             if (dir == 3) TouchInput.FlyHeld = false;
+            else if (dir == 0) TouchInput.JumpHeld = false;
             else if ((dir == -1 || dir == 1) && Mathf.Approximately(TouchInput.X, dir)) TouchInput.X = 0f;
             _held = false;
             if (_img != null) { var c = _img.color; c.a = _idleAlpha; _img.color = c; }

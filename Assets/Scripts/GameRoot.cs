@@ -2583,7 +2583,14 @@ namespace TrustIssues
             // Collider matched to the VISIBLE vampire body — wide enough that you
             // die when you actually touch a hazard (too narrow let you stand right
             // next to spikes unharmed), but not the full padded sprite frame.
-            col.size = new Vector2(0.55f, 0.85f);
+            // ROUNDED corners (edgeRadius): a sharp box catches on the seam where
+            // two flush platforms meet — the classic "runs into an invisible wall"
+            // snag, far worse at phone frame rates where the physics step is
+            // coarser. The box is shrunk by the radius so the overall footprint
+            // (and therefore hazard fairness) is unchanged.
+            const float corner = 0.06f;
+            col.size = new Vector2(0.55f - corner * 2f, 0.85f - corner * 2f);
+            col.edgeRadius = corner;
             col.offset = new Vector2(0f, -0.02f);
 
             // Animated vampire (4-direction grid sheets, side-profile row) ->

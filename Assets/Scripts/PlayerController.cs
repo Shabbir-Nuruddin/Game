@@ -21,11 +21,12 @@ namespace TrustIssues
         public float jumpBuffer = 0.10f;
 
         // Momentum: velocity eases toward the input instead of snapping to it.
-        // Ground is near-instant (precision stays king); the AIR is where inertia
-        // lives — you carry your launch speed through a jump and a mid-air
-        // turn-around takes a beat, so leaps must be committed to.
+        // Ground is near-instant (precision stays king); the air keeps SOME
+        // inertia (you carry launch speed through a jump) but steering must win
+        // fast — playtests on phone read the old low values as "no control over
+        // the character": you drifted past every landing.
         public float groundAccel = 90f, groundDecel = 100f;
-        public float airAccel = 45f, airDecel = 16f;
+        public float airAccel = 70f, airDecel = 34f;
 
         // Optional sprite animation (set by GameRoot if art is present).
         public SpriteRenderer bodyRenderer;
@@ -45,6 +46,8 @@ namespace TrustIssues
         BoxCollider2D _col;
         Transform _visual;       // child we squash/stretch (so physics box is stable)
         float _coyote, _buffer;
+        bool _jumpHeld;          // jump key/button still down — releasing mid-rise cuts the jump
+        bool _risingFromJump;    // this rise came from OUR jump (not a trampoline/knock-up)
         bool _grounded, _wasGrounded;
         float _inputX;
         bool _frozen;
@@ -97,8 +100,15 @@ namespace TrustIssues
         }
 
         public void Freeze() { _frozen = true; _rb.linearVelocity = Vector2.zero; _rb.simulated = false; }
-        // Hand control back (used after the cinematic boss intro).
-        public void Unfreeze() { _frozen = false; _rb.simulated = true; }
+        // Hand control back (used after the cinematic boss intro). Taps queued in
+        // TouchInput while frozen (death anim, boss intro) are stale by now —
+        // drain them so control never resumes with a phantom jump/dash/shot.
+        public void Unfreeze()
+        {
+            _frozen = false; _rb.simulated = true;
+            _buffer = 0f;
+            TouchInput.ConsumeJump(); TouchInput.ConsumeDash(); TouchInput.ConsumeFire();
+        }
 
         // Plays the death frames once (called by GameRoot on death). Runs as a
         // coroutine so it works even though the controller is frozen.
@@ -162,6 +172,13 @@ namespace TrustIssues
             if (Input.GetKeyDown(Controls.Jump) || Input.GetKeyDown(KeyCode.UpArrow) ||
                 Input.GetKeyDown(KeyCode.W))
                 _buffer = jumpBuffer;
+            // Variable jump height: while any jump input stays held the rise uses
+            // the floaty riseGravity; release it and gravity snaps to fallGravity,
+            // cutting the jump short. Tap = low precise hop, hold = full arc —
+            // without this every tap launched a max-height jump ("jumps too much,
+            // no accuracy", worst on touch where taps are naturally short).
+            _jumpHeld = Input.GetKey(Controls.Jump) || Input.GetKey(KeyCode.UpArrow) ||
+                        Input.GetKey(KeyCode.W) || TouchInput.JumpHeld;
 
             if (Input.GetKeyDown(KeyCode.R)) GameRoot.I?.Die("Do-over!");
 
@@ -309,6 +326,7 @@ namespace TrustIssues
             {
                 v.y = jumpSpeed * jumpMul;
                 _buffer = 0f; _coyote = 0f;
+                _risingFromJump = true;
                 Audio.Play("jump", 0.5f);
                 Fx.Dust(transform.position + Vector3.down * 0.4f);
             }
@@ -316,6 +334,7 @@ namespace TrustIssues
             {
                 v.y = jumpSpeed * jumpMul;                   // mid-air (double) jump
                 _buffer = 0f; _airJumpsLeft--;
+                _risingFromJump = true;
                 Audio.Play("jump", 0.6f);
             }
 
@@ -326,7 +345,13 @@ namespace TrustIssues
             if (_flying && v.y < -glideFall) v.y = -glideFall;
 
             _rb.linearVelocity = v;
-            _rb.gravityScale = _rb.linearVelocity.y > 0.1f ? riseGravity : fallGravity;
+            // Variable jump height — ONLY for rises we launched ourselves.
+            // Jump held = floaty riseGravity full arc; released early = heavy
+            // fallGravity cuts the hop short. Trampolines / boss knock-ups are
+            // external launches and keep the full riseGravity arc regardless.
+            if (_rb.linearVelocity.y <= 0.1f) _risingFromJump = false;
+            bool cutJump = _risingFromJump && !_jumpHeld;
+            _rb.gravityScale = (_rb.linearVelocity.y > 0.1f && !cutJump) ? riseGravity : fallGravity;
         }
     }
 }
