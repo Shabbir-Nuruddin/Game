@@ -185,6 +185,31 @@
     var pctLabel = document.querySelector("#ti-pct");
     var tipLabel = document.querySelector("#ti-tip");
 
+    // ---- Mobile TTS unlock: the death-roast voice line (Voice.cs -> Speak.jslib
+    // -> speechSynthesis.speak) fires from game logic, not a DOM click handler,
+    // several frames after any real tap. Mobile browsers (iOS Safari especially)
+    // silently drop speech synthesis calls unless the API has been used at least
+    // once inside a genuine user-gesture event — which is why the taunts spoke
+    // fine on desktop but stayed silent on phones. There's no "tap to start"
+    // button in this template, so piggyback on the player's very first tap
+    // anywhere on the page: one silent utterance there is enough to unlock
+    // speechSynthesis for every later async call this session.
+    (function () {
+      function unlockSpeech() {
+        try {
+          if (window.speechSynthesis) {
+            var u = new SpeechSynthesisUtterance(" ");
+            u.volume = 0;
+            window.speechSynthesis.speak(u);
+          }
+        } catch (e) { /* best-effort */ }
+        document.removeEventListener("touchend", unlockSpeech, true);
+        document.removeEventListener("pointerdown", unlockSpeech, true);
+      }
+      document.addEventListener("touchend", unlockSpeech, true);
+      document.addEventListener("pointerdown", unlockSpeech, true);
+    })();
+
     // ---- Load-funnel telemetry (same collect endpoint the game uses). ----
     // Unity's device_id lives in PlayerPrefs (IndexedDB), unreadable from here,
     // so template events carry their own localStorage id — the load funnel
