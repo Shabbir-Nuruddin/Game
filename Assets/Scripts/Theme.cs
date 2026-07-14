@@ -210,6 +210,32 @@ namespace TrustIssues
             }
         }
 
+        // A hollow ring (outline only, transparent centre) — the base of the
+        // on-screen virtual joystick, so it reads as a stick socket rather than
+        // a solid disc. Tint/alpha controlled via Image.color like Circle.
+        static Sprite _ring;
+        public static Sprite Ring
+        {
+            get
+            {
+                if (_ring != null) return _ring;
+                const int S = 96;
+                float c = (S - 1) / 2f, R = c - 1f, thickness = 7f;
+                var tex = new Texture2D(S, S) { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
+                for (int y = 0; y < S; y++)
+                    for (int x = 0; x < S; x++)
+                    {
+                        float d = Mathf.Sqrt((x - c) * (x - c) + (y - c) * (y - c));
+                        float outer = Mathf.Clamp01((R - d) / 1.5f);
+                        float inner = Mathf.Clamp01((R - thickness - d) / -1.5f);
+                        tex.SetPixel(x, y, new Color(1f, 1f, 1f, Mathf.Min(outer, inner)));
+                    }
+                tex.Apply();
+                _ring = Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), S);
+                return _ring;
+            }
+        }
+
         static Sprite _grad;
         /// <summary>A soft vertical gradient sprite for backdrops (1 world unit).</summary>
         public static Sprite Gradient(Color top, Color bottom)

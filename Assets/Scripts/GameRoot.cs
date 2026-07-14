@@ -128,6 +128,11 @@ namespace TrustIssues
             // (unfocused) instance pauses, its Photon keepalive stops, and the
             // server times it out (the "no ghost" / AppOutOfFocus disconnect).
             Application.runInBackground = true;
+            // WebGL leaves the frame rate at the platform default, which on some
+            // mobile browsers throttles well below the display refresh — every
+            // touch read (Update()) then happens less often, which is exactly
+            // what players feel as "movement is delayed." Pin it explicitly.
+            Application.targetFrameRate = 60;
             Time.timeScale = 1f;
             // Toast when a new Bestiary page is revealed (drives the "gotta catch 'em all").
             Codex.OnUnlocked = t => ShowBanner("NEW BESTIARY PAGE", $"{Codex.Title(t)} — read it in the book");
@@ -564,24 +569,27 @@ namespace TrustIssues
             rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
             rt.offsetMin = rt.offsetMax = Vector2.zero;
 
-            // Small circular pads hugging the corners so they hide as little of the
-            // playfield as possible (TouchButton pads the HIT zone ~25% past the
-            // visual, so "small" stays comfortably tappable). Positions keep every
-            // hit zone clear of its neighbours — overlapping zones would fire two
-            // actions with one finger. Movement arrows bottom-left…
-            MakeTouch("‹", -1, new Vector2(0f, 0f), new Vector2(145, 145), new Vector2(150, 150), 0.16f);
-            MakeTouch("›", 1, new Vector2(0f, 0f), new Vector2(345, 145), new Vector2(150, 150), 0.16f);
+            // Movement bottom-left: either the two bare arrow glyphs (no circle,
+            // no background — just the glyph) or the virtual joystick, whichever
+            // Settings > MOVE has picked. Both are built; only one is ever shown,
+            // toggled every frame in UpdateTouchLayout() like the ability buttons.
+            _btnLeft  = MakeArrowGlyph("‹", -1, new Vector2(0f, 0f), new Vector2(120, 145), new Vector2(150, 150));
+            _btnRight = MakeArrowGlyph("›", 1, new Vector2(0f, 0f), new Vector2(340, 145), new Vector2(150, 150));
+            _joystick = MakeJoystick(new Vector2(0f, 0f), new Vector2(230, 165), 170f);
             // …action cluster bottom-right. JUMP is always there; the rest are shown
             // contextually (bat in Blood Moon/Endless, dash if the skin grants it,
-            // SHOOT only while holding a loaded gun) via UpdateTouchLayout().
-            MakeTouch("JUMP", 0, new Vector2(1f, 0f), new Vector2(-150, 145), new Vector2(170, 170), 0.18f);
+            // SHOOT only while holding a loaded gun) via UpdateTouchLayout(). JUMP
+            // is a bare up-arrow (no circle, no background, no label) per the same
+            // "just the arrow" styling as the movement glyphs.
+            MakeArrowGlyph("▲", 0, new Vector2(1f, 0f), new Vector2(-150, 145), new Vector2(170, 170));
             _btnFly   = MakeTouch("BAT",   3, new Vector2(1f, 0f), new Vector2(-360, 120), new Vector2(130, 130), 0.20f);
             _btnDash  = MakeTouch("DASH",  4, new Vector2(1f, 0f), new Vector2(-140, 350), new Vector2(130, 130), 0.18f);
-            _btnShoot = MakeTouch("SHOOT", 2, new Vector2(1f, 0f), new Vector2(-360, 310), new Vector2(130, 130), 0.22f);
+            _btnShoot = MakeGunButton(new Vector2(1f, 0f), new Vector2(-360, 310), new Vector2(130, 130));
+            SyncMoveMode();
             _touchPanel.SetActive(false);
         }
 
-        GameObject _btnFly, _btnDash, _btnShoot;
+        GameObject _btnFly, _btnDash, _btnShoot, _btnLeft, _btnRight, _joystick;
 
         // On-screen controls show on real mobile browsers (isMobilePlatform already
         // detects those on WebGL and excludes touch laptops) OR when force-enabled in
@@ -605,6 +613,18 @@ namespace TrustIssues
             SyncTouchButton(_btnFly,   _player != null && _player.canFly);
             SyncTouchButton(_btnDash,  _player != null && _player.dashEnabled);
             SyncTouchButton(_btnShoot, _player != null && _player.canShoot && _player.ammo > 0);
+            SyncMoveMode();
+        }
+
+        // Settings > MOVE: JOYSTICK toggle picks arrows or the stick. Re-checked
+        // every frame (cheap, change-guarded) so flipping it in Settings takes
+        // effect the instant Play resumes, with no rebuild needed.
+        void SyncMoveMode()
+        {
+            bool joystick = PlayerPrefs.GetInt("opt_joystick", 0) == 1;
+            SyncTouchButton(_btnLeft, !joystick);
+            SyncTouchButton(_btnRight, !joystick);
+            SyncTouchButton(_joystick, joystick);
         }
 
         static void SyncTouchButton(GameObject btn, bool on)
@@ -626,6 +646,88 @@ namespace TrustIssues
             int fontSize = (dir == -1 || dir == 1) ? 64 : (label.Length > 4 ? 20 : 24);
             Theme.Label(go.transform, label, fontSize, new Color(1, 1, 1, 0.9f),
                 new Vector2(0.5f, 0.5f), Vector2.zero, size);
+            return go;
+        }
+
+        // A bare arrow/chevron glyph — no Image, no circle, no background — just
+        // the character itself sitting over an invisible hit box. Used for the
+        // JUMP button and (in Arrow move-mode) the left/right pads.
+        GameObject MakeArrowGlyph(string glyph, int dir, Vector2 anchor, Vector2 pos, Vector2 size)
+        {
+            var go = new GameObject("Touch_" + glyph, typeof(RectTransform));
+            go.transform.SetParent(_touchPanel.transform, false);
+            var rt = (RectTransform)go.transform;
+            rt.anchorMin = rt.anchorMax = anchor; rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.anchoredPosition = pos; rt.sizeDelta = size;
+            var tb = go.AddComponent<TouchButton>();
+            tb.dir = dir;
+            var label = Theme.Label(go.transform, glyph, 64, new Color(1, 1, 1, 0.55f),
+                new Vector2(0.5f, 0.5f), Vector2.zero, size);
+            tb.SetFeedback(new Graphic[] { label });
+            return go;
+        }
+
+        // A small pistol silhouette built from stacked rects (same technique as
+        // the world-space gun on the player) instead of the plain circular pad —
+        // reads as "a gun" rather than a generic button.
+        GameObject MakeGunButton(Vector2 anchor, Vector2 pos, Vector2 size)
+        {
+            var go = new GameObject("Touch_GUN", typeof(RectTransform));
+            go.transform.SetParent(_touchPanel.transform, false);
+            var rt = (RectTransform)go.transform;
+            rt.anchorMin = rt.anchorMax = anchor; rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.anchoredPosition = pos; rt.sizeDelta = size;
+            var tb = go.AddComponent<TouchButton>();
+            tb.dir = 2;
+
+            var col = new Color(1f, 1f, 1f, 0.32f);
+            var parts = new[]
+            {
+                GunIconPart(go.transform, "Body",   new Vector2(-6, -4),  new Vector2(58, 34), col),
+                GunIconPart(go.transform, "Barrel", new Vector2(38, 6),   new Vector2(56, 16), col),
+                GunIconPart(go.transform, "Grip",   new Vector2(-22, -28),new Vector2(20, 34), col),
+            };
+            tb.SetFeedback(parts);
+            return go;
+        }
+
+        static Graphic GunIconPart(Transform parent, string name, Vector2 pos, Vector2 size, Color col)
+        {
+            var go = new GameObject("Part_" + name, typeof(RectTransform));
+            go.transform.SetParent(parent, false);
+            var img = go.AddComponent<Image>();
+            img.sprite = Theme.Square;
+            img.color = col;
+            var rt = img.rectTransform;
+            rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f); rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.anchoredPosition = pos; rt.sizeDelta = size;
+            return img;
+        }
+
+        // A semi-transparent virtual joystick: a hollow ring base plus a solid
+        // knob that snaps to the drag and back to centre on release.
+        GameObject MakeJoystick(Vector2 anchor, Vector2 pos, float baseSize)
+        {
+            var go = new GameObject("Touch_JOYSTICK", typeof(RectTransform));
+            go.transform.SetParent(_touchPanel.transform, false);
+            var baseImg = go.AddComponent<Image>();
+            baseImg.sprite = Theme.Ring;
+            baseImg.color = new Color(1f, 1f, 1f, 0.22f);
+            var rt = baseImg.rectTransform;
+            rt.anchorMin = rt.anchorMax = anchor; rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.anchoredPosition = pos; rt.sizeDelta = new Vector2(baseSize, baseSize);
+
+            var knobGo = new GameObject("Knob", typeof(RectTransform));
+            knobGo.transform.SetParent(go.transform, false);
+            var knobImg = knobGo.AddComponent<Image>();
+            knobImg.sprite = Theme.Circle;
+            knobImg.color = new Color(1f, 1f, 1f, 0.35f);
+            var knobRt = knobImg.rectTransform;
+            knobRt.anchorMin = knobRt.anchorMax = new Vector2(0.5f, 0.5f); knobRt.pivot = new Vector2(0.5f, 0.5f);
+            knobRt.anchoredPosition = Vector2.zero; knobRt.sizeDelta = new Vector2(baseSize * 0.45f, baseSize * 0.45f);
+
+            var js = go.AddComponent<TouchJoystick>();
+            js.Setup(knobRt, new Graphic[] { baseImg, knobImg });
             return go;
         }
 
@@ -1017,7 +1119,8 @@ namespace TrustIssues
                 new Vector2(0.5f, 0.5f), new Vector2(0, -294), new Vector2(1200, 36));
             MakeToggle(root, new Vector2(-290, -348), "REPLAY GHOST", "opt_replay_ghost", 0);
             MakeToggle(root, new Vector2(290, -348), "ON-SCREEN PADS", "opt_touch", 0);
-            MakeToggle(root, new Vector2(0, -414), "2.5D DEPTH", "opt_25d", 1, 560f, ApplyDepthMode);
+            MakeMoveModeToggle(root, new Vector2(-290, -414));
+            MakeToggle(root, new Vector2(290, -414), "2.5D DEPTH", "opt_25d", 1, 420f, ApplyDepthMode);
 
             Theme.Button(root, "‹ BACK", new Color(1, 1, 1, 0.25f), Color.white, 44,
                 new Vector2(0.5f, 0f), new Vector2(0, 40), new Vector2(360, 100), ShowMenu);
@@ -1141,6 +1244,28 @@ namespace TrustIssues
                     PlayerPrefs.Save();
                     if (!Audio.Muted) Audio.Play("click", 0.6f);
                     onChanged?.Invoke();   // live-apply hooks (e.g. 2.5D re-placement)
+                    var t = btn.GetComponentInChildren<Text>();
+                    if (t != null) t.text = caption();
+                });
+        }
+
+        // Movement control mode: bare arrow pads or the virtual joystick. Same
+        // look/behaviour as MakeToggle but flips between two named states
+        // instead of ON/OFF, and re-syncs the live touch layout immediately so
+        // switching mid-settings shows correctly the moment Play resumes.
+        void MakeMoveModeToggle(Transform root, Vector2 pos)
+        {
+            Button btn = null;
+            System.Func<string> caption = () =>
+                $"MOVE:  {(PlayerPrefs.GetInt("opt_joystick", 0) == 1 ? "JOYSTICK" : "ARROWS")}";
+            btn = Theme.Button(root, caption(), new Color(0.24f, 0.17f, 0.28f, 0.95f), Color.white, 22,
+                new Vector2(0.5f, 0.5f), pos, new Vector2(420, 68), () =>
+                {
+                    int cur = PlayerPrefs.GetInt("opt_joystick", 0);
+                    PlayerPrefs.SetInt("opt_joystick", cur == 1 ? 0 : 1);
+                    PlayerPrefs.Save();
+                    if (!Audio.Muted) Audio.Play("click", 0.6f);
+                    SyncMoveMode();
                     var t = btn.GetComponentInChildren<Text>();
                     if (t != null) t.text = caption();
                 });
