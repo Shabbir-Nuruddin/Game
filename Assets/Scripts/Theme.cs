@@ -171,6 +171,45 @@ namespace TrustIssues
             return y >= bottom && y <= top;
         }
 
+        // The "candles went out" overlay: opaque everywhere except a soft-edged
+        // hole in the middle, which the Dark room rule parks on the player. Alpha
+        // is baked white so callers tint it; the falloff is smoothstepped because
+        // this is meant to read as candlelight, not a spotlight with a hard rim.
+        //
+        // The hole is a small fraction of the sprite because the sprite gets drawn
+        // BIGGER than the screen (see RoomDirector) — that's what guarantees the
+        // dark reaches every corner no matter where on screen the player is.
+        // Tuned so the lit circle is roughly one platform wide: enough to see the
+        // lip of a gap you're standing on, not enough to see what's coming. Prime
+        // candidate for a playtest tweak.
+        public const float DarkHoleR = 0.105f;    // normalised radius: fully lit inside this
+        public const float DarkFalloffR = 0.170f; // …fully dark outside this
+        static Sprite _darkMask;
+        public static Sprite DarkMask
+        {
+            get
+            {
+                if (_darkMask != null) return _darkMask;
+                const int S = 1024;
+                var tex = new Texture2D(S, S, TextureFormat.RGBA32, false)
+                    { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
+                var px = new Color32[S * S];
+                float half = S / 2f;
+                for (int y = 0; y < S; y++)
+                    for (int x = 0; x < S; x++)
+                    {
+                        float dx = (x + 0.5f - half) / half, dy = (y + 0.5f - half) / half;
+                        float r = Mathf.Sqrt(dx * dx + dy * dy);
+                        float t = Mathf.InverseLerp(DarkHoleR, DarkFalloffR, r);
+                        float a = t * t * (3f - 2f * t);           // smoothstep
+                        px[y * S + x] = new Color32(255, 255, 255, (byte)(a * 255f));
+                    }
+                tex.SetPixels32(px); tex.Apply();
+                _darkMask = Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), 100f);
+                return _darkMask;
+            }
+        }
+
         // A tileable castle-stone block (dark slate with mortar lines + subtle
         // grain). Replaces the off-theme pink candy tile on every floor. Tiled
         // by the platform builder; the blood-red lip is a SEPARATE strip on top

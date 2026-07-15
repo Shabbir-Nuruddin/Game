@@ -2104,6 +2104,10 @@ namespace TrustIssues
                 BuildHiddenDoor();  // tonight's rumor (2): the ghost door of night 2
 
             SpawnPlayer();
+            // Roomed levels (the rebuilt Castle floors) get a director to run the
+            // per-room rule + drop room-entry checkpoints. Corridor levels don't.
+            if (_level.Rooms.Count > 0 && _player != null)
+                _levelRoot.gameObject.AddComponent<RoomDirector>().Init(_level.Rooms, _player.transform);
             SpawnFirstSessionPrompts(); // faint in-world key hints, first boot + floor 1 only
             SpawnReplayGhost();      // race your previous attempt
             SpawnDeathEchoes();      // tombstones of real other players who died here
@@ -3384,6 +3388,20 @@ namespace TrustIssues
         }
 
         // ==================== death / respawn ====================
+
+        // Crossing into a new room auto-checkpoints. That happens several times a
+        // level, so it stays SILENT — no toast, no jingle, no analytics event —
+        // unlike the deliberate checkpoint pickup below, which is a reward the
+        // player went and earned and should announce itself. It also never moves
+        // backwards, so wandering back through a doorway can't cost you progress.
+        public void SetRoomCheckpoint(Vector3 pos)
+        {
+            var p = pos + Vector3.up * 0.6f;
+            if (_hasCheckpoint && p.x <= _checkpoint.x) return;
+            _checkpoint = p;
+            _hasCheckpoint = true;
+        }
+
         public void SetCheckpoint(Vector3 pos)
         {
             _checkpoint = pos + Vector3.up * 0.6f;

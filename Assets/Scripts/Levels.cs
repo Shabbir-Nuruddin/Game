@@ -18,6 +18,28 @@ namespace TrustIssues
         public PortalPair(float ax, float ay, float bx, float by)
         { a = new Vector2(ax, ay); b = new Vector2(bx, by); } }
 
+    /// <summary>
+    /// The ONE lie a room tells. This is the fix for "every level is the same 3
+    /// platforms with different obstacles": a trap is an object you dodge, but a
+    /// rule breaks a promise the whole room was built on. Exactly one per room,
+    /// introduced then retired, so nothing ever settles into a pattern.
+    /// </summary>
+    public enum RoomRule
+    {
+        None,       // an honest room — the breather that makes the next lie land
+        Dark,       // the candles go out; you can only see a small circle around you
+    }
+
+    /// <summary>One room of a level: an X slice of the run, plus the rule it breaks.</summary>
+    public struct RoomSpec
+    {
+        public float MinX, MaxX;
+        public RoomRule Rule;
+        public float EntryX => MinX + 1.2f;   // where you respawn if you die in here
+        public RoomSpec(float minX, float maxX, RoomRule rule)
+        { MinX = minX; MaxX = maxX; Rule = rule; }
+    }
+
     public class Level
     {
         public Vector2 Spawn;
@@ -27,6 +49,9 @@ namespace TrustIssues
         public List<TrapSpec> Traps = new();
         public List<Deco> Decos = new();
         public List<PortalPair> Portals = new();
+        // Empty on the old corridor levels (11-40, Endless, Daily, Versus), which
+        // keep their original behaviour untouched. Non-empty = a roomed level.
+        public List<RoomSpec> Rooms = new();
     }
 
     /// <summary>
@@ -69,10 +94,50 @@ namespace TrustIssues
         public void HolyWater(float x) => T(TrapType.HolyWater, x, -2.55f, 1.4f, 0.4f); // floor puddle, pulses lethal
         public void Bat(float x) => T(TrapType.BatSwoop, x, 1.8f, 0.6f, 0.6f);          // hovers, then dives
 
+        // ---- Rooms ----
+        // A roomed level is still one continuous left-to-right run, but it's cut
+        // into chambers by a ceiling and a wall with a doorway punched through it.
+        // That alone kills the "endless corridor" read; the rule on each room is
+        // what kills the "same level again" read.
+        public const float CeilY = 3.4f;    // high enough that a full jump clears the doorway comfortably
+        const float DoorTopY = -1.1f;       // headroom of the gap you walk through
+        RoomRule _roomRule = RoomRule.None;
+        float _roomStart;
+        bool _inRoom;
+
+        /// <summary>Open a new chamber here, walling it off from the last one.</summary>
+        public void Room(RoomRule rule)
+        {
+            bool first = !_inRoom;
+            CloseRoom();
+            if (!first)
+            {
+                // The divider: solid from the doorway's head up to the ceiling, so
+                // the player ducks through the gap at floor level.
+                float wy = (DoorTopY + CeilY) / 2f;
+                L.Platforms.Add(new Rect2(cur, wy, 0.6f, CeilY - DoorTopY));
+            }
+            _roomStart = cur; _roomRule = rule; _inRoom = true;
+        }
+
+        // Close the open chamber, capping it with a ceiling across its full span.
+        void CloseRoom()
+        {
+            if (!_inRoom) return;
+            float w = cur - _roomStart;
+            if (w > 0.5f)
+            {
+                L.Rooms.Add(new RoomSpec(_roomStart, cur, _roomRule));
+                L.Platforms.Add(new Rect2(_roomStart + w / 2f, CeilY, w, 0.6f));
+            }
+            _inRoom = false;
+        }
+
         public Level Finish()
         {
             Gap(2.5f);
             float endc = Plat(4f);
+            CloseRoom();   // no-op on the old corridor levels, which never open one
             T(TrapType.RealExit, endc, -2f, 1.4f, 1.8f); // the one clear goal
             L.CamMinX = -1.5f;
             L.CamMaxX = Mathf.Max(-1.5f, cur - 10f);
@@ -233,27 +298,40 @@ namespace TrustIssues
         // "gauntlet" gates (and become BOSS rooms once Phase 2 lands).
         // ====================================================================
 
-        // 1 — first steps: jump the gaps, hop a single spike.
+        // 1 — first steps, and the first look at a real CHAMBER: five small rooms
+        // joined by doorways, not one long corridor. There's no lie on this floor
+        // on purpose. The room has to read as a solid, honest place before
+        // breaking one is worth anything — you can't betray a promise you never
+        // made. Room entry also checkpoints, which is what lets floors 2+ be mean.
         static Level L1()
         {
             var b = new B();
-            b.Plat(5f);
-            b.Gap(2.3f);
-            float p2 = b.Plat(5f); b.Spike(p2);
-            b.Gap(2.3f);
-            b.Plat(5f);
+            b.Room(RoomRule.None); b.Plat(6f);                                   // just walk
+            b.Room(RoomRule.None); b.Plat(3.5f); b.Gap(2.3f); b.Plat(3.5f);      // one gap
+            b.Room(RoomRule.None); float a = b.Plat(6f); b.Spike(a);             // one spike
+            b.Room(RoomRule.None); b.Plat(3f); b.Gap(2.3f);
+                                   float c = b.Plat(4.5f); b.Spike(c);           // both at once
+            b.Room(RoomRule.None); b.Plat(4f);                                   // …and the coffin
             return b.Finish();
         }
 
-        // 2 — the late spike: it springs up as you arrive, so keep moving.
+        // 2 — THE CANDLES GO OUT. The floor's one rule: you can only see a circle
+        // around yourself. Room 1 is lit so you learn to trust your eyes; room 2
+        // goes dark and does NOTHING, which is the real trick — it teaches that
+        // dark is survivable right before room 3 puts a spike in it. Room 4 gives
+        // the light back (relief is what makes room 5 land), and room 5 takes it
+        // away for the run to the coffin.
         static Level L2()
         {
             var b = new B();
-            b.Plat(5f);
-            b.Gap(2.4f);
-            float p2 = b.Plat(5f); b.LateSpike(p2);
-            b.Gap(2.4f);
-            float p3 = b.Plat(5f); b.Spike(p3);
+            b.Room(RoomRule.None); b.Plat(6f);
+            b.Room(RoomRule.Dark); b.Plat(7f);                                   // dark, and empty. yet.
+            b.Room(RoomRule.Dark); float a = b.Plat(7f); b.Spike(a);
+            b.Room(RoomRule.None); b.Plat(4f); b.Gap(2.3f); b.Plat(4f);          // lights up: breathe
+            // Exactly ONE blind jump to finish — the one Finish() adds before the
+            // coffin. Two in a row in the dark stops being tense and starts being
+            // a coin flip, which is the line this game shouldn't cross.
+            b.Room(RoomRule.Dark); float c = b.Plat(6f); b.Spike(c);
             return b.Finish();
         }
 
