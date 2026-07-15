@@ -98,6 +98,79 @@ namespace TrustIssues
             }
         }
 
+        // A smooth bat silhouette for UI, drawn from curves rather than a pixel
+        // grid so it still reads cleanly blown up to touch-button size. The
+        // chunky pixel Bat above stays on the world bats (it's tiny on screen and
+        // the pixel look is deliberate there); this one exists because the BAT
+        // button was a circle with the word "BAT" in it, which looked like a
+        // placeholder. White so callers can tint it.
+        //
+        // The two details that stop a spread-wing shape reading as a moth: an
+        // S-curved leading edge that dips at the shoulder then sweeps up to a
+        // pointed tip, and a scalloped trailing edge.
+        static Sprite _batGlyph;
+        public static Sprite BatGlyph
+        {
+            get
+            {
+                if (_batGlyph != null) return _batGlyph;
+                const int W = 160, H = 80;
+                const int SS = 3;        // supersamples per axis — the edges are curves, so they need AA
+                const float XS = 1.18f;  // zoom out slightly so the wingtips aren't clipped by the edge
+                var tex = new Texture2D(W, H, TextureFormat.RGBA32, false)
+                    { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
+                var px = new Color32[W * H];
+                for (int py = 0; py < H; py++)
+                    for (int x = 0; x < W; x++)
+                    {
+                        int hits = 0;
+                        for (int sy = 0; sy < SS; sy++)
+                            for (int sx = 0; sx < SS; sx++)
+                            {
+                                float wx = (((x + (sx + 0.5f) / SS) / W) * 2f - 1f) * XS;
+                                float wy = (0.5f - (py + (sy + 0.5f) / SS) / H) * XS;
+                                if (BatGlyphHit(wx, wy)) hits++;
+                            }
+                        // Color32[] runs bottom-up; py runs top-down.
+                        px[(H - 1 - py) * W + x] = new Color32(255, 255, 255, (byte)(255 * hits / (SS * SS)));
+                    }
+                tex.SetPixels32(px); tex.Apply();
+                _batGlyph = Sprite.Create(tex, new Rect(0, 0, W, H), new Vector2(0.5f, 0.5f), 100f);
+                return _batGlyph;
+            }
+        }
+
+        static bool BatEll(float x, float y, float cx, float cy, float rx, float ry)
+        {
+            float dx = (x - cx) / rx, dy = (y - cy) / ry;
+            return dx * dx + dy * dy <= 1f;
+        }
+
+        // Solid test for the bat silhouette, in a space where x spans [-1,1] and
+        // y spans [-0.5,0.5] (so the icon is 2:1).
+        static bool BatGlyphHit(float x, float y)
+        {
+            if (BatEll(x, y, 0f, -0.05f, 0.115f, 0.26f)) return true;   // body
+            if (BatEll(x, y, 0f, 0.20f, 0.115f, 0.105f)) return true;   // head
+            for (int i = 0; i < 2; i++)                                 // two swept ears
+            {
+                float s = i == 0 ? -1f : 1f;
+                if (y >= 0.21f && y <= 0.42f)
+                {
+                    float t = (y - 0.21f) / 0.21f;
+                    if (Mathf.Abs(x - (s * 0.065f + s * 0.045f * t)) <= 0.058f * (1f - t)) return true;
+                }
+            }
+            float ax = Mathf.Abs(x);
+            if (ax < 0.06f) return false;
+            float u = (ax - 0.06f) / 0.94f;      // 0 at the shoulder, 1 at the wingtip
+            if (u > 1f) return false;
+            float top = 0.15f - 0.42f * u + 0.65f * u * u;      // leading edge (the S)
+            float bottom = -0.36f + 0.74f * Mathf.Pow(u, 2.2f)  // trailing edge, rising to meet the tip…
+                           - 0.10f * (1f - 0.45f * u) * Mathf.Abs(Mathf.Sin(3f * Mathf.PI * u));  // …scalloped
+            return y >= bottom && y <= top;
+        }
+
         // A tileable castle-stone block (dark slate with mortar lines + subtle
         // grain). Replaces the off-theme pink candy tile on every floor. Tiled
         // by the platform builder; the blood-red lip is a SEPARATE strip on top

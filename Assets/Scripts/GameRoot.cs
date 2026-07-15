@@ -582,7 +582,7 @@ namespace TrustIssues
             // is a bare up-arrow (no circle, no background, no label) per the same
             // "just the arrow" styling as the movement glyphs.
             MakeArrowGlyph("▲", 0, new Vector2(1f, 0f), new Vector2(-150, 145), new Vector2(170, 170));
-            _btnFly   = MakeTouch("BAT",   3, new Vector2(1f, 0f), new Vector2(-360, 120), new Vector2(130, 130), 0.20f);
+            _btnFly   = MakeBatButton(new Vector2(1f, 0f), new Vector2(-360, 120), new Vector2(130, 130));
             _btnDash  = MakeTouch("DASH",  4, new Vector2(1f, 0f), new Vector2(-140, 350), new Vector2(130, 130), 0.18f);
             _btnShoot = MakeGunButton(new Vector2(1f, 0f), new Vector2(-360, 310), new Vector2(130, 130));
             SyncMoveMode();
@@ -670,6 +670,33 @@ namespace TrustIssues
             var label = Theme.Label(go.transform, glyph, 64, new Color(1, 1, 1, 0.55f),
                 new Vector2(0.5f, 0.5f), Vector2.zero, size);
             tb.SetFeedback(new Graphic[] { label });
+            return go;
+        }
+
+        // A bare bat silhouette — no circle, no background, no "BAT" label — to
+        // match the gun button and the arrow glyphs beside it. The root keeps the
+        // full square size because that's the finger hit zone (TouchButton tests
+        // against it); only the artwork is 2:1.
+        GameObject MakeBatButton(Vector2 anchor, Vector2 pos, Vector2 size)
+        {
+            var go = new GameObject("Touch_BAT", typeof(RectTransform));
+            go.transform.SetParent(_touchPanel.transform, false);
+            var rt = (RectTransform)go.transform;
+            rt.anchorMin = rt.anchorMax = anchor; rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.anchoredPosition = pos; rt.sizeDelta = size;
+            var tb = go.AddComponent<TouchButton>();
+            tb.dir = 3;
+
+            var icon = new GameObject("Glyph", typeof(RectTransform));
+            icon.transform.SetParent(go.transform, false);
+            var irt = (RectTransform)icon.transform;
+            irt.anchorMin = irt.anchorMax = irt.pivot = new Vector2(0.5f, 0.5f);
+            irt.anchoredPosition = Vector2.zero;
+            irt.sizeDelta = new Vector2(size.x, size.x * 0.5f);   // the glyph is 2:1
+            var img = icon.AddComponent<Image>();
+            img.sprite = Theme.BatGlyph;
+            img.color = new Color(1f, 1f, 1f, 0.32f);             // same idle alpha as the gun
+            tb.SetFeedback(new Graphic[] { img });
             return go;
         }
 
