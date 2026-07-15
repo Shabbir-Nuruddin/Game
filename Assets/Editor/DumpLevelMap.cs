@@ -45,6 +45,11 @@ public static class DumpLevelMap
         foreach (var p in lvl.Platforms)
             FillRect(px, W, H, p.pos.x - p.size.x/2f, p.pos.y - p.size.y/2f, p.size.x, p.size.y,
                      new Color(0.65f, 0.62f, 0.70f));
+        // Floor that stops existing when the lights die — drawn distinctly so the
+        // gap it leaves behind can be checked against a blind jump.
+        foreach (var p in lvl.NightFloors)
+            FillRect(px, W, H, p.pos.x - p.size.x/2f, p.pos.y - p.size.y/2f, p.size.x, p.size.y,
+                     new Color(0.35f, 0.55f, 1f));
         foreach (var t in lvl.Traps)
         {
             var c = t.type == TrapType.RealExit ? new Color(0.3f,1f,0.4f)

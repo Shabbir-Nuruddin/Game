@@ -35,9 +35,13 @@ namespace TrustIssues
     {
         public float MinX, MaxX;
         public RoomRule Rule;
-        public float EntryX => MinX + 1.2f;   // where you respawn if you die in here
-        public RoomSpec(float minX, float maxX, RoomRule rule)
-        { MinX = minX; MaxX = maxX; Rule = rule; }
+        // Where the rule FIRES, which is usually not the doorway. A dark room that
+        // is already dark when you walk in is just a dim room — you creep through
+        // it. The rule has to land after you've seen the layout and committed to
+        // running it, so what it takes away is something you were relying on.
+        public float TriggerX;
+        public RoomSpec(float minX, float maxX, RoomRule rule, float triggerX)
+        { MinX = minX; MaxX = maxX; Rule = rule; TriggerX = triggerX; }
     }
 
     public class Level
@@ -52,6 +56,9 @@ namespace TrustIssues
         // Empty on the old corridor levels (11-40, Endless, Daily, Versus), which
         // keep their original behaviour untouched. Non-empty = a roomed level.
         public List<RoomSpec> Rooms = new();
+        // Floor that only exists while the candles are lit. Identical to a real
+        // platform in every way until its room goes dark, then it's simply gone.
+        public List<Rect2> NightFloors = new();
     }
 
     /// <summary>
@@ -102,14 +109,19 @@ namespace TrustIssues
         public const float CeilY = 3.4f;    // high enough that a full jump clears the doorway comfortably
         const float DoorTopY = -1.1f;       // headroom of the gap you walk through
         RoomRule _roomRule = RoomRule.None;
-        float _roomStart;
+        float _roomStart, _roomTrigger;
         bool _inRoom;
 
-        /// <summary>Open a new chamber here, walling it off from the last one.</summary>
-        public void Room(RoomRule rule)
+        /// <summary>
+        /// Open a new chamber here, walling it off from the last one.
+        /// triggerFrac is how far into the room the rule fires, 0-1. Default 0.35:
+        /// you get a clear look at the room, start running it, and THEN it lies.
+        /// </summary>
+        public void Room(RoomRule rule, float triggerFrac = 0.35f)
         {
             bool first = !_inRoom;
             CloseRoom();
+            _roomTrigger = triggerFrac;
             if (!first)
             {
                 // The divider: solid from the doorway's head up to the ceiling, so
@@ -127,10 +139,24 @@ namespace TrustIssues
             float w = cur - _roomStart;
             if (w > 0.5f)
             {
-                L.Rooms.Add(new RoomSpec(_roomStart, cur, _roomRule));
+                L.Rooms.Add(new RoomSpec(_roomStart, cur, _roomRule,
+                                         _roomStart + w * Mathf.Clamp01(_roomTrigger)));
                 L.Platforms.Add(new Rect2(_roomStart + w / 2f, CeilY, w, 0.6f));
             }
             _inRoom = false;
+        }
+
+        /// <summary>
+        /// Floor that's real until the lights die. Keep these NARROW — when it
+        /// vanishes it must leave a gap you can still jump blind, or the room
+        /// becomes impossible rather than mean.
+        /// </summary>
+        public float NightFloor(float w)
+        {
+            float cx = cur + w / 2f;
+            L.NightFloors.Add(new Rect2(cx, -3f, w, 0.6f));
+            cur += w;
+            return cx;
         }
 
         public Level Finish()
@@ -298,40 +324,47 @@ namespace TrustIssues
         // "gauntlet" gates (and become BOSS rooms once Phase 2 lands).
         // ====================================================================
 
-        // 1 — first steps, and the first look at a real CHAMBER: five small rooms
-        // joined by doorways, not one long corridor. There's no lie on this floor
-        // on purpose. The room has to read as a solid, honest place before
-        // breaking one is worth anything — you can't betray a promise you never
-        // made. Room entry also checkpoints, which is what lets floors 2+ be mean.
+        // 1 — five chambers, and the castle starts lying immediately. Room 1 is the
+        // only honest one, and it's short: just long enough to believe the floor
+        // holds you up. Then the floor lies (room 2) and the spikes are late
+        // (room 3), so the very first floor already teaches the golden-path rule —
+        // the inviting thing is the trap.
         static Level L1()
         {
             var b = new B();
-            b.Room(RoomRule.None); b.Plat(6f);                                   // just walk
-            b.Room(RoomRule.None); b.Plat(3.5f); b.Gap(2.3f); b.Plat(3.5f);      // one gap
-            b.Room(RoomRule.None); float a = b.Plat(6f); b.Spike(a);             // one spike
-            b.Room(RoomRule.None); b.Plat(3f); b.Gap(2.3f);
-                                   float c = b.Plat(4.5f); b.Spike(c);           // both at once
+            b.Room(RoomRule.None); b.Plat(5.5f);                                 // trust me
+            b.Room(RoomRule.None); b.Plat(2.5f); b.FakeFloor(2.2f); b.Plat(3f);  // …don't stop on it
+            b.Room(RoomRule.None); float a = b.Plat(6f); b.LateSpike(a);         // springs up as you arrive
+            b.Room(RoomRule.None); b.Plat(2.5f); b.Gap(2.3f);
+                                   float c = b.Plat(4f); b.Spike(c);
             b.Room(RoomRule.None); b.Plat(4f);                                   // …and the coffin
             return b.Finish();
         }
 
-        // 2 — THE CANDLES GO OUT. The floor's one rule: you can only see a circle
-        // around yourself. Room 1 is lit so you learn to trust your eyes; room 2
-        // goes dark and does NOTHING, which is the real trick — it teaches that
-        // dark is survivable right before room 3 puts a spike in it. Room 4 gives
-        // the light back (relief is what makes room 5 land), and room 5 takes it
-        // away for the run to the coffin.
+        // 2 — THE CANDLES GO OUT, and the floor goes with them.
+        //
+        // The rule isn't "it's dark" — dark on its own is just atmosphere, and you
+        // simply walk through it. The rule is that the light is what's HOLDING THE
+        // FLOOR UP. You walk into a lit room, you see solid ground the whole way
+        // across, you commit to the run — and partway in the candles snuff and the
+        // ground you memorised isn't there any more.
+        //
+        // The lights come back at every doorway, so each room gives you one honest
+        // look before it lies. That's the tell, and it's what makes the second
+        // death your own fault: in the dark, assume holes, and jump.
         static Level L2()
         {
             var b = new B();
-            b.Room(RoomRule.None); b.Plat(6f);
-            b.Room(RoomRule.Dark); b.Plat(7f);                                   // dark, and empty. yet.
-            b.Room(RoomRule.Dark); float a = b.Plat(7f); b.Spike(a);
-            b.Room(RoomRule.None); b.Plat(4f); b.Gap(2.3f); b.Plat(4f);          // lights up: breathe
-            // Exactly ONE blind jump to finish — the one Finish() adds before the
-            // coffin. Two in a row in the dark stops being tense and starts being
-            // a coin flip, which is the line this game shouldn't cross.
-            b.Room(RoomRule.Dark); float c = b.Plat(6f); b.Spike(c);
+            b.Room(RoomRule.None);        b.Plat(6f);                            // lit and honest
+            // the lights die exactly as you step onto the floor you were promised
+            b.Room(RoomRule.Dark, 0.42f); b.Plat(3f); b.NightFloor(2f); b.Plat(3f);
+            // …then the same lie twice. The lights still die under your feet on the
+            // FIRST gap; the second is the one you have to take blind, so the
+            // landing between them is kept wide enough to stop and re-aim on.
+            b.Room(RoomRule.Dark);        b.Plat(2.5f); b.NightFloor(2f); b.Plat(2.8f);
+                                          b.NightFloor(2f); b.Plat(2.5f);
+            b.Room(RoomRule.None);        b.Plat(3f); b.Gap(2.3f); b.Plat(3f);   // lights up: breathe
+            b.Room(RoomRule.Dark, 0.3f);  b.Plat(3f); b.NightFloor(2.2f); b.Plat(3f);
             return b.Finish();
         }
 

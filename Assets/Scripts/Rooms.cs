@@ -20,11 +20,23 @@ namespace TrustIssues
     /// Built and owned by GameRoot.BuildLevel; torn down with the level root.
     /// Levels with no rooms (11-40, Endless, Daily, Versus) never create one.
     /// </summary>
+    /// <summary>
+    /// Tags a platform as floor that only exists while its room is lit. Toggled
+    /// by RoomDirector; deactivating the whole object takes the collider, the
+    /// stone sprite and the 2.5D depth slices with it in one go.
+    /// </summary>
+    public class NightFloor : MonoBehaviour
+    {
+        public float x;   // world centre, used to decide which room owns it
+    }
+
     public class RoomDirector : MonoBehaviour
     {
         List<RoomSpec> _rooms;
         Transform _player;
+        NightFloor[] _nightFloors = System.Array.Empty<NightFloor>();
         int _active = -1;
+        bool _fired;   // has the ACTIVE room's rule tripped yet?
 
         // --- Dark rule ---
         GameObject _darkGO;
@@ -32,11 +44,16 @@ namespace TrustIssues
         Image _darkImg;
         float _darkT;              // 0 = lit, 1 = fully dark; eased so the lights "die" rather than cut
         bool _darkWanted;
-        const float DarkFade = 2.2f;   // how fast the candles go out / relight
+        // Candles get SNUFFED, they don't dim. A slow fade reads as a mood effect
+        // and gives the player time to stroll to safety; a fast one is an event
+        // that happens TO them. This is also the tell — the half-second of dying
+        // light is the warning that the floor is about to stop existing.
+        const float DarkFade = 0.55f;
 
-        public void Init(List<RoomSpec> rooms, Transform player)
+        public void Init(List<RoomSpec> rooms, Transform player, Transform levelRoot)
         {
             _rooms = rooms; _player = player;
+            _nightFloors = levelRoot.GetComponentsInChildren<NightFloor>(true);
         }
 
         void LateUpdate()
@@ -46,8 +63,31 @@ namespace TrustIssues
             int idx = RoomAt(_player.position.x);
             if (idx != _active && idx >= 0) EnterRoom(idx);
 
-            _darkWanted = _active >= 0 && _rooms[_active].Rule == RoomRule.Dark;
+            // The rule fires once the player is deep enough in — and STAYS fired
+            // while they're in this room, so backing up toward the doorway can't
+            // turn the lights back on and let them scout the room from safety.
+            if (_active >= 0 && !_fired && _player.position.x >= _rooms[_active].TriggerX)
+                _fired = true;
+
+            _darkWanted = _active >= 0 && _fired && _rooms[_active].Rule == RoomRule.Dark;
             UpdateDark();
+            UpdateNightFloors();
+        }
+
+        // Floor that's only real in the light. It vanishes the instant the room
+        // commits to dark rather than fading with the light — you're meant to run
+        // onto ground you watched yourself walk over, and find nothing there.
+        void UpdateNightFloors()
+        {
+            bool gone = _darkWanted && _darkT > 0.5f;
+            for (int i = 0; i < _nightFloors.Length; i++)
+            {
+                var nf = _nightFloors[i];
+                if (nf == null) continue;
+                bool mine = _active >= 0 && nf.x >= _rooms[_active].MinX && nf.x < _rooms[_active].MaxX;
+                bool on = !(mine && gone);
+                if (nf.gameObject.activeSelf != on) nf.gameObject.SetActive(on);
+            }
         }
 
         int RoomAt(float x)
@@ -60,10 +100,7 @@ namespace TrustIssues
         void EnterRoom(int idx)
         {
             _active = idx;
-            var r = _rooms[idx];
-            // Respawn at this room's mouth rather than the level start. Silent and
-            // forward-only — see SetRoomCheckpoint.
-            if (GameRoot.I != null) GameRoot.I.SetRoomCheckpoint(new Vector3(r.EntryX, -2f, 0f));
+            _fired = false;   // the new room's rule hasn't tripped yet
         }
 
         // ---------------- Dark ----------------

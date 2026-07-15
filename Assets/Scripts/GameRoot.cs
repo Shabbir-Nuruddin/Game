@@ -575,7 +575,10 @@ namespace TrustIssues
             // toggled every frame in UpdateTouchLayout() like the ability buttons.
             _btnLeft  = MakeArrowGlyph("‹", -1, new Vector2(0f, 0f), new Vector2(120, 145), new Vector2(150, 150));
             _btnRight = MakeArrowGlyph("›", 1, new Vector2(0f, 0f), new Vector2(340, 145), new Vector2(150, 150));
-            _joystick = MakeJoystick(new Vector2(0f, 0f), new Vector2(230, 165), 170f);
+            // Base size drives the knob, the travel radius and the grab pad (see
+            // TouchJoystick.Setup), so this one number is the whole stick's feel.
+            // Bumped from 170: at that size it was fiddly to steer with a thumb.
+            _joystick = MakeJoystick(new Vector2(0f, 0f), new Vector2(250, 185), 240f);
             // …action cluster bottom-right. JUMP is always there; the rest are shown
             // contextually (bat in Blood Moon/Endless, dash if the skin grants it,
             // SHOOT only while holding a loaded gun) via UpdateTouchLayout(). JUMP
@@ -2090,6 +2093,11 @@ namespace TrustIssues
 
             foreach (var p in _level.Platforms)
                 BuildPlatform(p);
+            // Built exactly like a real platform — same stone, same lip — because
+            // it has to be indistinguishable right up until the lights die.
+            foreach (var nf in _level.NightFloors)
+                BuildStoneFloor("NightFloor", nf.pos, nf.size, null)
+                    .AddComponent<NightFloor>().x = nf.pos.x;
             foreach (var d in _level.Decos)
                 Theme.Box("Deco", _levelRoot, d.pos, d.size, d.color, 2);
             foreach (var t in _level.Traps)
@@ -2105,9 +2113,10 @@ namespace TrustIssues
 
             SpawnPlayer();
             // Roomed levels (the rebuilt Castle floors) get a director to run the
-            // per-room rule + drop room-entry checkpoints. Corridor levels don't.
+            // per-room rule. Corridor levels don't.
             if (_level.Rooms.Count > 0 && _player != null)
-                _levelRoot.gameObject.AddComponent<RoomDirector>().Init(_level.Rooms, _player.transform);
+                _levelRoot.gameObject.AddComponent<RoomDirector>()
+                    .Init(_level.Rooms, _player.transform, _levelRoot);
             SpawnFirstSessionPrompts(); // faint in-world key hints, first boot + floor 1 only
             SpawnReplayGhost();      // race your previous attempt
             SpawnDeathEchoes();      // tombstones of real other players who died here
@@ -2399,7 +2408,7 @@ namespace TrustIssues
 
         // Shared builder for real platforms AND fake floors so they look IDENTICAL
         // (same stone tile, same blood lip). `trapType` non-null tags it as a trap.
-        void BuildStoneFloor(string name, Vector2 pos, Vector2 size, TrapType? trapType)
+        GameObject BuildStoneFloor(string name, Vector2 pos, Vector2 size, TrapType? trapType)
         {
             var go = new GameObject(name);
             go.transform.SetParent(_levelRoot, false);
@@ -2445,6 +2454,7 @@ namespace TrustIssues
                 new Vector2(size.x, lipH), lipCol, 2);
             edge.transform.localPosition = new Vector3(0, size.y / 2f - 0.06f, 0);
             if (trapType.HasValue) go.AddComponent<Trap>().Init(trapType.Value);
+            return go;
         }
 
         // A trigger sized to the actual sprite (× scale), not a full grid cell —
@@ -3388,19 +3398,6 @@ namespace TrustIssues
         }
 
         // ==================== death / respawn ====================
-
-        // Crossing into a new room auto-checkpoints. That happens several times a
-        // level, so it stays SILENT — no toast, no jingle, no analytics event —
-        // unlike the deliberate checkpoint pickup below, which is a reward the
-        // player went and earned and should announce itself. It also never moves
-        // backwards, so wandering back through a doorway can't cost you progress.
-        public void SetRoomCheckpoint(Vector3 pos)
-        {
-            var p = pos + Vector3.up * 0.6f;
-            if (_hasCheckpoint && p.x <= _checkpoint.x) return;
-            _checkpoint = p;
-            _hasCheckpoint = true;
-        }
 
         public void SetCheckpoint(Vector3 pos)
         {
