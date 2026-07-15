@@ -616,12 +616,18 @@ namespace TrustIssues
             SyncMoveMode();
         }
 
+        // Joystick is the DEFAULT movement mode (testers reached for a stick
+        // first and took a while to find it in Settings); arrows are the opt-in.
+        // Single source of truth for that default — it's read from three places.
+        const int MoveModeDefault = 1;   // 1 = joystick, 0 = arrow pads
+        static bool JoystickMode => PlayerPrefs.GetInt("opt_joystick", MoveModeDefault) == 1;
+
         // Settings > MOVE: JOYSTICK toggle picks arrows or the stick. Re-checked
         // every frame (cheap, change-guarded) so flipping it in Settings takes
         // effect the instant Play resumes, with no rebuild needed.
         void SyncMoveMode()
         {
-            bool joystick = PlayerPrefs.GetInt("opt_joystick", 0) == 1;
+            bool joystick = JoystickMode;
             SyncTouchButton(_btnLeft, !joystick);
             SyncTouchButton(_btnRight, !joystick);
             SyncTouchButton(_joystick, joystick);
@@ -1257,12 +1263,11 @@ namespace TrustIssues
         {
             Button btn = null;
             System.Func<string> caption = () =>
-                $"MOVE:  {(PlayerPrefs.GetInt("opt_joystick", 0) == 1 ? "JOYSTICK" : "ARROWS")}";
+                $"MOVE:  {(JoystickMode ? "JOYSTICK" : "ARROWS")}";
             btn = Theme.Button(root, caption(), new Color(0.24f, 0.17f, 0.28f, 0.95f), Color.white, 22,
                 new Vector2(0.5f, 0.5f), pos, new Vector2(420, 68), () =>
                 {
-                    int cur = PlayerPrefs.GetInt("opt_joystick", 0);
-                    PlayerPrefs.SetInt("opt_joystick", cur == 1 ? 0 : 1);
+                    PlayerPrefs.SetInt("opt_joystick", JoystickMode ? 0 : 1);
                     PlayerPrefs.Save();
                     if (!Audio.Muted) Audio.Play("click", 0.6f);
                     SyncMoveMode();
