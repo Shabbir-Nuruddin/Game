@@ -160,9 +160,57 @@ namespace TrustIssues
             go.transform.localPosition = local;
         }
 
+        // ---- The castle's lullaby (sleep runes) ----
+        // The gag: the game demands the ONE thing a rage-game player cannot do —
+        // nothing. Any input resets the wake timer (and earns a scolding); three
+        // seconds of stillness wakes you. R still restarts, so the truly furious
+        // always have an exit, and it can never read as a freeze: the Zzz drip
+        // and the scold lines are proof of life.
+        bool _asleep;
+        float _sleepIdle, _zzzT;
+        const float SleepIdleNeed = 3f;
+        public bool Asleep => _asleep;
+
+        public void CastleSleep()
+        {
+            if (_asleep) return;
+            _asleep = true;
+            _sleepIdle = SleepIdleNeed;
+            _dashLeft = 0f; _isDashing = false;   // a dash must not carry through the nap
+            GameRoot.I?.SleepStart();
+        }
+
+        void SleepUpdate()
+        {
+            if (Input.GetKeyDown(KeyCode.R)) { GameRoot.I?.Die("Do-over!"); return; }
+            bool struggling = Input.anyKey || TouchInput.X != 0f ||
+                              TouchInput.JumpHeld || TouchInput.FlyHeld;
+            TouchInput.Clear();                    // eat queued taps so none fire on wake
+            if (struggling) { _sleepIdle = SleepIdleNeed; GameRoot.I?.SleepScold(); }
+            else _sleepIdle -= Time.deltaTime;
+
+            _inputX = 0f; _buffer = 0f; _jumpHeld = false; _flying = false;
+
+            _zzzT -= Time.deltaTime;
+            if (_zzzT <= 0f)
+            {
+                _zzzT = 0.7f;
+                var z = new GameObject("Zzz");
+                z.transform.position = transform.position + new Vector3(0.35f, 0.95f, 0f);
+                var tm = z.AddComponent<TextMesh>();
+                tm.text = "z"; tm.fontSize = 42; tm.characterSize = 0.06f;
+                tm.color = new Color(0.8f, 0.85f, 1f, 0.95f);
+                z.GetComponent<MeshRenderer>().sortingOrder = 6;
+                z.AddComponent<ZzzFloat>();
+            }
+
+            if (_sleepIdle <= 0f) { _asleep = false; GameRoot.I?.SleepWake(); }
+        }
+
         void Update()
         {
             if (_frozen) return;
+            if (_asleep) { SleepUpdate(); return; }
 
             _inputX = 0f;
             if (Input.GetKey(KeyCode.LeftArrow) || Input.GetKey(KeyCode.A)) _inputX -= 1f;

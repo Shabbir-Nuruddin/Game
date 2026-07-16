@@ -5,55 +5,233 @@ using UnityEngine.UI;
 namespace TrustIssues
 {
     /// <summary>
-    /// Runs the per-room rules on a roomed level.
-    ///
-    /// The genre insight this exists to serve: a trap is an object you learn to
-    /// dodge once, but a RULE breaks a promise the room was built on, and that's
-    /// what keeps players guessing past the first few floors. So each room owns
-    /// exactly one rule; this watches which room the player is standing in and
-    /// switches the active rule as they cross the doorway.
-    ///
-    /// Room entry also drops a checkpoint, so a five-room level never costs you
-    /// more than the room you're in — the levels can be nastier precisely because
-    /// the retry is cheap.
-    ///
-    /// Built and owned by GameRoot.BuildLevel; torn down with the level root.
-    /// Levels with no rooms (11-40, Endless, Daily, Versus) never create one.
-    /// </summary>
-    /// <summary>
-    /// Tags a platform as floor that only exists while its room is lit. Toggled
-    /// by RoomDirector; deactivating the whole object takes the collider, the
-    /// stone sprite and the 2.5D depth slices with it in one go.
+    /// Tags floor whose existence is tied to the candles. Two polarities:
+    /// normal (solid in light, gone in the dark — floor 2's lie) and ghost
+    /// (a faint shimmer in light, solid spectral stone in the dark — floor 7's
+    /// inversion of that lie). Toggled by RoomDirector via SetSolid; colliders
+    /// and every child sprite (stone face, blood lip, 2.5D depth slices) are
+    /// driven together.
     /// </summary>
     public class NightFloor : MonoBehaviour
     {
-        public float x;   // world centre, used to decide which room owns it
+        public float x;        // world centre, used to decide which room owns it
+        public bool ghost;     // false: solid-in-light. true: solid-in-dark.
+
+        BoxCollider2D _col;
+        SpriteRenderer[] _srs = System.Array.Empty<SpriteRenderer>();
+        Color[] _base = System.Array.Empty<Color>();
+        static readonly Color SpectralTint = new Color(0.62f, 0.78f, 1f);
+
+        public void Configure(float worldX, bool isGhost)
+        {
+            x = worldX; ghost = isGhost;
+            _col = GetComponent<BoxCollider2D>();
+            _srs = GetComponentsInChildren<SpriteRenderer>(true);
+            _base = new Color[_srs.Length];
+            for (int i = 0; i < _srs.Length; i++) _base[i] = _srs[i].color;
+            SetSolid(!ghost);   // ghosts start as a faint promise; normal floors start real
+        }
+
+        public void SetSolid(bool solid)
+        {
+            if (_col != null) _col.enabled = solid;
+            for (int i = 0; i < _srs.Length; i++)
+            {
+                if (_srs[i] == null) continue;
+                var c = _base[i];
+                if (ghost)
+                {
+                    // Spectral in both states; the tell in the light is that you
+                    // can see the wall through it.
+                    c = new Color(c.r * SpectralTint.r, c.g * SpectralTint.g, c.b * SpectralTint.b,
+                                  c.a * (solid ? 0.9f : 0.22f));
+                }
+                else c.a = solid ? _base[i].a : 0f;
+                _srs[i].color = c;
+            }
+        }
     }
 
+    /// <summary>
+    /// A rune on the floor that puts you to sleep (the castle's lullaby). One
+    /// nap per rune per life — waking up on top of it must not re-trigger it.
+    /// The glyph dims once spent, which doubles as the "this one's done" tell.
+    /// </summary>
+    public class SleepRuneZone : MonoBehaviour
+    {
+        bool _armed = true;
+        SpriteRenderer[] _glyph;
+
+        public void SetGlyph(SpriteRenderer[] parts) => _glyph = parts;
+
+        void OnTriggerEnter2D(Collider2D other)
+        {
+            if (!_armed) return;
+            var pc = other.GetComponent<PlayerController>();
+            if (pc == null) return;
+            _armed = false;
+            pc.CastleSleep();
+            if (_glyph != null)
+                foreach (var g in _glyph)
+                    if (g != null) { var c = g.color; c.a *= 0.25f; g.color = c; }
+        }
+    }
+
+    /// <summary>
+    /// The Endless Hall: cross the rune at the doorway on FOOT and you're
+    /// silently back at the start of an identical room. Jumping it passes. The
+    /// hall gets bored after five loops and lets you through — mercy disguised
+    /// as boredom, so nobody is ever truly stuck (an unwinnable room reads as a
+    /// broken game, and this project can't afford that twice).
+    /// </summary>
+    public class LoopZone : MonoBehaviour
+    {
+        public float returnX;      // where the loop dumps you (the room's mouth)
+        int _loops;
+        SpriteRenderer[] _glyph;
+
+        public void SetGlyph(SpriteRenderer[] parts) => _glyph = parts;
+
+        void OnTriggerEnter2D(Collider2D other)
+        {
+            var pc = other.GetComponent<PlayerController>();
+            if (pc == null) return;
+            if (_loops >= 5) return;   // the hall has given up
+            _loops++;
+            var p = pc.transform.position;
+            pc.transform.position = new Vector3(returnX, p.y, p.z);
+            if (_loops == 2) GameRoot.I?.RoomToast("Déjà vu…");
+            else if (_loops == 4) GameRoot.I?.RoomToast("The hall is enjoying this.");
+            else if (_loops == 5)
+            {
+                GameRoot.I?.RoomToast("…fine. Go.");
+                if (_glyph != null)
+                    foreach (var g in _glyph)
+                        if (g != null) { var c = g.color; c.a *= 0.2f; g.color = c; }
+            }
+        }
+    }
+
+    /// <summary>
+    /// The crypt press: a full-room stone slab that grinds down from the
+    /// ceiling once the room's rule fires, then cycles (down, rest, back up)
+    /// so a player who retreated isn't softlocked behind a sealed room — on
+    /// the next dip it's a timing puzzle instead. Touching it is death.
+    /// </summary>
+    public class PressSlab : MonoBehaviour
+    {
+        const float TopY = 2.5f, BotY = -2.1f;      // centre travel: flush under ceiling → flush on floor
+        const float DownSpeed = 0.85f, UpSpeed = 1.7f;
+        const float DwellBottom = 2.2f, DwellTop = 0.9f;
+        int _state;        // 0 descend, 1 dwell bottom, 2 rise, 3 dwell top
+        float _t;
+
+        void Update()
+        {
+            var p = transform.position;
+            switch (_state)
+            {
+                case 0:
+                    p.y -= DownSpeed * Time.deltaTime;
+                    if (p.y <= BotY) { p.y = BotY; _state = 1; _t = DwellBottom; }
+                    break;
+                case 1: _t -= Time.deltaTime; if (_t <= 0f) _state = 2; break;
+                case 2:
+                    p.y += UpSpeed * Time.deltaTime;
+                    if (p.y >= TopY) { p.y = TopY; _state = 3; _t = DwellTop; }
+                    break;
+                default: _t -= Time.deltaTime; if (_t <= 0f) _state = 0; break;
+            }
+            transform.position = p;
+        }
+
+        void OnTriggerEnter2D(Collider2D other)
+        {
+            if (other.GetComponent<PlayerController>() != null)
+                GameRoot.I?.Die("The crypt closed.");
+        }
+    }
+
+    /// <summary>A little "z" that drifts up off a sleeping vampire and fades.</summary>
+    public class ZzzFloat : MonoBehaviour
+    {
+        float _life = 1.1f;
+        TextMesh _tm;
+        void Start() { _tm = GetComponent<TextMesh>(); }
+        void Update()
+        {
+            transform.position += new Vector3(0.25f, 0.85f, 0f) * Time.deltaTime;
+            _life -= Time.deltaTime;
+            if (_tm != null) { var c = _tm.color; c.a = Mathf.Clamp01(_life); _tm.color = c; }
+            if (_life <= 0f) Destroy(gameObject);
+        }
+    }
+
+    /// <summary>
+    /// Runs the per-room rules on a roomed level.
+    ///
+    /// The genre insight this serves: a trap is an object you learn to dodge
+    /// once, but a RULE breaks a promise the room was built on, and that's what
+    /// keeps players guessing past the first few floors. Each room owns one
+    /// rule; this watches which room the player is standing in, locks the
+    /// camera to that room (so chambers read as SCREENS, not a corridor with
+    /// pillars — the complaint from the last playtest), runs the active rule,
+    /// and draws the room-progress dots.
+    ///
+    /// Built and owned by GameRoot.BuildLevel; torn down with the level root,
+    /// and the whole level rebuilds on death, so every rule resets for free.
+    /// Levels with no rooms (11-40, Endless, Daily, Versus) never create one.
+    /// </summary>
     public class RoomDirector : MonoBehaviour
     {
         List<RoomSpec> _rooms;
         Transform _player;
+        PlayerController _pc;
         NightFloor[] _nightFloors = System.Array.Empty<NightFloor>();
+        Transform _fleeExit;                  // the RealExit, if a Flee room owns one
+        bool _fleeToasted;
+        readonly List<GameObject> _slabs = new();
+        bool[] _slabSpawned;
+        Transform _levelRoot;
         int _active = -1;
-        bool _fired;   // has the ACTIVE room's rule tripped yet?
+        bool _fired;                          // has the ACTIVE room's rule tripped yet?
+        int _reverseToastRoom = -1;
 
         // --- Dark rule ---
         GameObject _darkGO;
         RectTransform _darkRT;
         Image _darkImg;
-        float _darkT;              // 0 = lit, 1 = fully dark; eased so the lights "die" rather than cut
+        float _darkT;              // 0 = lit, 1 = fully dark
         bool _darkWanted;
         // Candles get SNUFFED, they don't dim. A slow fade reads as a mood effect
         // and gives the player time to stroll to safety; a fast one is an event
-        // that happens TO them. This is also the tell — the half-second of dying
-        // light is the warning that the floor is about to stop existing.
+        // that happens TO them. The half-second of dying light is also the tell.
         const float DarkFade = 0.55f;
 
-        public void Init(List<RoomSpec> rooms, Transform player, Transform levelRoot)
+        // --- Room dots (the "five stages" readout, Level Devil's door dots) ---
+        GameObject _dotsGO;
+        Image[] _dots = System.Array.Empty<Image>();
+
+        public void Init(Level level, Transform player, Transform levelRoot)
         {
-            _rooms = rooms; _player = player;
+            _rooms = level.Rooms; _player = player; _levelRoot = levelRoot;
+            _pc = player.GetComponent<PlayerController>();
             _nightFloors = levelRoot.GetComponentsInChildren<NightFloor>(true);
+            _slabSpawned = new bool[_rooms.Count];
+
+            // The fleeing coffin: find the RealExit if any Flee room contains it.
+            foreach (var t in levelRoot.GetComponentsInChildren<Trap>(true))
+                if (t.type == TrapType.RealExit && RoomAt(t.transform.position.x) is int ri &&
+                    ri >= 0 && _rooms[ri].Rule == RoomRule.Flee)
+                    _fleeExit = t.transform;
+
+            // Loop zones live at the doorway of every Loop room. Never on the
+            // final room — its "doorway" is the end of the level, past the exit.
+            for (int i = 0; i < _rooms.Count - 1; i++)
+                if (_rooms[i].Rule == RoomRule.Loop) BuildLoopZone(_rooms[i]);
+
+            foreach (var r in level.SleepRunes) BuildSleepRune(r);
+            BuildDots();
         }
 
         void LateUpdate()
@@ -62,52 +240,96 @@ namespace TrustIssues
 
             int idx = RoomAt(_player.position.x);
             if (idx != _active && idx >= 0) EnterRoom(idx);
+            if (_active < 0) return;
+
+            var room = _rooms[_active];
 
             // The rule fires once the player is deep enough in — and STAYS fired
-            // while they're in this room, so backing up toward the doorway can't
-            // turn the lights back on and let them scout the room from safety.
-            if (_active >= 0 && !_fired && _player.position.x >= _rooms[_active].TriggerX)
+            // while they're in this room, so backing toward the doorway can't
+            // turn the room honest again and let them scout it from safety.
+            if (!_fired && _player.position.x >= room.TriggerX)
+            {
                 _fired = true;
+                OnRuleFired(room);
+            }
 
-            _darkWanted = _active >= 0 && _fired && _rooms[_active].Rule == RoomRule.Dark;
+            _darkWanted = _fired && room.Rule == RoomRule.Dark;
             UpdateDark();
             UpdateNightFloors();
-        }
 
-        // Floor that's only real in the light. It vanishes the instant the room
-        // commits to dark rather than fading with the light — you're meant to run
-        // onto ground you watched yourself walk over, and find nothing there.
-        void UpdateNightFloors()
-        {
-            bool gone = _darkWanted && _darkT > 0.5f;
-            for (int i = 0; i < _nightFloors.Length; i++)
-            {
-                var nf = _nightFloors[i];
-                if (nf == null) continue;
-                bool mine = _active >= 0 && nf.x >= _rooms[_active].MinX && nf.x < _rooms[_active].MaxX;
-                bool on = !(mine && gone);
-                if (nf.gameObject.activeSelf != on) nf.gameObject.SetActive(on);
-            }
+            // The curse only holds while you're in its room: topping the timer
+            // up every frame means it lapses on its own the moment you leave.
+            if (_fired && room.Rule == RoomRule.Reverse && _pc != null)
+                _pc.SetReversed(0.12f);
+
+            UpdateFlee(room);
         }
 
         int RoomAt(float x)
         {
             for (int i = 0; i < _rooms.Count; i++)
                 if (x >= _rooms[i].MinX && x < _rooms[i].MaxX) return i;
-            return -1;   // in the doorway//past the end — keep whatever was active
+            return -1;   // past the end wall — keep whatever was active
         }
 
         void EnterRoom(int idx)
         {
             _active = idx;
-            _fired = false;   // the new room's rule hasn't tripped yet
+            _fired = false;
+            var r = _rooms[idx];
+            // Lock the camera to this chamber: crossing a doorway is a screen
+            // transition, not a scroll. This is what makes five rooms FEEL like
+            // five rooms instead of one corridor with pillars in it.
+            if (GameRoot.I != null) GameRoot.I.FocusRoom(r.MinX, r.MaxX);
+            for (int i = 0; i < _dots.Length; i++)
+            {
+                if (_dots[i] == null) continue;
+                _dots[i].color = new Color(1f, 1f, 1f, i == idx ? 0.95f : 0.30f);
+                _dots[i].rectTransform.localScale = Vector3.one * (i == idx ? 1.25f : 1f);
+            }
+        }
+
+        void OnRuleFired(RoomSpec room)
+        {
+            switch (room.Rule)
+            {
+                case RoomRule.Press:
+                    if (!_slabSpawned[_active]) { _slabSpawned[_active] = true; BuildSlab(room); }
+                    break;
+                case RoomRule.Reverse:
+                    if (_reverseToastRoom != _active)
+                    {
+                        _reverseToastRoom = _active;
+                        GameRoot.I?.RoomToast("Your hands are not your own.");
+                    }
+                    break;
+            }
+        }
+
+        // ---------------- The fleeing coffin ----------------
+        // The exit bolts when you get close, at just under your own run speed —
+        // you gain on it slowly, which is the joke — until it corners itself
+        // against the end wall. It floats over gaps (it's a haunted coffin;
+        // the player chasing it is the one who has to respect the spikes).
+        void UpdateFlee(RoomSpec room)
+        {
+            if (_fleeExit == null || room.Rule != RoomRule.Flee) return;
+            float dx = _fleeExit.position.x - _player.position.x;
+            if (Mathf.Abs(dx) > 4.2f) return;
+            float dir = dx >= 0f ? 1f : -1f;
+            var p = _fleeExit.position;
+            float nx = Mathf.Clamp(p.x + dir * 6.3f * Time.deltaTime,
+                                   room.MinX + 1f, room.MaxX - 1.1f);
+            if (!Mathf.Approximately(nx, p.x) && !_fleeToasted)
+            {
+                _fleeToasted = true;
+                GameRoot.I?.RoomToast("The coffin declines.");
+            }
+            p.x = nx;
+            _fleeExit.position = p;
         }
 
         // ---------------- Dark ----------------
-        // A big soft-holed mask parked on the player. The mask is drawn larger than
-        // the screen diagonal so that wherever the player stands, the dark still
-        // reaches every corner — sizing it to the screen would leave a lit band on
-        // the far side whenever the player walked toward an edge.
         void UpdateDark()
         {
             _darkT = Mathf.MoveTowards(_darkT, _darkWanted ? 1f : 0f, Time.unscaledDeltaTime / DarkFade);
@@ -122,10 +344,9 @@ namespace TrustIssues
             var canvasRT = (RectTransform)Theme.Canvas.transform;
             var size = canvasRT.rect.size;
             float diag = Mathf.Sqrt(size.x * size.x + size.y * size.y);
-            float s = diag * 2.2f;                 // ≥ 2× diagonal ⇒ always covers, wherever the hole sits
+            float s = diag * 2.2f;                 // ≥ 2× diagonal ⇒ covers every corner from anywhere
             _darkRT.sizeDelta = new Vector2(s, s);
 
-            // Follow the player, in canvas space.
             var cam = Camera.main;
             if (cam != null)
             {
@@ -137,8 +358,8 @@ namespace TrustIssues
             }
 
             var c = _darkImg.color;
-            // Never quite 1 — a hair of visibility keeps it "a dark room" instead of
-            // "the game crashed", which matters when the player is already suspicious.
+            // Never quite 1 — a hair of visibility keeps it "a dark room" instead
+            // of "the game crashed", which matters to already-suspicious players.
             c.a = _darkT * 0.965f;
             _darkImg.color = c;
         }
@@ -153,13 +374,137 @@ namespace TrustIssues
             _darkImg.sprite = Theme.DarkMask;
             _darkImg.color = new Color(0.02f, 0.01f, 0.03f, 0f);
             _darkImg.raycastTarget = false;
-            // Above the world, below the HUD/menus, which are built after this.
-            _darkGO.transform.SetAsFirstSibling();
+            _darkGO.transform.SetAsFirstSibling();   // above the world, below HUD/menus
+        }
+
+        // Night floors vanish the instant their room commits to dark (darkT>0.5)
+        // rather than fading with the light — you're meant to run onto ground you
+        // watched yourself walk over and find nothing. Ghost floors are the same
+        // switch, opposite polarity.
+        void UpdateNightFloors()
+        {
+            bool dark = _darkWanted && _darkT > 0.5f;
+            for (int i = 0; i < _nightFloors.Length; i++)
+            {
+                var nf = _nightFloors[i];
+                if (nf == null) continue;
+                bool mine = nf.x >= _rooms[_active].MinX && nf.x < _rooms[_active].MaxX;
+                bool solid = nf.ghost ? (mine && dark) : !(mine && dark);
+                nf.SetSolid(solid);
+            }
+        }
+
+        // ---------------- built pieces ----------------
+
+        void BuildSlab(RoomSpec room)
+        {
+            float w = room.MaxX - room.MinX - 0.5f;
+            var go = new GameObject("CryptPress");
+            go.transform.SetParent(_levelRoot, false);
+            go.transform.position = new Vector3(room.MinX + (room.MaxX - room.MinX) / 2f, 2.5f, 0f);
+            var sr = go.AddComponent<SpriteRenderer>();
+            sr.sprite = Theme.StoneTile;
+            sr.drawMode = SpriteDrawMode.Tiled;
+            sr.size = new Vector2(w, 1.2f);
+            sr.color = new Color(0.75f, 0.7f, 0.72f);
+            sr.sortingOrder = 4;
+            // A blood-red grinding edge so the underside reads as the dangerous part.
+            var lip = new GameObject("Lip");
+            lip.transform.SetParent(go.transform, false);
+            lip.transform.localPosition = new Vector3(0f, -0.62f, 0f);
+            var lsr = lip.AddComponent<SpriteRenderer>();
+            lsr.sprite = Theme.Square;
+            lsr.color = Theme.PlatEdge;
+            lsr.sortingOrder = 5;
+            lsr.transform.localScale = new Vector3(w, 0.1f, 1f);
+            var col = go.AddComponent<BoxCollider2D>();
+            col.isTrigger = true;
+            col.size = new Vector2(w - 0.15f, 1.05f);
+            go.AddComponent<PressSlab>();
+            _slabs.Add(go);
+        }
+
+        void BuildLoopZone(RoomSpec room)
+        {
+            var go = new GameObject("LoopZone");
+            go.transform.SetParent(_levelRoot, false);
+            go.transform.position = new Vector3(room.MaxX - 1.35f, -2.35f, 0f);
+            var col = go.AddComponent<BoxCollider2D>();
+            col.isTrigger = true;
+            col.size = new Vector2(1.1f, 0.6f);    // low — jumping it clears comfortably
+            var lz = go.AddComponent<LoopZone>();
+            lz.returnX = room.MinX + 1.4f;
+            lz.SetGlyph(BuildRuneGlyph(go.transform, new Color(0.85f, 0.15f, 0.2f, 0.8f)));
+        }
+
+        void BuildSleepRune(Vector2 pos)
+        {
+            var go = new GameObject("SleepRune");
+            go.transform.SetParent(_levelRoot, false);
+            go.transform.position = new Vector3(pos.x, -2.5f, 0f);
+            var col = go.AddComponent<BoxCollider2D>();
+            col.isTrigger = true;
+            col.size = new Vector2(1.1f, 0.35f);   // hugging the floor — jump it
+            var sz = go.AddComponent<SleepRuneZone>();
+            sz.SetGlyph(BuildRuneGlyph(go.transform, new Color(0.55f, 0.3f, 0.85f, 0.85f)));
+        }
+
+        // A flat glowing floor-glyph: a strip plus two ticks. Deliberately the
+        // SAME shape for sleep (purple) and loop (red) runes — "glowing marks on
+        // the floor are never good news" becomes one lesson, learned once.
+        SpriteRenderer[] BuildRuneGlyph(Transform parent, Color c)
+        {
+            var parts = new SpriteRenderer[3];
+            for (int i = 0; i < 3; i++)
+            {
+                var g = new GameObject("Glyph" + i);
+                g.transform.SetParent(parent, false);
+                var sr = g.AddComponent<SpriteRenderer>();
+                sr.sprite = Theme.Square;
+                sr.color = c;
+                sr.sortingOrder = 3;
+                if (i == 0) { g.transform.localPosition = new Vector3(0, -0.12f, 0); g.transform.localScale = new Vector3(1.15f, 0.12f, 1f); }
+                else
+                {
+                    float s = i == 1 ? -1f : 1f;
+                    g.transform.localPosition = new Vector3(s * 0.3f, 0.06f, 0);
+                    g.transform.localScale = new Vector3(0.12f, 0.28f, 1f);
+                }
+                parts[i] = sr;
+            }
+            return parts;
+        }
+
+        void BuildDots()
+        {
+            if (_rooms.Count < 2) return;
+            _dotsGO = new GameObject("RoomDots", typeof(RectTransform));
+            _dotsGO.transform.SetParent(Theme.Canvas.transform, false);
+            var rt = (RectTransform)_dotsGO.transform;
+            rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 1f);
+            rt.pivot = new Vector2(0.5f, 1f);
+            rt.anchoredPosition = new Vector2(0f, -18f);
+            _dots = new Image[_rooms.Count];
+            float span = (_rooms.Count - 1) * 24f;
+            for (int i = 0; i < _rooms.Count; i++)
+            {
+                var d = new GameObject("Dot" + i, typeof(RectTransform));
+                d.transform.SetParent(_dotsGO.transform, false);
+                var drt = (RectTransform)d.transform;
+                drt.anchoredPosition = new Vector2(-span / 2f + i * 24f, 0f);
+                drt.sizeDelta = new Vector2(13f, 13f);
+                var img = d.AddComponent<Image>();
+                img.sprite = Theme.Disc;
+                img.color = new Color(1f, 1f, 1f, 0.30f);
+                img.raycastTarget = false;
+                _dots[i] = img;
+            }
         }
 
         void OnDestroy()
         {
             if (_darkGO != null) Destroy(_darkGO);
+            if (_dotsGO != null) Destroy(_dotsGO);
         }
     }
 }

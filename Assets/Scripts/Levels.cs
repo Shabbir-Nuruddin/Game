@@ -28,6 +28,10 @@ namespace TrustIssues
     {
         None,       // an honest room — the breather that makes the next lie land
         Dark,       // the candles go out; you can only see a small circle around you
+        Flee,       // the coffin in this room runs away from you until it's cornered
+        Press,      // the ceiling descends — keep moving or the crypt closes
+        Reverse,    // the curse takes your hands: controls flip while you're in here
+        Loop,       // walking out the doorway puts you back at the start; JUMP the rune
     }
 
     /// <summary>One room of a level: an X slice of the run, plus the rule it breaks.</summary>
@@ -59,6 +63,15 @@ namespace TrustIssues
         // Floor that only exists while the candles are lit. Identical to a real
         // platform in every way until its room goes dark, then it's simply gone.
         public List<Rect2> NightFloors = new();
+        // The inverse lie: floor that only exists in the DARK. A faint shimmer in
+        // the light; solid spectral stone once the candles die. Spans gaps too
+        // wide to jump, so crossing means trusting the dark — floor 7's whole
+        // lesson, and the exact opposite of what floor 2 taught.
+        public List<Rect2> GhostFloors = new();
+        // Sleep runes: step on one and the castle sings you to sleep. Fighting it
+        // makes it worse; only stillness wakes you. (The gag the boss approved:
+        // the game demands the one thing a rage-game player cannot do — nothing.)
+        public List<Vector2> SleepRunes = new();
     }
 
     /// <summary>
@@ -157,6 +170,56 @@ namespace TrustIssues
             L.NightFloors.Add(new Rect2(cx, -3f, w, 0.6f));
             cur += w;
             return cx;
+        }
+
+        /// <summary>
+        /// Floor that only exists in the dark. The opposite constraint applies:
+        /// keep these WIDER than a max jump (> 3.2) so the lit gap is clearly
+        /// impossible — that's what forces the player to trust the dark.
+        /// </summary>
+        public float GhostFloor(float w)
+        {
+            float cx = cur + w / 2f;
+            L.GhostFloors.Add(new Rect2(cx, -3f, w, 0.6f));
+            cur += w;
+            return cx;
+        }
+
+        /// <summary>A rune on the floor that naps you. Jumpable — that's the counterplay.</summary>
+        public void SleepRune(float x) => L.SleepRunes.Add(new Vector2(x, -2.5f));
+
+        /// <summary>Place the real exit yourself (for Flee finales — see FinishBare).</summary>
+        public void ExitAt(float x) => T(TrapType.RealExit, x, -2f, 1.4f, 1.8f);
+
+        /// <summary>
+        /// A convincing fake coffin: same silhouette as the real exit, but its
+        /// cross is dull brass instead of glowing gold — that's the tell — and
+        /// "inside" is an invisible kill zone. Roulette floors are built on these.
+        /// Its top is low enough to jump over once you've stopped trusting it.
+        /// </summary>
+        public void FakeCoffin(float x)
+        {
+            var dull = Theme.Hex("6B5A2E");
+            L.Decos.Add(new Deco(x, -2f, 1.4f, 2.05f, Theme.Hex("140C08")));
+            L.Decos.Add(new Deco(x, -2f, 1.15f, 1.9f, Theme.Hex("3A2418")));
+            L.Decos.Add(new Deco(x, -1.9f, 0.18f, 0.95f, dull));
+            L.Decos.Add(new Deco(x, -1.55f, 0.62f, 0.18f, dull));
+            T(TrapType.Surprise, x, -2.1f, 0.8f, 1.5f);
+        }
+
+        /// <summary>
+        /// Close out a level whose LAST room places its own exit (Flee finales,
+        /// coffin roulette): no auto coffin, but cap the run with a full-height
+        /// end wall so a fleeing coffin visibly corners itself instead of
+        /// stopping at invisible air.
+        /// </summary>
+        public Level FinishBare()
+        {
+            L.Platforms.Add(new Rect2(cur + 0.3f, (CeilY - 2.7f) / 2f, 0.6f, CeilY + 2.7f));
+            CloseRoom();
+            L.CamMinX = -1.5f;
+            L.CamMaxX = Mathf.Max(-1.5f, cur - 10f);
+            return L;
         }
 
         public Level Finish()
@@ -368,114 +431,154 @@ namespace TrustIssues
             return b.Finish();
         }
 
-        // 3 — the floor lies: one fake floor hides among the real ones.
+        // ====================================================================
+        // FLOORS 1–10: one NEW lie per floor, introduced gently, twisted, then
+        // combined with exactly ONE older lie. Never two new ideas at once, and
+        // no floor reuses last floor's twist at full strength — the Level Devil
+        // grammar (theirs: doors of 5 stages, one theme per door, zero bosses).
+        // ====================================================================
+
+        // 3 — THE COFFIN FLEES. The exit has been the one honest thing in the
+        // game for two floors; that's exactly why it's the next thing to lie.
+        // Rooms 2-4 are ordinary traversal so the finale lands on calm nerves:
+        // the coffin sits RIGHT THERE at the mouth of room 5… and bolts, dragging
+        // you through a spike-and-gap chase until it corners itself at the wall.
         static Level L3()
         {
             var b = new B();
-            b.Plat(4.5f);
-            b.FakeFloor(2f);
-            float p2 = b.Plat(5f); b.Spike(p2);
-            b.Gap(2.4f);
-            float p3 = b.Plat(4.5f); b.LateSpike(p3);
-            return b.Finish();
+            b.Room(RoomRule.None); b.Plat(6f);
+            b.Room(RoomRule.None); float a = b.Plat(6.5f); b.LateSpike(a + 1.2f);
+            b.Room(RoomRule.None); b.Plat(2.6f); b.FakeFloor(2f); b.Plat(2.6f);
+            b.Room(RoomRule.None); b.Plat(3f); b.Gap(2.3f); float c = b.Plat(3.2f); b.Spike(c);
+            b.Room(RoomRule.Flee); float p = b.Plat(4f); b.Spike(p + 1.2f);
+                                   b.Gap(2.3f);
+                                   float q = b.Plat(6f); b.Spike(q);
+                                   b.ExitAt(p - 1.2f);   // right there. almost touching.
+            return b.FinishBare();
         }
 
-        // 4 — darts: a stake fires across when you step on the plate. Jump it.
+        // 4 — THE CRYPT PRESS. The ceiling was scenery until now; now it wants
+        // you dead. Slow enough to outwalk — the press kills the two things
+        // panic makes you do: freezing to watch it, and stopping to think.
         static Level L4()
         {
             var b = new B();
-            b.Plat(4.5f);
-            b.Gap(2.4f);
-            float p2 = b.Plat(5f); b.Dart(p2);
-            b.Gap(2.4f);
-            float p3 = b.Plat(4.5f); b.Spike(p3);
-            return b.Finish();
+            b.Room(RoomRule.None);         b.Plat(6f);
+            b.Room(RoomRule.Press, 0.3f);  b.Plat(7f);                        // just RUN
+            b.Room(RoomRule.None);         b.Plat(3f); b.Gap(2.3f); b.Plat(3f);
+            b.Room(RoomRule.Press, 0.25f); float a = b.Plat(7f); b.Spike(a);  // run AND hop
+            b.Room(RoomRule.Press, 0.2f);  b.Plat(2.5f); b.FakeFloor(2f); b.Plat(3f);
+            return b.Finish();                                                // …and the floor lies
         }
 
-        // 5 — the crusher slams the HIGH ground. Stay low and walk under it.
+        // 5 — THE LULLABY. Sleep runes: step on one and you're out. Mashing
+        // resets the wake timer (with escalating scolding); only stillness ends
+        // it. Room 4 is the floor's thesis — a rune under a descending press.
+        // The disciplined sleeper walks out with a full second to spare; the
+        // masher greases the crypt. Room 5: rune-hop under a press, or nap once
+        // and sprint the rest on a knife's edge.
         static Level L5()
         {
             var b = new B();
-            b.Plat(4.5f);
-            b.Gap(2.4f);
-            float p2 = b.Plat(4f); b.Crusher(p2);
-            b.Gap(2.4f);
-            float p3 = b.Plat(4.5f); b.Dart(p3);
+            b.Room(RoomRule.None);         b.Plat(6f);
+            b.Room(RoomRule.None);         float a = b.Plat(7f); b.SleepRune(a);
+            b.Room(RoomRule.None);         b.Plat(3f); b.Gap(2.3f); float c = b.Plat(3.5f); b.SleepRune(c - 0.9f);
+            b.Room(RoomRule.Press, 0.22f); float d = b.Plat(7.5f); b.SleepRune(d - 1.2f);
+            b.Room(RoomRule.Press, 0.3f);  float e = b.Plat(8f); b.SleepRune(e - 2.6f);
+                                           b.SleepRune(e - 0.2f); b.SleepRune(e + 2.2f);
             return b.Finish();
         }
 
-        // 6 — the saw slides back and forth. Wait for the gap, then cross.
+        // 6 — THE CURSED HAND. Controls flip partway into the room and stay
+        // flipped until you leave it. Room 2 is flat and harmless so the
+        // moonwalk is a joke before it's a weapon; then a reversed gap jump;
+        // then a reversed spike gauntlet all the way to the coffin.
         static Level L6()
         {
             var b = new B();
-            b.Plat(4.5f);
-            b.Gap(2.4f);
-            float p2 = b.Plat(5f); b.Saw(p2);
-            b.Gap(2.4f);
-            float p3 = b.Plat(4.5f); b.LateSpike(p3);
+            b.Room(RoomRule.None);           b.Plat(6f);
+            b.Room(RoomRule.Reverse, 0.35f); b.Plat(7f);
+            b.Room(RoomRule.Reverse, 0.3f);  b.Plat(3f); b.Gap(2.3f); b.Plat(3.5f);
+            b.Room(RoomRule.None);           float a = b.Plat(6f); b.Spike(a);
+            b.Room(RoomRule.Reverse, 0.25f); b.Plat(2.5f); float c = b.Plat(2.8f); b.Spike(c);
+                                             b.Gap(2.3f); b.Plat(3f);
             return b.Finish();
         }
 
-        // 7 — the pendulum blade swings across; time your run beneath it. The tail
-        // pairs it with a spike, then replays floor 6's saw — so 7 is strictly
-        // meaner than 6 (the old version was a difficulty DIP).
+        // 7 — FAITH IN THE DARK. The inversion floor: floor 2 taught "the dark
+        // takes the ground away", so floor 7 makes the dark GIVE it — spectral
+        // bridges that only exist once the candles die, spanning gaps too wide
+        // to jump lit. Room 3 runs both lies at once: the dark deletes one
+        // floor and builds another. Trust nothing; then trust the dark.
         static Level L7()
         {
             var b = new B();
-            b.Plat(4.5f);
-            b.Gap(2.4f);
-            float p2 = b.Plat(5f); b.Pendulum(p2);
-            b.Gap(2.4f);
-            float p3 = b.Plat(5f); b.Pendulum(p3 - 1.2f); b.Spike(p3 + 1.2f);
-            b.Gap(2.4f);
-            float p4 = b.Plat(4.5f); b.Saw(p4);
+            b.Room(RoomRule.None);        b.Plat(3f); b.Gap(2.2f); b.Plat(3f);
+            b.Room(RoomRule.Dark, 0.2f);  b.Plat(3f); b.GhostFloor(3.4f); b.Plat(3f);
+            b.Room(RoomRule.Dark, 0.18f); b.Plat(2.5f); b.NightFloor(2f); b.Plat(2.2f);
+                                          b.GhostFloor(3.4f); b.Plat(2.5f);
+            b.Room(RoomRule.None);        b.Plat(3f); b.Gap(2.3f); b.Plat(3f);
+            b.Room(RoomRule.Dark, 0.2f);  b.Plat(2.5f); b.GhostFloor(3.4f); b.Plat(2f);
+                                          b.NightFloor(2f); b.Plat(2.5f);
             return b.Finish();
         }
 
-        // 8 — the chandelier drops when you pass under. Don't loiter. Then the
-        // floor lies again (fake floor) into a saw+spike pinch and a pendulum.
+        // 8 — THE ENDLESS HALL. Walk across the rune at the doorway and you're
+        // silently back at the start of an identical room. The tell is the rune
+        // itself: JUMP it. Room 3 loops a gap room; room 4 puts a spike right
+        // before the rune (one arc clears both); the hall gives up after five
+        // loops — mercy disguised as boredom, so nobody can be stuck forever.
         static Level L8()
         {
             var b = new B();
-            b.Plat(4.5f);
-            b.Gap(2.4f);
-            float p2 = b.Plat(5f); b.Chandelier(p2);
-            b.FakeFloor(2f);
-            float p3 = b.Plat(5f); b.Saw(p3 - 1.2f); b.Spike(p3 + 1.2f);
-            b.Gap(2.4f);
-            float p4 = b.Plat(4.5f); b.Pendulum(p4);
+            b.Room(RoomRule.None); b.Plat(6f);
+            b.Room(RoomRule.Loop); b.Plat(7.5f);
+            b.Room(RoomRule.Loop); b.Plat(3f); b.Gap(2.3f); b.Plat(3.2f);
+            b.Room(RoomRule.Loop); float a = b.Plat(7f); b.Spike(a + 2.2f);
+            b.Room(RoomRule.None); b.Plat(2.5f); b.FakeFloor(2.2f); b.Plat(2.8f);
             return b.Finish();
         }
 
-        // 9 — growing blood-spikes pulse up and down. Cross while they're low —
-        // then a grow-spike/dart pincer and one last lying floor before the gate.
+        // 9 — COFFIN ROULETTE. The castle fills its halls with coffins that are
+        // ALMOST yours — same box, same cross, but dull brass where the real
+        // one glows gold. Room 1 kills the unobservant once, cheaply, to teach
+        // the tell. Room 3 hides coffins in the dark so they loom out of the
+        // candle circle. The finale: three dull coffins and the one true glowing
+        // one… which flees through the lineup when you reach for it (floor 3's
+        // lie, resurrected exactly when you'd stopped watching for it).
         static Level L9()
         {
             var b = new B();
-            b.Plat(4.5f);
-            b.Gap(2.4f);
-            float p2 = b.Plat(5f); b.GrowSpike(p2);
-            b.Gap(2.4f);
-            float p3 = b.Plat(5f); b.GrowSpike(p3 - 1.2f); b.Dart(p3 + 1.2f);
-            b.FakeFloor(2f);
-            float p4 = b.Plat(4.5f); b.Spike(p4);
-            return b.Finish();
+            b.Room(RoomRule.None);        float a = b.Plat(8f); b.FakeCoffin(a - 1f);
+            b.Room(RoomRule.None);        b.Plat(3f); b.Gap(2.3f);
+                                          float c = b.Plat(4.5f); b.FakeCoffin(c + 0.6f);
+            b.Room(RoomRule.Dark, 0.25f); float d = b.Plat(9f); b.FakeCoffin(d - 2f); b.FakeCoffin(d + 1.5f);
+            b.Room(RoomRule.None);        b.Plat(2.5f); b.FakeFloor(2f);
+                                          float e = b.Plat(3.5f); b.FakeCoffin(e + 0.7f);
+            b.Room(RoomRule.Flee);        float p = b.Plat(12f); b.FakeCoffin(p - 3.4f);
+                                          b.FakeCoffin(p - 0.9f); b.FakeCoffin(p + 1.6f);
+                                          b.ExitAt(p - 5f);
+            return b.FinishBare();
         }
 
-        // 10 — GATE: a fair gauntlet of everything so far, with a checkpoint.
+        // 10 — THE FINAL EXAM. No boss — the research is unambiguous that this
+        // genre's tension comes from "what's the next lie", and a health-bar
+        // fight is a different game (bosses still hold floors 20/30/40). Six
+        // rooms, every rule from the world, and the exam is allowed to break the
+        // one-lie-per-room law because breaking its own laws IS the castle's
+        // final lesson. Ends with the coffin fleeing across a spike field.
         static Level L10()
         {
             var b = new B();
-            b.Plat(4.5f);
-            b.Gap(2.5f);
-            float p2 = b.Plat(5f); b.Pendulum(p2 - 1.2f); b.Spike(p2 + 1.2f);
-            b.Gap(2.5f);
-            float p3 = b.Plat(4.8f); b.Checkpoint(p3 - 1.5f); b.Dart(p3 + 1f);
-            b.Gap(2.5f);
-            float p4 = b.Plat(5f); b.Saw(p4);
-            b.Gap(2.5f);
-            float p5 = b.Plat(4.5f); b.LateSpike(p5);
-            return b.Finish();
+            b.Room(RoomRule.Dark, 0.3f);    b.Plat(2.5f); b.NightFloor(2f); b.Plat(2.8f);
+            b.Room(RoomRule.Press, 0.25f);  float a = b.Plat(6.5f); b.Spike(a);
+            b.Room(RoomRule.Reverse, 0.3f); b.Plat(3f); b.Gap(2.3f);
+                                            float s = b.Plat(3.2f); b.SleepRune(s + 0.8f);
+            b.Room(RoomRule.Loop);          b.Plat(7f); b.FakeFloor(2f); b.Plat(2f);
+            b.Room(RoomRule.Dark, 0.2f);    b.Plat(2.5f); b.GhostFloor(3.4f); b.Plat(2.5f);
+            b.Room(RoomRule.Flee);          float p = b.Plat(10f); b.Spike(p - 2f); b.Spike(p + 1f);
+                                            b.ExitAt(p - 3.8f);
+            return b.FinishBare();
         }
 
         // 11 — BATS: they hover, then dive on a telegraph. Keep moving to dodge.

@@ -12,9 +12,9 @@ using TrustIssues;
 // Never compiled into a build (it lives under Assets/Editor).
 public static class DumpLevelMap
 {
-    const float PPU = 22f;   // pixels per world unit
-    const float MinX = -14f, MaxX = 46f, MinY = -6f, MaxY = 5f;
-    const int Floors = 2;    // grow as the roomed floors land
+    const float PPU = 18f;   // pixels per world unit
+    const float MinX = -14f, MaxX = 62f, MinY = -6f, MaxY = 5f;
+    const int Floors = 10;   // grow as the roomed floors land
 
     [MenuItem("Trust Issues/Dump Level Map")]
     public static void Dump()
@@ -50,6 +50,14 @@ public static class DumpLevelMap
         foreach (var p in lvl.NightFloors)
             FillRect(px, W, H, p.pos.x - p.size.x/2f, p.pos.y - p.size.y/2f, p.size.x, p.size.y,
                      new Color(0.35f, 0.55f, 1f));
+        // Ghost floors (solid only in the dark) in cyan; the lit gap they span
+        // must be WIDER than a max jump or the room has no reason to exist.
+        foreach (var p in lvl.GhostFloors)
+            FillRect(px, W, H, p.pos.x - p.size.x/2f, p.pos.y - p.size.y/2f, p.size.x, p.size.y,
+                     new Color(0.3f, 0.9f, 0.9f));
+        // Sleep runes in purple.
+        foreach (var r in lvl.SleepRunes)
+            FillRect(px, W, H, r.x - 0.55f, r.y - 0.2f, 1.1f, 0.4f, new Color(0.6f, 0.3f, 0.9f));
         foreach (var t in lvl.Traps)
         {
             var c = t.type == TrapType.RealExit ? new Color(0.3f,1f,0.4f)

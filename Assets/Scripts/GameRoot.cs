@@ -2033,10 +2033,16 @@ namespace TrustIssues
             }
         }
 
-        // Curated floors 10/20/30/40 (0-based 9/19/29/39) are boss arenas, tiers 1-4.
+        // Curated boss floors. Floor 10 is deliberately NOT one any more: the
+        // first world is pure "what's the next lie" platforming (Level Devil
+        // sustains 200+ stages with zero bosses — the genre's tension and a
+        // health-bar fight are different games), and floor 10 is its final
+        // exam instead. The tier-1 Ghoul is benched, not deleted — he can come
+        // back as an Endless mini-boss. Floors 20/30/40 keep their bosses as
+        // world-capping spectacles once the player is invested.
         static int BossTierForFloor(int idx)
         {
-            switch (idx) { case 9: return 1; case 19: return 2; case 29: return 3; case 39: return 4; }
+            switch (idx) { case 19: return 2; case 29: return 3; case 39: return 4; }
             return 0;
         }
 
@@ -2097,7 +2103,12 @@ namespace TrustIssues
             // it has to be indistinguishable right up until the lights die.
             foreach (var nf in _level.NightFloors)
                 BuildStoneFloor("NightFloor", nf.pos, nf.size, null)
-                    .AddComponent<NightFloor>().x = nf.pos.x;
+                    .AddComponent<NightFloor>().Configure(nf.pos.x, false);
+            // …and the inverse: spectral floor that's a shimmer in the light and
+            // only turns solid in the dark (floor 7's whole lesson).
+            foreach (var gf in _level.GhostFloors)
+                BuildStoneFloor("GhostFloor", gf.pos, gf.size, null)
+                    .AddComponent<NightFloor>().Configure(gf.pos.x, true);
             foreach (var d in _level.Decos)
                 Theme.Box("Deco", _levelRoot, d.pos, d.size, d.color, 2);
             foreach (var t in _level.Traps)
@@ -2113,10 +2124,11 @@ namespace TrustIssues
 
             SpawnPlayer();
             // Roomed levels (the rebuilt Castle floors) get a director to run the
-            // per-room rule. Corridor levels don't.
+            // per-room rules, lock the camera per chamber, and draw the room
+            // dots. Corridor levels don't.
             if (_level.Rooms.Count > 0 && _player != null)
                 _levelRoot.gameObject.AddComponent<RoomDirector>()
-                    .Init(_level.Rooms, _player.transform, _levelRoot);
+                    .Init(_level, _player.transform, _levelRoot);
             SpawnFirstSessionPrompts(); // faint in-world key hints, first boot + floor 1 only
             SpawnReplayGhost();      // race your previous attempt
             SpawnDeathEchoes();      // tombstones of real other players who died here
@@ -2518,10 +2530,17 @@ namespace TrustIssues
                     var col = go.AddComponent<BoxCollider2D>();
                     col.isTrigger = true; col.size = new Vector2(1.1f, 1.7f);
                     go.AddComponent<Trap>().Init(TrapType.RealExit);
-                    Theme.Box("CoffinBack", _levelRoot, t.pos, new Vector2(1.4f, 2.05f), Theme.Hex("140C08"), 1);
-                    Theme.Box("Coffin", _levelRoot, t.pos, new Vector2(1.15f, 1.9f), Theme.Hex("3A2418"), 2);
-                    Theme.Box("CrossV", _levelRoot, t.pos + new Vector2(0, 0.1f), new Vector2(0.18f, 0.95f), Theme.Exit, 3);
-                    Theme.Box("CrossH", _levelRoot, t.pos + new Vector2(0, 0.45f), new Vector2(0.62f, 0.18f), Theme.Exit, 3);
+                    // Visuals are CHILDREN of the exit (not the level root) so a
+                    // fleeing coffin takes its body with it instead of leaving an
+                    // invisible trigger running around a haunted-looking husk.
+                    var cb = Theme.Box("CoffinBack", go.transform, t.pos, new Vector2(1.4f, 2.05f), Theme.Hex("140C08"), 1);
+                    cb.transform.localPosition = Vector3.zero;
+                    var cf = Theme.Box("Coffin", go.transform, t.pos, new Vector2(1.15f, 1.9f), Theme.Hex("3A2418"), 2);
+                    cf.transform.localPosition = Vector3.zero;
+                    var cv = Theme.Box("CrossV", go.transform, t.pos, new Vector2(0.18f, 0.95f), Theme.Exit, 3);
+                    cv.transform.localPosition = new Vector3(0f, 0.1f, 0f);
+                    var ch = Theme.Box("CrossH", go.transform, t.pos, new Vector2(0.62f, 0.18f), Theme.Exit, 3);
+                    ch.transform.localPosition = new Vector3(0f, 0.45f, 0f);
                     break;
                 }
                 case TrapType.SpikeStatic:
@@ -3395,6 +3414,42 @@ namespace TrustIssues
                     Net.SendState(_player.transform.position, _player.Facing < 0f);
                 }
             }
+        }
+
+        // ==================== rooms ====================
+
+        // Lock the camera clamp to one chamber. Wide rooms still pan inside
+        // their own walls; rooms narrower than the screen get a fixed shot.
+        // The existing follow lerp turns each doorway crossing into a quick
+        // glide to the next screen — the Level Devil "new screen, new lie" cut.
+        public void FocusRoom(float minX, float maxX)
+        {
+            float halfW = NormalCamSize * (_cam != null ? _cam.aspect : 1.78f);
+            float lo = minX + halfW, hi = maxX - halfW;
+            if (lo > hi) lo = hi = (minX + maxX) / 2f;
+            _camMin = lo; _camMax = hi;
+        }
+
+        public void RoomToast(string msg) { if (_toast != null) StartCoroutine(FlashToast(msg)); }
+
+        // The lullaby's voice. Scold lines rotate and are throttled so a
+        // button-masher gets a steady drip of mockery, not a strobe.
+        static readonly string[] SleepScolds =
+        {
+            "You are asleep right now.",
+            "Struggling only deepens the slumber.",
+            "Shhh. The castle is rocking you.",
+            "Stop. Mashing. Sleep.",
+            "Every button you press is another sheep.",
+        };
+        float _scoldNext; int _scoldIx;
+        public void SleepStart() => RoomToast("The castle sings you to sleep… (be still)");
+        public void SleepWake()  => RoomToast("…you wake up.");
+        public void SleepScold()
+        {
+            if (Time.unscaledTime < _scoldNext) return;
+            _scoldNext = Time.unscaledTime + 0.8f;
+            RoomToast(SleepScolds[_scoldIx++ % SleepScolds.Length]);
         }
 
         // ==================== death / respawn ====================
