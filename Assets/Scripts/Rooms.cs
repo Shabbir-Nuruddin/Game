@@ -312,10 +312,14 @@ namespace TrustIssues
                 if (_rooms[i].Rule == RoomRule.Loop) BuildLoopZone(_rooms[i]);
 
             foreach (var r in level.SleepRunes) BuildSleepRune(r);
-            foreach (var d in level.Doorways) BuildArch(d);
             foreach (var g in level.Gates) BuildGate(g);
             foreach (var s in level.ShiftSpikes) BuildShiftSpike(s.x, s.y);
             BuildDots();
+            BuildCurtains();
+            // Frame the spawn room before the first rendered frame, so the level
+            // never flashes the old wide corridor zoom for an instant.
+            int start = RoomAt(player.position.x);
+            if (start >= 0) EnterRoom(start);
         }
 
         void LateUpdate()
@@ -365,6 +369,9 @@ namespace TrustIssues
             // transition, not a scroll. This is what makes five rooms FEEL like
             // five rooms instead of one corridor with pillars in it.
             if (GameRoot.I != null) GameRoot.I.FocusRoom(r.MinX, r.MaxX);
+            // Slide the darkness up to this room's walls.
+            if (_curtainL != null) _curtainL.transform.position = new Vector3(r.MinX - 17f, 0.35f, 0f);
+            if (_curtainR != null) _curtainR.transform.position = new Vector3(r.MaxX + 17f, 0.35f, 0f);
             for (int i = 0; i < _dots.Length; i++)
             {
                 if (_dots[i] == null) continue;
@@ -559,16 +566,20 @@ namespace TrustIssues
             }
         }
 
-        // A stone arch framing every doorway, so the passages read as DOORS
-        // between chambers instead of gaps between pillars ("each level does not
-        // have five sub-levels at all" — the geometry was there, the READ wasn't).
-        void BuildArch(float x)
+        // Everything outside the active chamber drowns in darkness: two huge
+        // near-black drapes flanking the room, repositioned at each doorway.
+        // This is what turns "a corridor you can see three rooms of" into ONE
+        // SCREEN PER ROOM — and it's thematically free, because an unlit castle
+        // is exactly what this castle is. (The flat gray "arch" frames tried
+        // first looked like goalposts — playtest: "you added some type of
+        // doors… that does not look good" — so the doorways are now framed by
+        // light instead of geometry.)
+        GameObject _curtainL, _curtainR;
+        void BuildCurtains()
         {
-            var stone = new Color(0.44f, 0.38f, 0.42f);
-            Theme.Box("ArchLintel", _levelRoot, new Vector2(x, -0.95f), new Vector2(2.1f, 0.32f), stone, 2);
-            Theme.Box("ArchTrim",   _levelRoot, new Vector2(x, -1.14f), new Vector2(2.1f, 0.07f), Theme.PlatEdge, 2);
-            Theme.Box("ArchJambL",  _levelRoot, new Vector2(x - 0.62f, -1.9f), new Vector2(0.22f, 1.6f), stone, 2);
-            Theme.Box("ArchJambR",  _levelRoot, new Vector2(x + 0.62f, -1.9f), new Vector2(0.22f, 1.6f), stone, 2);
+            var shade = new Color(0.035f, 0.015f, 0.05f, 0.97f);
+            _curtainL = Theme.Box("CurtainL", _levelRoot, Vector2.zero, new Vector2(34f, 16f), shade, 60);
+            _curtainR = Theme.Box("CurtainR", _levelRoot, Vector2.zero, new Vector2(34f, 16f), shade, 60);
         }
 
         void BuildGate(float x)

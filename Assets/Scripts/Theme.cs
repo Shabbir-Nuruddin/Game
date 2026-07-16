@@ -180,10 +180,12 @@ namespace TrustIssues
         // BIGGER than the screen (see RoomDirector) — that's what guarantees the
         // dark reaches every corner no matter where on screen the player is.
         // Tuned so the lit circle is roughly one platform wide: enough to see the
-        // lip of a gap you're standing on, not enough to see what's coming. Prime
-        // candidate for a playtest tweak.
-        public const float DarkHoleR = 0.105f;    // normalised radius: fully lit inside this
-        public const float DarkFalloffR = 0.170f; // …fully dark outside this
+        // lip of a gap you're standing on, not enough to see what's coming.
+        // Shrunk when the per-room camera zoom landed (5.6 → 3.8 view height
+        // makes the same world radius ~47% bigger on screen; playtest at the old
+        // zoom already called the dark toothless — "doesn't do shit").
+        public const float DarkHoleR = 0.070f;    // normalised radius: fully lit inside this
+        public const float DarkFalloffR = 0.115f; // …fully dark outside this
         static Sprite _darkMask;
         public static Sprite DarkMask
         {

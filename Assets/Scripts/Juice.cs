@@ -109,26 +109,37 @@ namespace TrustIssues
         };
 
         // ---- escalation tiers: it gets PERSONAL the more you die ----
+        // Written to be said OUT LOUD (the TTS voice reads them) and quotable —
+        // the reaction being farmed is the out-loud "oh you BASTARD", so every
+        // line blames the PLAYER, never the trap. Short enough to read before
+        // the respawn — the retry is instant and the roast must never delay it.
         static readonly string[] TierMocking =   // ~4–9 deaths
         {
             "Again? Bold strategy.",
-            "You're getting worse at this.",
-            "The trap isn't even trying anymore.",
+            "That was the same trap. The SAME one.",
+            "The castle didn't even move that one.",
+            "You walked into that like it owed you money.",
             "Centuries undead, foiled by a hallway.",
+            "The spikes are starting to recognize you.",
         };
         static readonly string[] TierBrutal =    // ~10–24 deaths
         {
             "This floor has a body count and it's all you.",
-            "Have you considered a different game?",
             "The bats are taking bets on you now.",
             "I'd offer a tutorial but you'd die in it.",
+            "Your ghost just asked for a transfer.",
+            "The coffin isn't a goal anymore. It's a mercy.",
+            "At this point the trap feels bad for you.",
+            "You've died here so often the floor filed a complaint.",
         };
         static readonly string[] TierPity =      // 25+ deaths
         {
             "Hey. It's okay. (It's not.)",
             "We can stop whenever you want. Please.",
-            "Breathe. Then die again, probably.",
             "You've earned a participation coffin.",
+            "The castle isn't angry. Just disappointed.",
+            "Blink twice if you need help.",
+            "Your deaths have their own leaderboard now.",
         };
 
         // Twisting the knife when you die RIGHT before the exit (the viral moment).
@@ -139,6 +150,8 @@ namespace TrustIssues
             "The exit waved at you. Then you died.",
             "One more step. That's all it was. One.",
             "You could taste the win. Now taste the floor.",
+            "The coffin was RIGHT THERE.",
+            "It watched you die from a metre away.",
         };
 
         static string Pick(string[] a) => a[Random.Range(0, a.Length)];
@@ -153,10 +166,13 @@ namespace TrustIssues
             // Milestone humiliations.
             switch (deaths)
             {
-                case 10:  return "TEN deaths. A perfect, round failure.";
+                case 10:  return "TEN deaths. A perfect, round, embarrassing number.";
                 case 25:  return "25 deaths on floor " + floor + ". Framed and hung in the castle.";
                 case 50:  return "FIFTY. The castle has adopted you as a permanent ghost.";
+                case 75:  return "75. The other ghosts held a meeting about you.";
                 case 100: return "100 deaths. Genuinely impressive. Genuinely.";
+                case 150: return "150. The castle renamed this floor after you.";
+                case 200: return "200 deaths. You ARE the trap now.";
             }
 
             // Dying at the doorstep is the funniest death — call it out.

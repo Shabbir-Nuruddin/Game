@@ -2084,6 +2084,7 @@ namespace TrustIssues
             _recT.Clear(); _recP.Clear(); _recTimer = 0f;   // fresh recording for this attempt
             _level = CurrentLevel();
             _camMin = _level.CamMinX; _camMax = _level.CamMaxX;
+            _roomCamSize = 0f;   // corridor zoom until a RoomDirector focuses a room
             _levelRoot = new GameObject("Level").transform;
 
             // Floor extents — right edge feeds the near-miss narrator, both edges
@@ -3262,7 +3263,8 @@ namespace TrustIssues
             if (_player == null) return;
             if (InBossRoom) { PositionBossCam(); return; }
             float x = Mathf.Clamp(_player.transform.position.x, _camMin, _camMax);
-            _rig.SetFrame(x, CamY, NormalCamSize);
+            _rig.SetFrame(x, _roomCamSize > 0f ? RoomCamY : CamY,
+                          _roomCamSize > 0f ? _roomCamSize : NormalCamSize);
         }
 
         // Boss arenas pull the camera WAY back and lock it on the room centre, so the
@@ -3285,7 +3287,8 @@ namespace TrustIssues
                 if (InBossRoom) { PositionBossCam(); return; }   // locked, no follow
                 float x = Mathf.Clamp(_player.transform.position.x, _camMin, _camMax);
                 _rig.SetFrame(Mathf.Lerp(_rig.FrameX, x, 10f * Time.unscaledDeltaTime),
-                              CamY, NormalCamSize);
+                              _roomCamSize > 0f ? RoomCamY : CamY,
+                              _roomCamSize > 0f ? _roomCamSize : NormalCamSize);
             }
         }
 
@@ -3418,13 +3421,23 @@ namespace TrustIssues
 
         // ==================== rooms ====================
 
-        // Lock the camera clamp to one chamber. Wide rooms still pan inside
-        // their own walls; rooms narrower than the screen get a fixed shot.
-        // The existing follow lerp turns each doorway crossing into a quick
-        // glide to the next screen — the Level Devil "new screen, new lie" cut.
+        // Frame ONE chamber as the whole screen. The first version of this only
+        // clamped the camera's X and kept the platforming zoom — but that zoom
+        // shows ~20 world units and rooms are ~7 wide, so the player saw two or
+        // three rooms at once and the sub-level structure was invisible
+        // (playtest: "there are no five sub-levels, it's just one floor").
+        // Now the camera ZOOMS to the room: floor to ceiling tall, centred, and
+        // whatever the screen's aspect still shows beyond the walls gets hidden
+        // by the RoomDirector's darkness curtains.
+        float _roomCamSize;         // 0 = not in a roomed level; use the normal zoom
+        const float RoomCamY = 0.35f;
         public void FocusRoom(float minX, float maxX)
         {
-            float halfW = NormalCamSize * (_cam != null ? _cam.aspect : 1.78f);
+            float aspect = _cam != null ? _cam.aspect : 1.78f;
+            // Fit height (floor -3.3 … ceiling ~3.9); widen only if the room
+            // itself outgrows what that height shows at this aspect.
+            _roomCamSize = Mathf.Max(3.8f, ((maxX - minX) / 2f + 0.5f) / aspect);
+            float halfW = _roomCamSize * aspect;
             float lo = minX + halfW, hi = maxX - halfW;
             if (lo > hi) lo = hi = (minX + maxX) / 2f;
             _camMin = lo; _camMax = hi;

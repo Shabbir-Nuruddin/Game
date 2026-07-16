@@ -80,8 +80,13 @@ namespace TrustIssues
                 var go = sp != null
                     ? Theme.SpriteBox(chand ? "Chandelier" : "RockHead", transform, pos, size, sp, 4)
                     : Theme.Box(chand ? "Chandelier" : "RockHead", transform, pos, size,
-                                chand ? Theme.Hex("7A5A30") : Theme.Trick, 4);
+                                chand ? Theme.Hex("2A2430") : Theme.Trick, 4);
                 if (sp != null && !chand) go.GetComponent<SpriteRenderer>().color = new Color(0.5f, 0.45f, 0.5f);
+                // WROUGHT IRON, not gold. The imported sprite is a bright brass
+                // blob that reads as a mystery cheese block against the night sky
+                // (playtest: "how does that fit the theme") — tint it down to
+                // black iron so only its shape and the drop threat read.
+                if (sp != null && chand) go.GetComponent<SpriteRenderer>().color = new Color(0.34f, 0.3f, 0.38f);
                 if (chand && sp == null) // fallback art: a bronze frame, candles, and a chain
                 {
                     // The old dark frame vanished against the night sky, so all players
@@ -171,6 +176,7 @@ namespace TrustIssues
             else if (type == TrapType.GrowSpike)
             {
                 float k = 0.5f + 0.5f * Mathf.Sin(Time.time * 2.2f + _origin.x); // 0..1
+                k = k * k * (3f - 2f * k);   // smoothstep: snaps up, LINGERS tall, snaps down — a blade, not a bobbing float
                 float h = Mathf.Max(0.08f, k);                                    // never fully gone
                 transform.localScale = new Vector3(_growBaseScale.x, _growBaseScale.y * h, 1f);
                 float curH = _growFullH * h;
@@ -392,14 +398,23 @@ namespace TrustIssues
             col.size *= 0.8f; // reliable spike hitbox
             _spike = go.transform;
 
+            // Ease-out with a small overshoot-and-settle: the spike PUNCHES up,
+            // pokes a hair past its mark, and sits back. A linear slide read as
+            // a texture glitch, not an attack ("the moving aspect does not look
+            // good") — the overshoot is what sells impact at this sprite size.
             float e = 0f; Vector3 from = _spike.position;
             Vector3 to = from + Vector3.up * 0.95f;
-            while (e < 0.14f)
+            const float T = 0.16f;
+            GameRoot.I?.ShakeCam(0.1f, 0.07f);
+            while (e < T)
             {
                 e += Time.deltaTime;
-                _spike.position = Vector3.Lerp(from, to, e / 0.14f);
+                float k = Mathf.Clamp01(e / T);
+                float ease = 1f + 1.7f * Mathf.Pow(k - 1f, 3f) + 0.7f * Mathf.Pow(k - 1f, 2f); // back-out
+                _spike.position = Vector3.LerpUnclamped(from, to, ease);
                 yield return null;
             }
+            _spike.position = to;
         }
 
         // A crusher block slams down the moment you reach for the bait coins.
