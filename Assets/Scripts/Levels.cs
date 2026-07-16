@@ -72,6 +72,19 @@ namespace TrustIssues
         // makes it worse; only stillness wakes you. (The gag the boss approved:
         // the game demands the one thing a rage-game player cannot do — nothing.)
         public List<Vector2> SleepRunes = new();
+        // Every internal doorway (divider-wall x). Gets a stone arch frame so the
+        // passages read as DOORS between chambers, not gaps between pillars.
+        public List<float> Doorways = new();
+        // Doorways with a spiked portcullis that slams on approach and then
+        // cycles. The doorway itself becomes a threat — the one element the
+        // player has crossed fifty times and stopped looking at.
+        public List<float> Gates = new();
+        // Spikes that RELOCATE while the lights are out: (litX, darkX). The
+        // playtest verdict this answers: "you already know exactly where the
+        // trap is going to be." Not in the dark you don't — the room you
+        // memorised is not the room you're crossing. Your candle circle shows
+        // the truth; your memory is the trap.
+        public List<Vector4> ShiftSpikes = new();   // x = litX, y = darkX (z,w unused)
     }
 
     /// <summary>
@@ -129,8 +142,9 @@ namespace TrustIssues
         /// Open a new chamber here, walling it off from the last one.
         /// triggerFrac is how far into the room the rule fires, 0-1. Default 0.35:
         /// you get a clear look at the room, start running it, and THEN it lies.
+        /// gated puts a cycling spiked portcullis in this room's ENTRY doorway.
         /// </summary>
-        public void Room(RoomRule rule, float triggerFrac = 0.35f)
+        public void Room(RoomRule rule, float triggerFrac = 0.35f, bool gated = false)
         {
             bool first = !_inRoom;
             CloseRoom();
@@ -141,9 +155,18 @@ namespace TrustIssues
                 // the player ducks through the gap at floor level.
                 float wy = (DoorTopY + CeilY) / 2f;
                 L.Platforms.Add(new Rect2(cur, wy, 0.6f, CeilY - DoorTopY));
+                L.Doorways.Add(cur);
+                if (gated) L.Gates.Add(cur);
             }
             _roomStart = cur; _roomRule = rule; _inRoom = true;
         }
+
+        /// <summary>
+        /// A spike that stands at litX… until the room goes dark, when it silently
+        /// relocates to darkX. Both spots must be on solid floor.
+        /// </summary>
+        public void ShiftSpike(float litX, float darkX) =>
+            L.ShiftSpikes.Add(new Vector4(litX, darkX, 0f, 0f));
 
         // Close the open chamber, capping it with a ceiling across its full span.
         void CloseRoom()
@@ -387,47 +410,48 @@ namespace TrustIssues
         // "gauntlet" gates (and become BOSS rooms once Phase 2 lands).
         // ====================================================================
 
-        // 1 — five chambers, and the castle starts lying immediately. Room 1 is the
-        // only honest one, and it's short: just long enough to believe the floor
-        // holds you up. Then the floor lies (room 2) and the spikes are late
-        // (room 3), so the very first floor already teaches the golden-path rule —
-        // the inviting thing is the trap.
+        // 1 — five chambers, four different DIRECTIONS of death. The playtest
+        // verdict on the old floors was "something's ahead at floor level, jump
+        // it" — one answer solved everything. So floor 1's job is now to break
+        // that habit on day one: the floor lies (below), a spike pops late
+        // (timing), a chandelier falls on the landing you'd pause on (above),
+        // and the last doorway itself bites (the portcullis debut).
         static Level L1()
         {
             var b = new B();
             b.Room(RoomRule.None); b.Plat(5.5f);                                 // trust me
             b.Room(RoomRule.None); b.Plat(2.5f); b.FakeFloor(2.2f); b.Plat(3f);  // …don't stop on it
-            b.Room(RoomRule.None); float a = b.Plat(6f); b.LateSpike(a);         // springs up as you arrive
+            b.Room(RoomRule.None); float a = b.Plat(6f); b.LateSpike(a - 1.2f);  // ambush AT the entry, not mid-room
             b.Room(RoomRule.None); b.Plat(2.5f); b.Gap(2.3f);
-                                   float c = b.Plat(4f); b.Spike(c);
-            b.Room(RoomRule.None); b.Plat(4f);                                   // …and the coffin
+                                   float c = b.Plat(4.5f); b.Chandelier(c - 0.9f); // falls on the LANDING
+            b.Room(RoomRule.None, 0.35f, true); b.Plat(4f);                      // the door has teeth
             return b.Finish();
         }
 
-        // 2 — THE CANDLES GO OUT, and the floor goes with them.
+        // 2 — THE CANDLES GO OUT, and the room you memorised goes with them.
         //
-        // The rule isn't "it's dark" — dark on its own is just atmosphere, and you
-        // simply walk through it. The rule is that the light is what's HOLDING THE
-        // FLOOR UP. You walk into a lit room, you see solid ground the whole way
-        // across, you commit to the run — and partway in the candles snuff and the
-        // ground you memorised isn't there any more.
-        //
-        // The lights come back at every doorway, so each room gives you one honest
-        // look before it lies. That's the tell, and it's what makes the second
-        // death your own fault: in the dark, assume holes, and jump.
+        // Two lies share the theme. First: the light is holding the floor up
+        // (night floors vanish). Second, the new one: the dark REARRANGES —
+        // spikes silently relocate while the lights are out, so the layout you
+        // studied on the way in is a trap in itself. Your candle circle shows
+        // the truth; trusting your memory over your eyes is what kills you.
+        // That's aimed square at "you already know exactly where the trap is."
         static Level L2()
         {
             var b = new B();
             b.Room(RoomRule.None);        b.Plat(6f);                            // lit and honest
             // the lights die exactly as you step onto the floor you were promised
             b.Room(RoomRule.Dark, 0.42f); b.Plat(3f); b.NightFloor(2f); b.Plat(3f);
-            // …then the same lie twice. The lights still die under your feet on the
-            // FIRST gap; the second is the one you have to take blind, so the
-            // landing between them is kept wide enough to stop and re-aim on.
-            b.Room(RoomRule.Dark);        b.Plat(2.5f); b.NightFloor(2f); b.Plat(2.8f);
-                                          b.NightFloor(2f); b.Plat(2.5f);
+            // spikes at the far end… you watch them, the lights die, and the dark
+            // quietly walks them back toward you
+            // Dark spot stays well AHEAD of where the player stands when the
+            // lights die — the spike must move into their PATH, never onto them.
+            b.Room(RoomRule.Dark, 0.3f);  float a = b.Plat(7f);
+                                          b.ShiftSpike(a + 1.8f, a + 0.2f);
             b.Room(RoomRule.None);        b.Plat(3f); b.Gap(2.3f); b.Plat(3f);   // lights up: breathe
-            b.Room(RoomRule.Dark, 0.3f);  b.Plat(3f); b.NightFloor(2.2f); b.Plat(3f);
+            b.Room(RoomRule.Dark, 0.3f);  b.Plat(2.5f); b.NightFloor(2f);
+                                          float c = b.Plat(4.5f);
+                                          b.ShiftSpike(c + 1.4f, c - 0.6f);
             return b.Finish();
         }
 
@@ -447,12 +471,16 @@ namespace TrustIssues
         {
             var b = new B();
             b.Room(RoomRule.None); b.Plat(6f);
-            b.Room(RoomRule.None); float a = b.Plat(6.5f); b.LateSpike(a + 1.2f);
+            b.Room(RoomRule.None); float a = b.Plat(6.5f); b.Dart(a);            // death arrives SIDEWAYS
             b.Room(RoomRule.None); b.Plat(2.6f); b.FakeFloor(2f); b.Plat(2.6f);
-            b.Room(RoomRule.None); b.Plat(3f); b.Gap(2.3f); float c = b.Plat(3.2f); b.Spike(c);
-            b.Room(RoomRule.Flee); float p = b.Plat(4f); b.Spike(p + 1.2f);
+            b.Room(RoomRule.None); b.Plat(3f); b.Gap(2.3f);
+                                   float c = b.Plat(3.2f); b.HolyWater(c + 0.6f); // the floor itself pulses
+            // The chase: a gate slams behind you, and the coffin drags you over a
+            // pulsing puddle and through a dart lane before the wall corners it.
+            b.Room(RoomRule.Flee, 0.35f, true);
+                                   float p = b.Plat(4f); b.Spike(p + 1.2f);
                                    b.Gap(2.3f);
-                                   float q = b.Plat(6f); b.Spike(q);
+                                   float q = b.Plat(6f); b.HolyWater(q - 0.8f); b.Dart(q + 1.4f);
                                    b.ExitAt(p - 1.2f);   // right there. almost touching.
             return b.FinishBare();
         }
@@ -466,7 +494,8 @@ namespace TrustIssues
             b.Room(RoomRule.None);         b.Plat(6f);
             b.Room(RoomRule.Press, 0.3f);  b.Plat(7f);                        // just RUN
             b.Room(RoomRule.None);         b.Plat(3f); b.Gap(2.3f); b.Plat(3f);
-            b.Room(RoomRule.Press, 0.25f); float a = b.Plat(7f); b.Spike(a);  // run AND hop
+            b.Room(RoomRule.Press, 0.25f); float a = b.Plat(7f);
+                                           b.HolyWater(a - 1f);               // ceiling above, pulse below
             b.Room(RoomRule.Press, 0.2f);  b.Plat(2.5f); b.FakeFloor(2f); b.Plat(3f);
             return b.Finish();                                                // …and the floor lies
         }
@@ -482,7 +511,11 @@ namespace TrustIssues
             var b = new B();
             b.Room(RoomRule.None);         b.Plat(6f);
             b.Room(RoomRule.None);         float a = b.Plat(7f); b.SleepRune(a);
-            b.Room(RoomRule.None);         b.Plat(3f); b.Gap(2.3f); float c = b.Plat(3.5f); b.SleepRune(c - 0.9f);
+            // a bat roosts above the second rune: nap here and you're dinner.
+            // (The playtest's favourite moment was sleep+press — "you actually
+            // can't do shit" — so the floor now has THREE different answers to
+            // "what eats me if I nap here": nothing, a bat, the ceiling.)
+            b.Room(RoomRule.None);         float c = b.Plat(7f); b.SleepRune(c - 1.5f); b.Bat(c - 1f);
             b.Room(RoomRule.Press, 0.22f); float d = b.Plat(7.5f); b.SleepRune(d - 1.2f);
             b.Room(RoomRule.Press, 0.3f);  float e = b.Plat(8f); b.SleepRune(e - 2.6f);
                                            b.SleepRune(e - 0.2f); b.SleepRune(e + 2.2f);
@@ -499,9 +532,9 @@ namespace TrustIssues
             b.Room(RoomRule.None);           b.Plat(6f);
             b.Room(RoomRule.Reverse, 0.35f); b.Plat(7f);
             b.Room(RoomRule.Reverse, 0.3f);  b.Plat(3f); b.Gap(2.3f); b.Plat(3.5f);
-            b.Room(RoomRule.None);           float a = b.Plat(6f); b.Spike(a);
-            b.Room(RoomRule.Reverse, 0.25f); b.Plat(2.5f); float c = b.Plat(2.8f); b.Spike(c);
-                                             b.Gap(2.3f); b.Plat(3f);
+            b.Room(RoomRule.None);           float a = b.Plat(6f); b.Pendulum(a); // death swings OVERHEAD
+            b.Room(RoomRule.Reverse, 0.15f); b.Plat(2.5f); float c = b.Plat(2.8f); b.Dart(c);
+                                             b.Gap(2.3f); b.Plat(3f);              // hands flip BEFORE the dart, or the gag misfires
             return b.Finish();
         }
 
@@ -516,7 +549,8 @@ namespace TrustIssues
             b.Room(RoomRule.None);        b.Plat(3f); b.Gap(2.2f); b.Plat(3f);
             b.Room(RoomRule.Dark, 0.2f);  b.Plat(3f); b.GhostFloor(3.4f); b.Plat(3f);
             b.Room(RoomRule.Dark, 0.18f); b.Plat(2.5f); b.NightFloor(2f); b.Plat(2.2f);
-                                          b.GhostFloor(3.4f); b.Plat(2.5f);
+                                          b.GhostFloor(3.4f); float g = b.Plat(2.5f);
+                                          b.ShiftSpike(g + 0.5f, g - 0.3f);   // the far shore rearranges too
             b.Room(RoomRule.None);        b.Plat(3f); b.Gap(2.3f); b.Plat(3f);
             b.Room(RoomRule.Dark, 0.2f);  b.Plat(2.5f); b.GhostFloor(3.4f); b.Plat(2f);
                                           b.NightFloor(2f); b.Plat(2.5f);
@@ -534,8 +568,9 @@ namespace TrustIssues
             b.Room(RoomRule.None); b.Plat(6f);
             b.Room(RoomRule.Loop); b.Plat(7.5f);
             b.Room(RoomRule.Loop); b.Plat(3f); b.Gap(2.3f); b.Plat(3.2f);
-            b.Room(RoomRule.Loop); float a = b.Plat(7f); b.Spike(a + 2.2f);
-            b.Room(RoomRule.None); b.Plat(2.5f); b.FakeFloor(2.2f); b.Plat(2.8f);
+            b.Room(RoomRule.Loop); float a = b.Plat(7f); b.GrowSpike(a + 0.8f);  // spike clock, THEN rune jump, THEN the gate's rhythm
+            b.Room(RoomRule.None, 0.35f, true);                                  // …and the exit door bites
+                                   b.Plat(2.5f); b.FakeFloor(2.2f); b.Plat(2.8f);
             return b.Finish();
         }
 
@@ -554,9 +589,11 @@ namespace TrustIssues
                                           float c = b.Plat(4.5f); b.FakeCoffin(c + 0.6f);
             b.Room(RoomRule.Dark, 0.25f); float d = b.Plat(9f); b.FakeCoffin(d - 2f); b.FakeCoffin(d + 1.5f);
             b.Room(RoomRule.None);        b.Plat(2.5f); b.FakeFloor(2f);
-                                          float e = b.Plat(3.5f); b.FakeCoffin(e + 0.7f);
+                                          float e = b.Plat(4.5f); b.FlameJet(e - 0.6f);
+                                          b.FakeCoffin(e + 1.2f);   // fire guards a coffin that's ALSO lying
             b.Room(RoomRule.Flee);        float p = b.Plat(12f); b.FakeCoffin(p - 3.4f);
                                           b.FakeCoffin(p - 0.9f); b.FakeCoffin(p + 1.6f);
+                                          b.HolyWater(p + 3f);
                                           b.ExitAt(p - 5f);
             return b.FinishBare();
         }
@@ -571,12 +608,14 @@ namespace TrustIssues
         {
             var b = new B();
             b.Room(RoomRule.Dark, 0.3f);    b.Plat(2.5f); b.NightFloor(2f); b.Plat(2.8f);
-            b.Room(RoomRule.Press, 0.25f);  float a = b.Plat(6.5f); b.Spike(a);
+            b.Room(RoomRule.Press, 0.25f);  float a = b.Plat(6.5f); b.HolyWater(a);
             b.Room(RoomRule.Reverse, 0.3f); b.Plat(3f); b.Gap(2.3f);
                                             float s = b.Plat(3.2f); b.SleepRune(s + 0.8f);
-            b.Room(RoomRule.Loop);          b.Plat(7f); b.FakeFloor(2f); b.Plat(2f);
-            b.Room(RoomRule.Dark, 0.2f);    b.Plat(2.5f); b.GhostFloor(3.4f); b.Plat(2.5f);
-            b.Room(RoomRule.Flee);          float p = b.Plat(10f); b.Spike(p - 2f); b.Spike(p + 1f);
+            b.Room(RoomRule.Loop, 0.35f, true);
+                                            b.Plat(7f); b.FakeFloor(2f); b.Plat(2f);
+            b.Room(RoomRule.Dark, 0.2f);    b.Plat(2.5f); b.GhostFloor(3.4f);
+                                            float g = b.Plat(2.5f); b.ShiftSpike(g + 0.6f, g - 0.4f);
+            b.Room(RoomRule.Flee);          float p = b.Plat(10f); b.Dart(p - 2f); b.Spike(p + 1f);
                                             b.ExitAt(p - 3.8f);
             return b.FinishBare();
         }

@@ -152,6 +152,85 @@ namespace TrustIssues
         }
     }
 
+    /// <summary>
+    /// A spiked portcullis in a doorway. It hangs harmlessly overhead until you
+    /// approach, then SLAMS — and settles into a slow grind cycle (down, dwell,
+    /// rise, pause) for as long as you're near. The doorway is the one element
+    /// the player crosses fifty times and stops looking at; that's exactly why
+    /// it's the one that bites. Lethal only while it's low — brushing the bars
+    /// as they rise past head height doesn't kill, or passing would be pixel-luck.
+    /// </summary>
+    public class Portcullis : MonoBehaviour
+    {
+        const float UpY = -0.15f, DownY = -1.85f;   // centre travel (bars are 1.7 tall)
+        const float SlamTime = 0.22f, RiseTime = 1.4f;
+        const float DwellDown = 1.1f, DwellUp = 1.2f;
+        const float SenseR = 2.1f;                   // how close counts as "approaching"
+
+        Transform _player;
+        BoxCollider2D _col;
+        int _state;      // 0 armed-up, 1 slam, 2 down, 3 rise, 4 up-dwell
+        float _t;
+
+        public void Setup(Transform player, BoxCollider2D col) { _player = player; _col = col; }
+
+        void Update()
+        {
+            var p = transform.position;
+            switch (_state)
+            {
+                case 0:
+                    if (_player != null && Mathf.Abs(_player.position.x - p.x) < SenseR)
+                    {
+                        _state = 1;
+                        GameRoot.I?.ShakeCam(0.2f, 0.12f);
+                    }
+                    break;
+                case 1:
+                    p.y -= (UpY - DownY) / SlamTime * Time.deltaTime;
+                    if (p.y <= DownY) { p.y = DownY; _state = 2; _t = DwellDown; }
+                    break;
+                case 2: _t -= Time.deltaTime; if (_t <= 0f) _state = 3; break;
+                case 3:
+                    p.y += (UpY - DownY) / RiseTime * Time.deltaTime;
+                    if (p.y >= UpY) { p.y = UpY; _state = 4; _t = DwellUp; }
+                    break;
+                default:
+                    _t -= Time.deltaTime;
+                    if (_t <= 0f) _state = 0;   // re-arm; slams again if you're still loitering
+                    break;
+            }
+            transform.position = p;
+            // Bars only bite while their spikes are at body height.
+            if (_col != null) _col.enabled = (p.y - 0.85f) < -1.55f;
+        }
+
+        void OnTriggerEnter2D(Collider2D o) { Bite(o); }
+        void OnTriggerStay2D(Collider2D o)  { Bite(o); }
+        void Bite(Collider2D o)
+        {
+            if (o.GetComponent<PlayerController>() != null)
+                GameRoot.I?.Die("The doorway bit.");
+        }
+    }
+
+    /// <summary>
+    /// A spike that stands somewhere else in the dark. Looks and kills exactly
+    /// like a normal spike — the difference is that when its room's candles die,
+    /// it is silently already at its other spot. The layout you memorised on the
+    /// way in is the trap; the candle circle around you is the only truth.
+    /// </summary>
+    public class ShiftSpikeMark : MonoBehaviour
+    {
+        public float litX, darkX;
+        public void Place(bool dark)
+        {
+            var p = transform.position;
+            p.x = dark ? darkX : litX;
+            transform.position = p;
+        }
+    }
+
     /// <summary>A little "z" that drifts up off a sleeping vampire and fades.</summary>
     public class ZzzFloat : MonoBehaviour
     {
@@ -188,6 +267,7 @@ namespace TrustIssues
         Transform _player;
         PlayerController _pc;
         NightFloor[] _nightFloors = System.Array.Empty<NightFloor>();
+        readonly List<ShiftSpikeMark> _shiftSpikes = new();
         Transform _fleeExit;                  // the RealExit, if a Flee room owns one
         bool _fleeToasted;
         readonly List<GameObject> _slabs = new();
@@ -211,6 +291,7 @@ namespace TrustIssues
         // --- Room dots (the "five stages" readout, Level Devil's door dots) ---
         GameObject _dotsGO;
         Image[] _dots = System.Array.Empty<Image>();
+        Text _roomLabel;
 
         public void Init(Level level, Transform player, Transform levelRoot)
         {
@@ -231,6 +312,9 @@ namespace TrustIssues
                 if (_rooms[i].Rule == RoomRule.Loop) BuildLoopZone(_rooms[i]);
 
             foreach (var r in level.SleepRunes) BuildSleepRune(r);
+            foreach (var d in level.Doorways) BuildArch(d);
+            foreach (var g in level.Gates) BuildGate(g);
+            foreach (var s in level.ShiftSpikes) BuildShiftSpike(s.x, s.y);
             BuildDots();
         }
 
@@ -287,6 +371,7 @@ namespace TrustIssues
                 _dots[i].color = new Color(1f, 1f, 1f, i == idx ? 0.95f : 0.30f);
                 _dots[i].rectTransform.localScale = Vector3.one * (i == idx ? 1.25f : 1f);
             }
+            if (_roomLabel != null) _roomLabel.text = $"ROOM {idx + 1} / {_rooms.Count}";
         }
 
         void OnRuleFired(RoomSpec room)
@@ -392,6 +477,15 @@ namespace TrustIssues
                 bool solid = nf.ghost ? (mine && dark) : !(mine && dark);
                 nf.SetSolid(solid);
             }
+            // Shift spikes teleport the instant the room commits either way. In
+            // the dark you can't see the move happen, which is the whole trick.
+            for (int i = 0; i < _shiftSpikes.Count; i++)
+            {
+                var ss = _shiftSpikes[i];
+                if (ss == null) continue;
+                bool mine = ss.litX >= _rooms[_active].MinX && ss.litX < _rooms[_active].MaxX;
+                ss.Place(mine && dark);
+            }
         }
 
         // ---------------- built pieces ----------------
@@ -446,7 +540,97 @@ namespace TrustIssues
             col.isTrigger = true;
             col.size = new Vector2(1.1f, 0.35f);   // hugging the floor — jump it
             var sz = go.AddComponent<SleepRuneZone>();
-            sz.SetGlyph(BuildRuneGlyph(go.transform, new Color(0.55f, 0.3f, 0.85f, 0.85f)));
+            // Candle-bone gold, not purple — the lullaby is candlelight, and the
+            // palette here is stone/blood/bone/gold only (playtest: "where did
+            // purple come from?"). A soft haze of the same light sells "drowsy"
+            // without leaving the theme.
+            var candle = new Color(0.93f, 0.85f, 0.6f, 0.85f);
+            sz.SetGlyph(BuildRuneGlyph(go.transform, candle));
+            for (int i = 0; i < 2; i++)
+            {
+                var m = new GameObject("Haze" + i);
+                m.transform.SetParent(go.transform, false);
+                m.transform.localPosition = new Vector3(i == 0 ? -0.2f : 0.25f, 0.35f + i * 0.25f, 0f);
+                m.transform.localScale = Vector3.one * (i == 0 ? 0.8f : 0.5f);
+                var sr = m.AddComponent<SpriteRenderer>();
+                sr.sprite = Theme.Disc;
+                sr.color = new Color(candle.r, candle.g, candle.b, 0.10f);
+                sr.sortingOrder = 3;
+            }
+        }
+
+        // A stone arch framing every doorway, so the passages read as DOORS
+        // between chambers instead of gaps between pillars ("each level does not
+        // have five sub-levels at all" — the geometry was there, the READ wasn't).
+        void BuildArch(float x)
+        {
+            var stone = new Color(0.44f, 0.38f, 0.42f);
+            Theme.Box("ArchLintel", _levelRoot, new Vector2(x, -0.95f), new Vector2(2.1f, 0.32f), stone, 2);
+            Theme.Box("ArchTrim",   _levelRoot, new Vector2(x, -1.14f), new Vector2(2.1f, 0.07f), Theme.PlatEdge, 2);
+            Theme.Box("ArchJambL",  _levelRoot, new Vector2(x - 0.62f, -1.9f), new Vector2(0.22f, 1.6f), stone, 2);
+            Theme.Box("ArchJambR",  _levelRoot, new Vector2(x + 0.62f, -1.9f), new Vector2(0.22f, 1.6f), stone, 2);
+        }
+
+        void BuildGate(float x)
+        {
+            var go = new GameObject("Portcullis");
+            go.transform.SetParent(_levelRoot, false);
+            go.transform.position = new Vector3(x, -0.15f, 0f);
+            var iron = new Color(0.17f, 0.15f, 0.19f);
+            for (int i = -1; i <= 1; i++)
+            {
+                var bar = new GameObject("Bar");
+                bar.transform.SetParent(go.transform, false);
+                bar.transform.localPosition = new Vector3(i * 0.22f, 0f, 0f);
+                var sr = bar.AddComponent<SpriteRenderer>();
+                sr.sprite = Theme.Square;
+                sr.color = iron;
+                sr.sortingOrder = 4;
+                bar.transform.localScale = new Vector3(0.09f, 1.7f, 1f);
+                var tip = new GameObject("Tip");
+                tip.transform.SetParent(go.transform, false);
+                tip.transform.localPosition = new Vector3(i * 0.22f, -0.89f, 0f);
+                var tsr = tip.AddComponent<SpriteRenderer>();
+                tsr.sprite = Theme.Square;
+                tsr.color = Theme.Danger;
+                tsr.sortingOrder = 4;
+                tip.transform.localScale = new Vector3(0.09f, 0.14f, 1f);
+            }
+            var crossbar = new GameObject("Crossbar");
+            crossbar.transform.SetParent(go.transform, false);
+            crossbar.transform.localPosition = new Vector3(0f, 0.3f, 0f);
+            var csr = crossbar.AddComponent<SpriteRenderer>();
+            csr.sprite = Theme.Square;
+            csr.color = iron;
+            csr.sortingOrder = 4;
+            crossbar.transform.localScale = new Vector3(0.62f, 0.1f, 1f);
+
+            var col = go.AddComponent<BoxCollider2D>();
+            col.isTrigger = true;
+            col.size = new Vector2(0.55f, 1.6f);
+            go.AddComponent<Portcullis>().Setup(_player, col);
+        }
+
+        // Identical to a normal spike in every pixel — that's the point.
+        void BuildShiftSpike(float litX, float darkX)
+        {
+            var sp = Assets.Sprite("spike");
+            var pos = new Vector2(litX, -2.4f);
+            var size = new Vector2(0.7f, 0.7f);
+            GameObject go = sp != null
+                ? Theme.SpriteBox("ShiftSpike", _levelRoot, pos, size, sp, 3)
+                : Theme.Box("ShiftSpike", _levelRoot, pos, size, Theme.Danger, 3);
+            if (sp != null) go.GetComponent<SpriteRenderer>().color = Theme.Danger;
+            var col = go.AddComponent<BoxCollider2D>();
+            col.isTrigger = true;
+            var sr = go.GetComponent<SpriteRenderer>();
+            if (sr != null && sr.sprite != null) col.size = sr.sprite.bounds.size * 0.85f;
+            var kz = go.AddComponent<KillZone>();
+            kz.msg = "The dark moved them.";
+            kz.trapTag = (int)TrapType.SpikeStatic;
+            var mark = go.AddComponent<ShiftSpikeMark>();
+            mark.litX = litX; mark.darkX = darkX;
+            _shiftSpikes.Add(mark);
         }
 
         // A flat glowing floor-glyph: a strip plus two ticks. Deliberately the
@@ -499,6 +683,12 @@ namespace TrustIssues
                 img.raycastTarget = false;
                 _dots[i] = img;
             }
+            // "ROOM 3 / 5" under the dots: the dots alone were too quiet — the
+            // playtest read the whole floor as one corridor, so the sub-level
+            // structure now says its own name.
+            _roomLabel = Theme.Label(_dotsGO.transform, "ROOM 1 / " + _rooms.Count, 22,
+                new Color(1f, 1f, 1f, 0.55f), new Vector2(0.5f, 0.5f),
+                new Vector2(0f, -30f), new Vector2(320f, 30f));
         }
 
         void OnDestroy()

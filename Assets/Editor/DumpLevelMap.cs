@@ -55,9 +55,18 @@ public static class DumpLevelMap
         foreach (var p in lvl.GhostFloors)
             FillRect(px, W, H, p.pos.x - p.size.x/2f, p.pos.y - p.size.y/2f, p.size.x, p.size.y,
                      new Color(0.3f, 0.9f, 0.9f));
-        // Sleep runes in purple.
+        // Sleep runes in candle gold.
         foreach (var r in lvl.SleepRunes)
-            FillRect(px, W, H, r.x - 0.55f, r.y - 0.2f, 1.1f, 0.4f, new Color(0.6f, 0.3f, 0.9f));
+            FillRect(px, W, H, r.x - 0.55f, r.y - 0.2f, 1.1f, 0.4f, new Color(0.93f, 0.85f, 0.5f));
+        // Portcullis gates: a bright vertical strike through the doorway.
+        foreach (var g in lvl.Gates)
+            FillRect(px, W, H, g - 0.15f, -2.7f, 0.3f, 1.7f, new Color(1f, 0.5f, 0.1f));
+        // Shift spikes: red at the lit spot, dark red at the dark spot.
+        foreach (var s in lvl.ShiftSpikes)
+        {
+            FillRect(px, W, H, s.x - 0.35f, -2.75f, 0.7f, 0.7f, new Color(1f, 0.25f, 0.25f));
+            FillRect(px, W, H, s.y - 0.35f, -2.75f, 0.7f, 0.7f, new Color(0.55f, 0.1f, 0.1f));
+        }
         foreach (var t in lvl.Traps)
         {
             var c = t.type == TrapType.RealExit ? new Color(0.3f,1f,0.4f)
