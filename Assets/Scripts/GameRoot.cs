@@ -2840,12 +2840,17 @@ namespace TrustIssues
             }
 
             _player = go.AddComponent<PlayerController>();
-            _player.canFly = true;   // bat glide everywhere — the Castle gets it back (meter still gates it)
+            // Roomed floors are precision mode: glide and double-jump are
+            // suppressed so the dark-bridge gaps and the coffin chase can't be
+            // flown over (see Level.PrecisionPlatforming). Corridor floors
+            // (11-40 / Endless / Blood Moon) keep both.
+            bool precision = _level.PrecisionPlatforming;
+            _player.canFly = !precision;
             // Skin-granted abilities (dash / double-jump / speed / phase).
             _player.moveMul = skin.moveMul;
             _player.jumpMul = skin.jumpMul;
             _player.dashEnabled = skin.dash;
-            _player.extraAirJumps = skin.airJumps;
+            _player.extraAirJumps = precision ? 0 : skin.airJumps;
             Shop.AttachTrail(go);   // equipped cosmetic wake (pure Fx, no gameplay)
             _playerVisual = vis;
             if (bodySr != null)
@@ -3491,10 +3496,16 @@ namespace TrustIssues
         public void WarpToStart()
         {
             if (_state != State.Play || _player == null) return;
-            _player.transform.position = _level.Spawn;
+            // Drag back to the last checkpoint, not the level start, when one is
+            // set. Warping past a checkpoint made deliberately DYING (which
+            // respawns at the checkpoint) strictly better than obeying the trap —
+            // so the rune taught suicide. Now it never sends you further back than
+            // a death would, so it's a real punishment instead of a bad joke.
+            Vector3 dest = (_hasCheckpoint && _checkpoint.x > _level.Spawn.x) ? _checkpoint : _level.Spawn;
+            _player.transform.position = dest;
             Audio.Play("portal", 0.5f);
-            // A purple toast — NOT the red death flash — so it reads as "the rune
-            // dragged you back", not a death (it doesn't cost a death).
+            // A toast — NOT the red death flash — so it reads as "the rune dragged
+            // you back", not a death (it doesn't cost a death).
             if (_toast != null) StartCoroutine(FlashToast("The rune drags you back…"));
         }
 
@@ -3682,6 +3693,16 @@ namespace TrustIssues
             }
             foreach (var t in _level.Traps)
                 if (Mathf.Abs(t.pos.x - x) < 2.2f) return false;      // another hazard too close
+            // Roomed floors keep their hazards in SEPARATE lists that this used to
+            // be blind to — so a learned spike could bank right at a gated doorway
+            // and wall the floor off (a forced standing start into a spike you
+            // can't clear). Exclude all of them.
+            foreach (var d in _level.Doorways)
+                if (Mathf.Abs(d - x) < 2.6f) return false;            // doorways / gates / loop runes: chokepoints
+            foreach (var sr in _level.SleepRunes)
+                if (Mathf.Abs(sr.x - x) < 2.2f) return false;
+            foreach (var ss in _level.ShiftSpikes)
+                if (Mathf.Abs(ss.x - x) < 2.2f || Mathf.Abs(ss.y - x) < 2.2f) return false;
             return true;
         }
 

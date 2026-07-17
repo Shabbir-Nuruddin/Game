@@ -88,6 +88,7 @@ namespace TrustIssues
     {
         public float returnX;      // where the loop dumps you (the room's mouth)
         int _loops;
+        bool _released;            // the hall gave up — crossings now pass freely
         SpriteRenderer[] _glyph;
 
         public void SetGlyph(SpriteRenderer[] parts) => _glyph = parts;
@@ -96,19 +97,27 @@ namespace TrustIssues
         {
             var pc = other.GetComponent<PlayerController>();
             if (pc == null) return;
-            if (_loops >= 5) return;   // the hall has given up
+            if (_released) return;             // walk on through — the hall is done with you
             _loops++;
-            var p = pc.transform.position;
-            pc.transform.position = new Vector3(returnX, p.y, p.z);
-            if (_loops == 2) GameRoot.I?.RoomToast("Déjà vu…");
-            else if (_loops == 4) GameRoot.I?.RoomToast("The hall is enjoying this.");
-            else if (_loops == 5)
+
+            // The FIFTH crossing is the one it relents on: message, disarm, and
+            // crucially let this crossing PASS instead of yanking you back (the
+            // old code both said "…fine. Go." AND teleported you — an off-by-one
+            // that read as a broken promise).
+            if (_loops >= 5)
             {
+                _released = true;
                 GameRoot.I?.RoomToast("…fine. Go.");
                 if (_glyph != null)
                     foreach (var g in _glyph)
                         if (g != null) { var c = g.color; c.a *= 0.2f; g.color = c; }
+                return;
             }
+
+            var p = pc.transform.position;
+            pc.transform.position = new Vector3(returnX, p.y, p.z);
+            if (_loops == 2) GameRoot.I?.RoomToast("Déjà vu…");
+            else if (_loops == 4) GameRoot.I?.RoomToast("The hall is enjoying this.");
         }
     }
 
@@ -223,8 +232,10 @@ namespace TrustIssues
     public class ShiftSpikeMark : MonoBehaviour
     {
         public float litX, darkX;
+        public bool IsDark { get; private set; }
         public void Place(bool dark)
         {
+            IsDark = dark;
             var p = transform.position;
             p.x = dark ? darkX : litX;
             transform.position = p;
@@ -269,7 +280,8 @@ namespace TrustIssues
         NightFloor[] _nightFloors = System.Array.Empty<NightFloor>();
         readonly List<ShiftSpikeMark> _shiftSpikes = new();
         Transform _fleeExit;                  // the RealExit, if a Flee room owns one
-        bool _fleeToasted;
+        Collider2D _fleeCol;                   // its trigger — OFF while fleeing so a pass-through can't win
+        bool _fleeToasted, _fleeCornered;
         readonly List<GameObject> _slabs = new();
         bool[] _slabSpawned;
         Transform _levelRoot;
@@ -301,10 +313,16 @@ namespace TrustIssues
             _slabSpawned = new bool[_rooms.Count];
 
             // The fleeing coffin: find the RealExit if any Flee room contains it.
+            // Its trigger starts OFF — you can only claim it once it's cornered,
+            // never by having it flee THROUGH you (which used to win instantly).
             foreach (var t in levelRoot.GetComponentsInChildren<Trap>(true))
                 if (t.type == TrapType.RealExit && RoomAt(t.transform.position.x) is int ri &&
                     ri >= 0 && _rooms[ri].Rule == RoomRule.Flee)
+                {
                     _fleeExit = t.transform;
+                    _fleeCol = t.GetComponent<Collider2D>();
+                    if (_fleeCol != null) _fleeCol.enabled = false;
+                }
 
             // Loop zones live at the doorway of every Loop room. Never on the
             // final room — its "doorway" is the end of the level, past the exit.
@@ -399,26 +417,41 @@ namespace TrustIssues
         }
 
         // ---------------- The fleeing coffin ----------------
-        // The exit bolts when you get close, at just under your own run speed —
-        // you gain on it slowly, which is the joke — until it corners itself
-        // against the end wall. It floats over gaps (it's a haunted coffin;
-        // the player chasing it is the one who has to respect the spikes).
+        // The exit bolts when you get close, at just under your run speed — you
+        // gain on it slowly, which is the joke — until it corners itself against
+        // the end wall, where it becomes catchable. It floats over gaps (a
+        // haunted coffin; the CHASER is the one who must respect the spikes).
+        //
+        // Three rules keep the chase honest: it flees only RIGHTWARD toward the
+        // end wall (never back into the entry corner, which used to let you pen
+        // it at the doorway and skip the gauntlet); it flees only while the
+        // room's rule has fired (respects TriggerX like everything else); and its
+        // trigger is OFF until cornered, so it can't be won by having it slide
+        // through you.
         void UpdateFlee(RoomSpec room)
         {
-            if (_fleeExit == null || room.Rule != RoomRule.Flee) return;
-            float dx = _fleeExit.position.x - _player.position.x;
-            if (Mathf.Abs(dx) > 4.2f) return;
-            float dir = dx >= 0f ? 1f : -1f;
+            if (_fleeExit == null || room.Rule != RoomRule.Flee || !_fired) return;
             var p = _fleeExit.position;
-            float nx = Mathf.Clamp(p.x + dir * 6.3f * Time.deltaTime,
-                                   room.MinX + 1f, room.MaxX - 1.1f);
-            if (!Mathf.Approximately(nx, p.x) && !_fleeToasted)
+            float dx = p.x - _player.position.x;           // >0: coffin is ahead (to the right)
+            float rightWall = room.MaxX - 1.1f;
+
+            // Flee only when chased from behind and not yet cornered.
+            bool canFlee = dx > 0f && dx < 4.2f && p.x < rightWall - 0.01f;
+            if (canFlee)
             {
-                _fleeToasted = true;
-                GameRoot.I?.RoomToast("The coffin declines.");
+                p.x = Mathf.Min(p.x + 6.3f * Time.deltaTime, rightWall);
+                _fleeExit.position = p;
+                if (!_fleeToasted) { _fleeToasted = true; GameRoot.I?.RoomToast("The coffin declines."); }
             }
-            p.x = nx;
-            _fleeExit.position = p;
+
+            // Cornered = pinned at the wall. Only then does it become catchable.
+            bool cornered = p.x >= rightWall - 0.01f;
+            if (cornered && !_fleeCornered)
+            {
+                _fleeCornered = true;
+                if (_fleeCol != null) _fleeCol.enabled = true;
+                GameRoot.I?.RoomToast("Cornered. Take it.");
+            }
         }
 
         // ---------------- Dark ----------------
@@ -485,13 +518,23 @@ namespace TrustIssues
                 nf.SetSolid(solid);
             }
             // Shift spikes teleport the instant the room commits either way. In
-            // the dark you can't see the move happen, which is the whole trick.
+            // the dark you can't see the move happen, which is the whole trick —
+            // BUT a spike must never materialise on top of (or right in front of)
+            // the player: that's an uncounterable death. If the target spot is
+            // within the guard radius, defer the move a frame; because darkX is
+            // always placed AHEAD of the player, they walk INTO a visible spike
+            // rather than have one appear inside them.
+            const float ShiftGuard = 2.5f;
             for (int i = 0; i < _shiftSpikes.Count; i++)
             {
                 var ss = _shiftSpikes[i];
                 if (ss == null) continue;
                 bool mine = ss.litX >= _rooms[_active].MinX && ss.litX < _rooms[_active].MaxX;
-                ss.Place(mine && dark);
+                bool wantDark = mine && dark;
+                if (wantDark == ss.IsDark) continue;                 // already where it wants to be
+                float targetX = wantDark ? ss.darkX : ss.litX;
+                if (Mathf.Abs(targetX - _player.position.x) < ShiftGuard) continue; // too close — wait
+                ss.Place(wantDark);
             }
         }
 

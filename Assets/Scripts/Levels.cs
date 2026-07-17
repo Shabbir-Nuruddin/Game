@@ -60,6 +60,12 @@ namespace TrustIssues
         // Empty on the old corridor levels (11-40, Endless, Daily, Versus), which
         // keep their original behaviour untouched. Non-empty = a roomed level.
         public List<RoomSpec> Rooms = new();
+        // Roomed floors are PRECISION platforming: no bat glide and no double-jump.
+        // The sealed chambers suppress the vampire's supernatural tricks — which is
+        // also the only way the "impossible" dark-bridge gaps and the coffin chase
+        // stay unbeatable-by-flying (glide clears 12u, a double-jump 9.75u; a plain
+        // jump ~5.5). Set automatically when a level uses Room().
+        public bool PrecisionPlatforming = false;
         // Floor that only exists while the candles are lit. Identical to a real
         // platform in every way until its room goes dark, then it's simply gone.
         public List<Rect2> NightFloors = new();
@@ -148,6 +154,7 @@ namespace TrustIssues
         {
             bool first = !_inRoom;
             CloseRoom();
+            L.PrecisionPlatforming = true;   // any roomed floor = no glide, no double-jump
             _roomTrigger = triggerFrac;
             if (!first)
             {
@@ -197,8 +204,11 @@ namespace TrustIssues
 
         /// <summary>
         /// Floor that only exists in the dark. The opposite constraint applies:
-        /// keep these WIDER than a max jump (> 3.2) so the lit gap is clearly
-        /// impossible — that's what forces the player to trust the dark.
+        /// the lit gap must be genuinely UN-jumpable, so the player has to trust
+        /// the dark and walk the spectral bridge. JumpArcProbe: a running jump
+        /// clears ~5.5u (base) and 6.55u (best skin) even with glide/double-jump
+        /// suppressed on these floors — so ghost spans must be >= ~7 (the earlier
+        /// ">3.2" was flat wrong; 3.4 floors were trivially jumped in the light).
         /// </summary>
         public float GhostFloor(float w)
         {
@@ -547,12 +557,14 @@ namespace TrustIssues
         {
             var b = new B();
             b.Room(RoomRule.None);        b.Plat(3f); b.Gap(2.2f); b.Plat(3f);
-            b.Room(RoomRule.Dark, 0.2f);  b.Plat(3f); b.GhostFloor(3.4f); b.Plat(3f);
+            // Ghost spans are 7.2 wide: unjumpable in the light (best skin clears
+            // 6.55), so you MUST let the dark solidify the bridge and walk it.
+            b.Room(RoomRule.Dark, 0.2f);  b.Plat(3f); b.GhostFloor(7.2f); b.Plat(3f);
             b.Room(RoomRule.Dark, 0.18f); b.Plat(2.5f); b.NightFloor(2f); b.Plat(2.2f);
-                                          b.GhostFloor(3.4f); float g = b.Plat(2.5f);
-                                          b.ShiftSpike(g + 0.5f, g - 0.3f);   // the far shore rearranges too
+                                          b.GhostFloor(7.2f); float g = b.Plat(3f);
+                                          b.ShiftSpike(g + 0.9f, g + 0.3f);   // the far shore rearranges too
             b.Room(RoomRule.None);        b.Plat(3f); b.Gap(2.3f); b.Plat(3f);
-            b.Room(RoomRule.Dark, 0.2f);  b.Plat(2.5f); b.GhostFloor(3.4f); b.Plat(2f);
+            b.Room(RoomRule.Dark, 0.2f);  b.Plat(2.5f); b.GhostFloor(7.2f); b.Plat(2f);
                                           b.NightFloor(2f); b.Plat(2.5f);
             return b.Finish();
         }
@@ -613,8 +625,8 @@ namespace TrustIssues
                                             float s = b.Plat(3.2f); b.SleepRune(s + 0.8f);
             b.Room(RoomRule.Loop, 0.35f, true);
                                             b.Plat(7f); b.FakeFloor(2f); b.Plat(2f);
-            b.Room(RoomRule.Dark, 0.2f);    b.Plat(2.5f); b.GhostFloor(3.4f);
-                                            float g = b.Plat(2.5f); b.ShiftSpike(g + 0.6f, g - 0.4f);
+            b.Room(RoomRule.Dark, 0.2f);    b.Plat(2.5f); b.GhostFloor(7.2f);
+                                            float g = b.Plat(3f); b.ShiftSpike(g + 0.9f, g + 0.3f);
             b.Room(RoomRule.Flee);          float p = b.Plat(10f); b.Dart(p - 2f); b.Spike(p + 1f);
                                             b.ExitAt(p - 3.8f);
             return b.FinishBare();
