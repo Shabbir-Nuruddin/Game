@@ -242,6 +242,28 @@ namespace TrustIssues
         }
     }
 
+    /// <summary>
+    /// The stone fill that seals a completed stage's doorway behind you. Solid —
+    /// banked stages are committed, exactly like Level Devil's discrete screens —
+    /// but the collider only arms once the player is clearly past it, so the
+    /// wall can never materialise inside (or shove) the body crossing it.
+    /// </summary>
+    public class StageSeal : MonoBehaviour
+    {
+        Transform _player;
+        BoxCollider2D _col;
+        public void Arm(Transform player, BoxCollider2D col) { _player = player; _col = col; }
+        void Update()
+        {
+            if (_col == null) { enabled = false; return; }
+            if (_player == null || _player.position.x > transform.position.x + 1.0f)
+            {
+                _col.enabled = true;
+                enabled = false;
+            }
+        }
+    }
+
     /// <summary>A little "z" that drifts up off a sleeping vampire and fades.</summary>
     public class ZzzFloat : MonoBehaviour
     {
@@ -383,6 +405,12 @@ namespace TrustIssues
             _active = idx;
             _fired = false;
             var r = _rooms[idx];
+            // Crossing forward BANKS the stage you just finished (no-op on
+            // respawn re-entry or the first room) — chime + shake live in
+            // GameRoot.BankStage, so respawn seal rebuilds stay silent.
+            if (GameRoot.I != null) GameRoot.I.BankStage(idx);
+            int banked = GameRoot.I != null ? GameRoot.I.StageIndex : 0;
+            SealUpTo(banked);
             // Lock the camera to this chamber: crossing a doorway is a screen
             // transition, not a scroll. This is what makes five rooms FEEL like
             // five rooms instead of one corridor with pillars in it.
@@ -390,13 +418,45 @@ namespace TrustIssues
             // Slide the darkness up to this room's walls.
             if (_curtainL != null) _curtainL.transform.position = new Vector3(r.MinX - 17f, 0.35f, 0f);
             if (_curtainR != null) _curtainR.transform.position = new Vector3(r.MaxX + 17f, 0.35f, 0f);
+            // Dots: banked stages fill GOLD and stay filled (the Level Devil
+            // readout — progress you cannot lose), the live stage is bright
+            // white, the future is dim.
             for (int i = 0; i < _dots.Length; i++)
             {
                 if (_dots[i] == null) continue;
-                _dots[i].color = new Color(1f, 1f, 1f, i == idx ? 0.95f : 0.30f);
-                _dots[i].rectTransform.localScale = Vector3.one * (i == idx ? 1.25f : 1f);
+                if (i == idx)
+                { _dots[i].color = new Color(1f, 1f, 1f, 0.95f); _dots[i].rectTransform.localScale = Vector3.one * 1.25f; }
+                else if (i < banked)
+                { _dots[i].color = Theme.Coin; _dots[i].rectTransform.localScale = Vector3.one; }
+                else
+                { _dots[i].color = new Color(1f, 1f, 1f, 0.30f); _dots[i].rectTransform.localScale = Vector3.one; }
             }
-            if (_roomLabel != null) _roomLabel.text = $"ROOM {idx + 1} / {_rooms.Count}";
+            if (_roomLabel != null) _roomLabel.text = $"STAGE {idx + 1} / {_rooms.Count}";
+        }
+
+        // Seal every doorway behind the highest stage reached: banked stages are
+        // committed. Rebuilt from scratch after each death (the level root is
+        // destroyed), so this also restores the walls on respawn.
+        readonly HashSet<int> _sealed = new();
+        void SealUpTo(int banked)
+        {
+            for (int j = 1; j <= banked && j < _rooms.Count; j++)
+            {
+                if (!_sealed.Add(j)) continue;
+                float x = _rooms[j].MinX;
+                var go = new GameObject("StageSeal");
+                go.transform.SetParent(_levelRoot, false);
+                go.transform.position = new Vector3(x, -1.9f, 0f);
+                var sr = go.AddComponent<SpriteRenderer>();
+                sr.sprite = Theme.StoneTile;
+                sr.drawMode = SpriteDrawMode.Tiled;
+                sr.size = new Vector2(0.6f, 1.6f);   // fills the doorway gap exactly (floor top to lintel)
+                sr.sortingOrder = 1;
+                var col = go.AddComponent<BoxCollider2D>();
+                col.size = new Vector2(0.6f, 1.6f);
+                col.enabled = false;                  // arms once the player is clear — never inside them
+                go.AddComponent<StageSeal>().Arm(_player, col);
+            }
         }
 
         void OnRuleFired(RoomSpec room)
@@ -737,12 +797,13 @@ namespace TrustIssues
                 img.raycastTarget = false;
                 _dots[i] = img;
             }
-            // "ROOM 3 / 5" under the dots: the dots alone were too quiet — the
+            // "STAGE 3 / 5" under the dots: the dots alone were too quiet — the
             // playtest read the whole floor as one corridor, so the sub-level
-            // structure now says its own name.
-            _roomLabel = Theme.Label(_dotsGO.transform, "ROOM 1 / " + _rooms.Count, 22,
+            // structure says its own name. Sits at -46 so its rect clears the
+            // dot band (they used to overlap and crowd each other).
+            _roomLabel = Theme.Label(_dotsGO.transform, "STAGE 1 / " + _rooms.Count, 22,
                 new Color(1f, 1f, 1f, 0.55f), new Vector2(0.5f, 0.5f),
-                new Vector2(0f, -30f), new Vector2(320f, 30f));
+                new Vector2(0f, -46f), new Vector2(320f, 30f));
         }
 
         void OnDestroy()

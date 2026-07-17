@@ -2309,9 +2309,33 @@ namespace TrustIssues
             _lastT = null; _lastP = null; _recT.Clear(); _recP.Clear();
             _bossIntroedTier = -1;   // a fresh floor → the next boss plays its full cutscene
             _floorDeaths = 0;        // per-floor death count (curse duels compare this)
+            _stageIndex = 0;         // fresh floor starts at stage 1; banked progress is per-floor
             Currency.ResetFloorPayouts();   // a new floor re-opens the death-shard window
         }
         int _floorDeaths;
+
+        // ==================== stages ====================
+        // The Level Devil structure: a roomed floor is 5 discrete SUB-LEVELS.
+        // Crossing a stage's exit doorway BANKS it — the dot fills gold, the
+        // castle seals the door behind you, and from then on death only restarts
+        // the CURRENT stage (the whole level still rebuilds each life, which
+        // resets every trap for free; only the spawn point advances). Banked
+        // progress lives here as one int: the highest stage reached this floor.
+        // It survives deaths, and resets on a new floor / mode start / the pause
+        // menu's full RESTART. Deaths still count and still pay blood shards —
+        // cheap stage retries are the license for stages to be MEANER.
+        int _stageIndex;
+        public int StageIndex => _stageIndex;
+
+        // Called by RoomDirector when the player crosses into room `idx`.
+        // Only forward progress banks; re-entering on respawn is a no-op.
+        public void BankStage(int idx)
+        {
+            if (idx <= _stageIndex || _level == null || _level.Rooms.Count == 0) return;
+            _stageIndex = idx;
+            Audio.PlayOr("levelup", "click", 0.5f);   // the stage-cleared chime
+            ShakeCam(0.12f, 0.08f);                   // …and the castle sealing behind you
+        }
 
         // Gothic ambience: flickering torch sconces along the level with a warm glow.
         void PlaceTorches()
@@ -2770,6 +2794,14 @@ namespace TrustIssues
             // killed you, so you'd respawn straight into the same death over and over.
             Vector3 spawnAt = _level.Spawn;
             if (_hasCheckpoint && _checkpoint.x > spawnAt.x) spawnAt = _checkpoint;
+            // Stage floors: death restarts the CURRENT stage, not the floor —
+            // banked stages stay banked (the Level Devil loop). Every stage opens
+            // on solid ground, so entry + 1.3 always lands on its first platform.
+            if (_level.Rooms.Count > 0 && _stageIndex > 0)
+            {
+                var r = _level.Rooms[Mathf.Min(_stageIndex, _level.Rooms.Count - 1)];
+                spawnAt = new Vector3(r.MinX + 1.3f, -2f, 0f);
+            }
             go.transform.position = spawnAt;
             go.tag = "Player";
 
@@ -3522,6 +3554,7 @@ namespace TrustIssues
             {
                 { "mode", ModeName },
                 { "level_index", _levelIndex },
+                { "stage", _stageIndex },      // which sub-level the floor kills at — the new tuning dial
                 { "cause", msg ?? "unknown" },
                 { "duration_ms", LevelDurationMs },
                 { "x", deathPos.x },
@@ -4280,6 +4313,7 @@ namespace TrustIssues
             Time.timeScale = 1f;
             _state = State.Play;
             _hasCheckpoint = false;
+            _stageIndex = 0;         // the pause-menu RESTART is the FULL floor restart
             Destroy(_levelRoot.gameObject);
             BuildLevel();
         }
