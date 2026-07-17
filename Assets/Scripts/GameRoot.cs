@@ -2110,6 +2110,15 @@ namespace TrustIssues
             foreach (var gf in _level.GhostFloors)
                 BuildStoneFloor("GhostFloor", gf.pos, gf.size, null)
                     .AddComponent<NightFloor>().Configure(gf.pos.x, true);
+            // Bobbing stone slabs — the ride across unjumpable pits. Kinematic
+            // body so the engine carries the player as it moves.
+            foreach (var mv in _level.Movers)
+            {
+                var go = BuildStoneFloor("Mover", new Vector2(mv.x, mv.y), new Vector2(mv.w, 0.6f), null);
+                var rb = go.AddComponent<Rigidbody2D>();
+                rb.bodyType = RigidbodyType2D.Kinematic;
+                go.AddComponent<VertPlat>().amp = mv.z;
+            }
             foreach (var d in _level.Decos)
                 Theme.Box("Deco", _levelRoot, d.pos, d.size, d.color, 2);
             foreach (var t in _level.Traps)
@@ -3458,26 +3467,25 @@ namespace TrustIssues
 
         // ==================== rooms ====================
 
-        // Frame ONE chamber as the whole screen. The first version of this only
-        // clamped the camera's X and kept the platforming zoom — but that zoom
-        // shows ~20 world units and rooms are ~7 wide, so the player saw two or
-        // three rooms at once and the sub-level structure was invisible
-        // (playtest: "there are no five sub-levels, it's just one floor").
-        // Now the camera ZOOMS to the room: floor to ceiling tall, centred, and
-        // whatever the screen's aspect still shows beyond the walls gets hidden
-        // by the RoomDirector's darkness curtains.
-        float _roomCamSize;         // 0 = not in a roomed level; use the normal zoom
+        // Frame ONE full stage as the whole screen, Level Devil style: a STATIC
+        // shot in which the entire stage is visible at once — every saw, every
+        // gap, the door — while multiple hazards run simultaneously inside it.
+        //
+        // The previous version zoomed INTO ~7-unit chambers, which the playtest
+        // rightly torched: "I can see very little at a time… one singular trap
+        // is an entire stage." A stage is now ~20-27 units wide and the camera
+        // fits ALL of it; the darkness curtains still swallow whatever the
+        // aspect ratio shows beyond the stage walls.
+        float _roomCamSize;         // 0 = not in a staged level; use the normal zoom
         const float RoomCamY = 0.35f;
         public void FocusRoom(float minX, float maxX)
         {
             float aspect = _cam != null ? _cam.aspect : 1.78f;
-            // Fit height (floor -3.3 … ceiling ~3.9); widen only if the room
-            // itself outgrows what that height shows at this aspect.
-            _roomCamSize = Mathf.Max(3.8f, ((maxX - minX) / 2f + 0.5f) / aspect);
-            float halfW = _roomCamSize * aspect;
-            float lo = minX + halfW, hi = maxX - halfW;
-            if (lo > hi) lo = hi = (minX + maxX) / 2f;
-            _camMin = lo; _camMax = hi;
+            // Fit the stage's full WIDTH (plus a small margin); never tighter
+            // than the classic platforming zoom's height so the frame always
+            // shows floor to ceiling comfortably.
+            _roomCamSize = Mathf.Max(4.2f, ((maxX - minX) / 2f + 0.7f) / aspect);
+            _camMin = _camMax = (minX + maxX) / 2f;   // static — no scrolling inside a stage
         }
 
         public void RoomToast(string msg) { if (_toast != null) StartCoroutine(FlashToast(msg)); }

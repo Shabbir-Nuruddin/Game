@@ -264,6 +264,28 @@ namespace TrustIssues
         }
     }
 
+    /// <summary>
+    /// A vertically-bobbing stone slab — "sometimes the floor below you moved".
+    /// Kinematic so the physics engine carries the player properly while it
+    /// rises. Rides across gaps too wide to jump; under a crypt press it becomes
+    /// a two-clock timing puzzle (cross when the slab is up AND the press isn't).
+    /// </summary>
+    public class VertPlat : MonoBehaviour
+    {
+        public float amp = 1.2f;
+        Rigidbody2D _rb;
+        Vector2 _home;
+        float _t;
+        void Awake() { _rb = GetComponent<Rigidbody2D>(); _home = transform.position; }
+        void FixedUpdate()
+        {
+            _t += Time.fixedDeltaTime;
+            var p = _home + Vector2.up * (Mathf.Sin(_t * 1.4f) * amp);
+            if (_rb != null) _rb.MovePosition(p);
+            else transform.position = p;
+        }
+    }
+
     /// <summary>A little "z" that drifts up off a sleeping vampire and fades.</summary>
     public class ZzzFloat : MonoBehaviour
     {

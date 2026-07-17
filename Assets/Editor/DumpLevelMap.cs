@@ -14,7 +14,7 @@ using TrustIssues;
 public static class DumpLevelMap
 {
     const float PPU = 18f;   // pixels per world unit
-    const float MinX = -14f, MaxX = 62f, MinY = -6f, MaxY = 5f;
+    const float MinX = -14f, MaxX = 145f, MinY = -6f, MaxY = 5f;   // full-screen stages: floors run ~110-125 wide
     const int RoomedFloors = 10;
 
     // Physics for the arc overlay — mirrors PlayerController / JumpArcProbe.
@@ -80,6 +80,20 @@ public static class DumpLevelMap
         {
             FillRect(px, W, H, s.x - 0.35f, -2.75f, 0.7f, 0.7f, new Color(1f, 0.25f, 0.25f));
             FillRect(px, W, H, s.y - 0.35f, -2.75f, 0.7f, 0.7f, new Color(0.55f, 0.1f, 0.1f));
+        }
+        // Bobbing slabs: the slab at centre plus a thin line marking its travel.
+        foreach (var m in lvl.Movers)
+        {
+            FillRect(px, W, H, m.x - m.w / 2f, m.y - 0.3f, m.w, 0.6f, new Color(0.85f, 0.85f, 0.95f));
+            FillRect(px, W, H, m.x - 0.06f, m.y - m.z, 0.12f, m.z * 2f, new Color(0.6f, 0.6f, 0.75f));
+        }
+        // Portal pads in magenta (debug colour), a thin roof line linking pairs.
+        foreach (var pp in lvl.Portals)
+        {
+            FillRect(px, W, H, pp.a.x - 0.5f, pp.a.y - 1f, 1f, 2f, new Color(1f, 0.3f, 1f));
+            FillRect(px, W, H, pp.b.x - 0.5f, pp.b.y - 1f, 1f, 2f, new Color(0.7f, 0.2f, 0.7f));
+            float lo = Mathf.Min(pp.a.x, pp.b.x), hi = Mathf.Max(pp.a.x, pp.b.x);
+            FillRect(px, W, H, lo, 3.9f, hi - lo, 0.12f, new Color(1f, 0.3f, 1f));
         }
         foreach (var t in lvl.Traps)
         {
