@@ -243,6 +243,7 @@ namespace TrustIssues
         {
             _armed = false;
             Codex.Unlock(TrapType.FakeFloor);   // you've discovered the treacher-floor
+            GameRoot.I?.TrapFired(type, transform.position);   // survive the drop = CALLED IT
             // A single-frame shudder as the only warning, then the floor is GONE.
             // No time to react the first time — that's the trap. The crack tell
             // means you'll know to jump it next run.
@@ -317,6 +318,7 @@ namespace TrustIssues
         // A dart flies in from the right the instant you step on the sensor.
         IEnumerator FireDart()
         {
+            GameRoot.I?.TrapFired(type, transform.position);   // dodge the stake = CALLED IT
             var dart = Theme.Box("Dart", transform.parent, transform.position + Vector3.right * 5f,
                 new Vector2(0.6f, 0.22f), Theme.Danger, 4);
             var kz = dart.AddComponent<KillZone>(); kz.msg = "Skewered by a flying stake."; kz.trapTag = (int)type;
@@ -355,6 +357,9 @@ namespace TrustIssues
                 yield return null;
             }
             // SLAM — dust + shake even if it misses (weight).
+            // Reported at the SLAM (not the shake): the shake is the dodge window,
+            // the slam is the moment the trap has committed and missed.
+            GameRoot.I?.TrapFired(type, to);
             Fx.Burst(to + Vector3.down * 0.4f, new Color(0.55f, 0.5f, 0.55f, 0.9f), 9, 4.5f, 0.18f, 0.4f, 10f);
             GameRoot.I?.ShakeCam(0.28f, 0.18f);
             Audio.PlayOr("die_slam", "jump", 0.4f);
@@ -385,6 +390,7 @@ namespace TrustIssues
         IEnumerator RaiseSpike(Collider2D player)
         {
             _armed = false;
+            GameRoot.I?.TrapFired(type, transform.position);   // clear the ambush = CALLED IT
             var sp = Assets.Sprite("spike");
             var pos = transform.position + Vector3.down * 0.9f;
             GameObject go = sp != null

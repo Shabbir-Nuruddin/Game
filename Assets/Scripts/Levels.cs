@@ -95,6 +95,15 @@ namespace TrustIssues
         // "Sometimes the floor below you moved" — the ride across the unjumpable
         // gap, and the timing puzzle under a descending press.
         public List<Vector4> Movers = new();
+        // Gravity runes: (x, y, dudFlag, unused). Cross one and you fall toward
+        // the ceiling — the Chapel's physics-breaking mechanic. y places it on
+        // the floor (negative) or the ceiling (positive); a dud looks identical
+        // but fizzles dead on touch.
+        public List<Vector4> GravRunes = new();
+        // True on any floor with gravity runes: GameRoot adds the mirrored kill
+        // plane ("the sky") above the rooms, since an inverted fall through an
+        // open ceiling must kill exactly like a pit does.
+        public bool HasGravity = false;
     }
 
     /// <summary>
@@ -147,6 +156,7 @@ namespace TrustIssues
         RoomRule _roomRule = RoomRule.None;
         float _roomStart, _roomTrigger;
         bool _inRoom;
+        bool _openCeiling;   // Chapel rooms: skip the auto ceiling, it's hand-laid
 
         /// <summary>
         /// Open a new chamber here, walling it off from the last one.
@@ -188,9 +198,11 @@ namespace TrustIssues
             {
                 L.Rooms.Add(new RoomSpec(_roomStart, cur, _roomRule,
                                          _roomStart + w * Mathf.Clamp01(_roomTrigger)));
-                L.Platforms.Add(new Rect2(_roomStart + w / 2f, CeilY, w, 0.6f));
+                if (!_openCeiling)
+                    L.Platforms.Add(new Rect2(_roomStart + w / 2f, CeilY, w, 0.6f));
             }
             _inRoom = false;
+            _openCeiling = false;
         }
 
         /// <summary>
@@ -224,6 +236,28 @@ namespace TrustIssues
 
         /// <summary>A rune on the floor that naps you. Jumpable — that's the counterplay.</summary>
         public void SleepRune(float x) => L.SleepRunes.Add(new Vector2(x, -2.5f));
+
+        // ---- Gravity (the Chapel) ----
+        /// <summary>A floor rune that flips gravity: cross it and fall UP to the ceiling.</summary>
+        public void GravRune(float x) { L.GravRunes.Add(new Vector4(x, -2.5f, 0f, 0f)); L.HasGravity = true; }
+        /// <summary>A rune on the ceiling's underside — the way back DOWN for a ceiling-walker.</summary>
+        public void CeilRune(float x) { L.GravRunes.Add(new Vector4(x, CeilY - 0.75f, 0f, 0f)); L.HasGravity = true; }
+        /// <summary>Pixel-identical to GravRune, but dead: it fizzles on touch. The Chapel's lie.</summary>
+        public void DudRune(float x) { L.GravRunes.Add(new Vector4(x, -2.5f, 1f, 0f)); L.HasGravity = true; }
+        /// <summary>A live gravity rune at an explicit height (for runes on ledges).</summary>
+        public void GravRuneAt(float x, float y) { L.GravRunes.Add(new Vector4(x, y, 0f, 0f)); L.HasGravity = true; }
+        /// <summary>A small raised ledge at an explicit spot (doesn't advance the cursor).</summary>
+        public void Ledge(float x, float y, float w) => L.Platforms.Add(new Rect2(x, y, w, 0.4f));
+
+        /// <summary>
+        /// This room's auto-ceiling (CloseRoom) is suppressed; lay ceiling
+        /// segments by hand with CeilSlab. The holes are the inverted-mode
+        /// hazard: fall UP through one and the sky kills you like a pit.
+        /// </summary>
+        public void OpenCeiling() { _openCeiling = true; L.HasGravity = true; }
+        /// <summary>A hand-laid ceiling segment from x0 to x1 (used with OpenCeiling).</summary>
+        public void CeilSlab(float x0, float x1) =>
+            L.Platforms.Add(new Rect2((x0 + x1) / 2f, CeilY, Mathf.Max(0.5f, x1 - x0), 0.6f));
 
         /// <summary>
         /// An UNJUMPABLE gap crossed by riding a vertically-bobbing stone slab.
@@ -844,17 +878,61 @@ namespace TrustIssues
             return b.FinishBare();
         }
 
-        // 11 — BATS: they hover, then dive on a telegraph. Keep moving to dodge.
+        // 11 — THE CHAPEL INVERTS. The first floor after the exam breaks the last
+        // rule left standing: gravity. Spectral runes flip you onto the ceiling;
+        // every unjumpable gap on this floor is crossed upside-down. Stage story:
+        // S1 teaches the flip, S2 opens the sky (fall up = die), S3 puts a rune
+        // ON your ceiling path that must be jumped, S4 lies with a dead rune,
+        // S5 is the full inverted exam. (Replaced the old bat corridor — a
+        // corridor floor had no business following the floor-10 exam anyway.)
         static Level L11()
         {
             var b = new B();
-            b.Plat(4.5f);
-            b.Gap(2.4f);
-            float p2 = b.Plat(5f); b.Bat(p2);
-            b.Gap(2.4f);
-            float p3 = b.Plat(4.5f); b.Spike(p3);
-            b.FakeFloor(2f);                       // the crypt lies too
-            float p4 = b.Plat(4.5f); b.Dart(p4);
+
+            b.Room(RoomRule.None);              // S1: the rune, the gap, the ceiling walk
+            float a1 = b.Plat(6f); b.GravRune(a1 + 1.5f);
+            b.Gap(8f);                          // unjumpable — the ceiling is the road
+            float c1 = b.Plat(8f); b.CeilRune(c1 - 2.5f); b.Spike(c1 + 1f);
+
+            b.Room(RoomRule.None);              // S2: the ceiling has a hole; the sky is a pit
+            b.OpenCeiling();
+            float a2 = b.Plat(5.5f); b.GravRune(a2 + 1.2f);
+            float g2 = a2 + 2.75f;              // right edge of the start platform
+            b.Gap(9f);
+            float c2 = b.Plat(9.5f); b.CeilRune(c2 - 3.95f); b.Saw(c2 + 0.5f); b.Spike(c2 + 2.5f);
+            // Hand-laid ceiling: a slab, a 2.2 hole you must jump while inverted
+            // (walk off the edge and you fall UP into the sky), then the slab
+            // that carries you to the drop rune. Runs out just past that rune,
+            // so skipping the drop is also the sky.
+            b.CeilSlab(g2 - 5.5f, g2 + 2f);
+            b.CeilSlab(g2 + 4.2f, g2 + 10.5f);
+
+            b.Room(RoomRule.None);              // S3: a rune ON the ceiling road — jump it or drop into the pit
+            float a3 = b.Plat(5.5f); b.GravRune(a3 + 1.2f);
+            float g3 = a3 + 2.75f;              // gap start: everything below the crossing is pit
+            b.Gap(8f);
+            b.CeilRune(g3 + 4f);                // mid-pit: touching it drops you into the void
+            float c3 = b.Plat(8f); b.CeilRune(c3 - 2.5f); b.Spike(c3 + 1.5f);
+            b.Plat(2.5f);
+
+            b.Room(RoomRule.None);              // S4: the dead rune. The real one is behind you, on a ledge.
+            float a4 = b.Plat(9f);
+            b.Ledge(a4 - 1.3f, -1f, 2f); b.GravRuneAt(a4 - 1.3f, -0.45f);
+            b.DudRune(a4 + 3.1f);               // sits right at the lip of the gap, glowing its lie
+            b.Gap(8f);
+            float c4 = b.Plat(6f); b.CeilRune(c4 - 2.3f); b.Spike(c4 + 1.5f);
+
+            b.Room(RoomRule.None, 0.35f, true); // S5: the inverted exam, behind a biting gate
+            b.OpenCeiling();
+            float a5 = b.Plat(4.5f); b.GravRune(a5 + 1.2f);
+            float g5 = a5 + 2.25f;
+            b.Gap(7.5f);
+            b.CeilRune(g5 + 6.3f);              // the jump-this rune, mid-crossing
+            float c5 = b.Plat(6f); b.CeilRune(c5 - 2.2f); b.LateSpike(c5 + 1f);
+            // Slab, hole, slab: the hole comes FIRST this time, then the rune —
+            // two different inverted jumps back to back before the drop.
+            b.CeilSlab(g5 - 4.5f, g5 + 1.5f);
+            b.CeilSlab(g5 + 3.7f, g5 + 9f);
             return b.Finish();
         }
 

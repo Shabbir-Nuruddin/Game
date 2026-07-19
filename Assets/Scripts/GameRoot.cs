@@ -2332,6 +2332,7 @@ namespace TrustIssues
         void ResetFloorState()
         {
             _linger.Clear(); _ghostTrapX.Clear(); _reactiveAdded = false;
+            _calledPaid.Clear(); _pendingCalls.Clear();   // fresh floor = fresh Called It payouts
             _lastT = null; _lastP = null; _recT.Clear(); _recP.Clear();
             _bossIntroedTier = -1;   // a fresh floor → the next boss plays its full cutscene
             _floorDeaths = 0;        // per-floor death count (curse duels compare this)
@@ -3436,6 +3437,15 @@ namespace TrustIssues
                 _player.transform.position.y < -9f)
                 Die("Gravity wins again.");
 
+            // The Chapel's mirror of the pit: inverted gravity + an open ceiling
+            // means you can fall UP out of the room. The sky is just as lethal.
+            if (_state == State.Play && _player != null && !_dying &&
+                _level != null && _level.HasGravity &&
+                _player.transform.position.y > B.CeilY + 3.6f)
+                Die("You fell into the sky.");
+
+            UpdateCalledIt();   // pay out any survived trap-fires
+
             // Boss-arena mercy window: count it down and blink the player so the
             // invulnerability is legible. Always restore the sprite when it ends.
             if (_bossIFrames > 0f)
@@ -3564,6 +3574,47 @@ namespace TrustIssues
             if (_toast != null && _toast.text == msg) _toast.text = "";
         }
 
+        // ==================== "CALLED IT" — the prediction economy ====================
+        // Dodging a trap you TRIGGERED used to feel identical to never touching
+        // it. Now a reactive trap that fires and fails to kill you within the
+        // window pays a shard and shouts about it — reading the room becomes a
+        // visible, paid skill, retroactively on every reactive trap in the game.
+        // Paid once per trap spot per floor-visit: the paid set survives the
+        // death-rebuild, so die-retrigger-dodge can't be farmed.
+        readonly System.Collections.Generic.HashSet<string> _calledPaid = new();
+        struct PendingCall { public string key; public float due; public Vector3 pos; }
+        readonly System.Collections.Generic.List<PendingCall> _pendingCalls = new();
+        const float CalledItWindow = 1.1f;   // must outlive the trap's whole lethal beat
+
+        // Traps report the moment they irrevocably fire (spike up, floor gone,
+        // dart loosed, block slammed). Survival is judged CalledItWindow later.
+        public void TrapFired(TrapType type, Vector3 pos)
+        {
+            if (_state != State.Play || _dying) return;
+            string key = $"{ModeName}:{_levelIndex}:{(int)type}:{pos.x:0.0}";
+            if (_calledPaid.Contains(key)) return;
+            foreach (var p in _pendingCalls) if (p.key == key) return;
+            _pendingCalls.Add(new PendingCall { key = key, due = Time.time + CalledItWindow, pos = pos });
+        }
+
+        void UpdateCalledIt()
+        {
+            if (_pendingCalls.Count == 0) return;
+            // A death voids every open call — the trap won, nothing was "called".
+            if (_state != State.Play || _dying) { _pendingCalls.Clear(); return; }
+            for (int i = _pendingCalls.Count - 1; i >= 0; i--)
+            {
+                if (Time.time < _pendingCalls[i].due) continue;
+                var call = _pendingCalls[i];
+                _pendingCalls.RemoveAt(i);
+                _calledPaid.Add(call.key);
+                Currency.Earn(1, "called_it");
+                ShardFloater.SpawnText(call.pos + Vector3.up * 0.6f, "CALLED IT!", Theme.Coin);
+                ShardFloater.Spawn(call.pos, 1);
+                Audio.PlayOr("called", "levelup", 0.4f);
+            }
+        }
+
         public void WarpToStart()
         {
             if (_state != State.Play || _player == null) return;
@@ -3574,6 +3625,7 @@ namespace TrustIssues
             // a death would, so it's a real punishment instead of a bad joke.
             Vector3 dest = (_hasCheckpoint && _checkpoint.x > _level.Spawn.x) ? _checkpoint : _level.Spawn;
             _player.transform.position = dest;
+            _player.SetGravityDir(1);   // spawns/checkpoints are floor-side; never warp in upside-down
             Audio.Play("portal", 0.5f);
             // A toast — NOT the red death flash — so it reads as "the rune dragged
             // you back", not a death (it doesn't cost a death).
@@ -3773,6 +3825,8 @@ namespace TrustIssues
                 if (Mathf.Abs(d - x) < 2.6f) return false;            // doorways / gates / loop runes: chokepoints
             foreach (var sr in _level.SleepRunes)
                 if (Mathf.Abs(sr.x - x) < 2.2f) return false;
+            foreach (var gr in _level.GravRunes)
+                if (Mathf.Abs(gr.x - x) < 2.2f) return false;   // a spike on a rune = forced death
             foreach (var ss in _level.ShiftSpikes)
                 if (Mathf.Abs(ss.x - x) < 2.2f || Mathf.Abs(ss.y - x) < 2.2f) return false;
             return true;

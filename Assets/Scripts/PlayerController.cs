@@ -62,6 +62,34 @@ namespace TrustIssues
         // the bat-form world height here; the body scale already carries it.
         public float visualMul = 1f;
 
+        // ---- gravity inversion (the Chapel floors) ----
+        // +1 = normal (you fall toward the floor), -1 = inverted (you fall toward
+        // the ceiling and walk on its underside). EVERY vertical rule below —
+        // ground checks, jump direction, rise/fall gravity, glide caps — is
+        // multiplied through this one sign, so inverted play is byte-identical
+        // physics, just mirrored. Flipped by GravityRuneZone; a fresh spawn is
+        // always +1 (the component is rebuilt on death, so no reset bookkeeping).
+        public float GravDir { get; private set; } = 1f;
+        float _visBaseY;   // visual's authored local Y, mirrored when inverted
+
+        public void SetGravityDir(int dir)
+        {
+            float d = dir < 0 ? -1f : 1f;
+            if (Mathf.Approximately(d, GravDir)) return;
+            GravDir = d;
+            // A flip mid-rise must not keep the floaty rise gravity (the rise is
+            // now a fall), and the ledge we just left is not coyote-jumpable.
+            _risingFromJump = false;
+            _coyote = 0f;
+            _rb.gravityScale = fallGravity * GravDir;
+            // Mirror the visual about the feet line: flip its local offset so the
+            // (bottom-padded) art hugs whichever surface is now "the floor".
+            if (_visual != null && _visual != transform)
+            {
+                var lp = _visual.localPosition; lp.y = _visBaseY * GravDir; _visual.localPosition = lp;
+            }
+        }
+
         // ---- skin-granted traits/abilities (set by GameRoot from the equipped skin) ----
         public float moveMul = 1f, jumpMul = 1f;
         public bool dashEnabled = false;
@@ -101,6 +129,7 @@ namespace TrustIssues
             _visual = transform.childCount > 0 ? transform.GetChild(0) : transform;
             _baseX = Mathf.Abs(_visual.localScale.x);
             _baseY = _visual.localScale.y;
+            _visBaseY = _visual != transform ? _visual.localPosition.y : 0f;
         }
 
         public void Freeze() { _frozen = true; _rb.linearVelocity = Vector2.zero; _rb.simulated = false; }
@@ -285,14 +314,16 @@ namespace TrustIssues
             {
                 float bh = batSprite.bounds.size.y;
                 float s = (bh > 0.0001f ? 0.6f / bh : _baseY) * visualMul;
-                _visual.localScale = new Vector3(_facing * s, s, 1f);
+                _visual.localScale = new Vector3(_facing * s, s * GravDir, 1f);
             }
             else
             {
                 // Squash/stretch ONLY in the air. On the ground the body sits at its
-                // base scale, so standing still doesn't wobble.
-                float stretch = _grounded ? 0f : Mathf.Clamp(vy * 0.02f, -0.18f, 0.25f);
-                var target = new Vector3(_facing * _baseX * (1f - stretch), _baseY * (1f + stretch), 1f);
+                // base scale, so standing still doesn't wobble. The Y sign carries
+                // GravDir, so inverted gravity shows the vampire boots-to-ceiling;
+                // stretch reads "away from the floor" via the same sign on vy.
+                float stretch = _grounded ? 0f : Mathf.Clamp(vy * GravDir * 0.02f, -0.18f, 0.25f);
+                var target = new Vector3(_facing * _baseX * (1f - stretch), GravDir * _baseY * (1f + stretch), 1f);
                 _visual.localScale = Vector3.Lerp(_visual.localScale, target, 14f * Time.deltaTime);
             }
 
@@ -343,19 +374,20 @@ namespace TrustIssues
         {
             if (_frozen) return;
 
-            // Ground check: cast our own collider straight down a hair.
+            // Ground check: cast our own collider a hair toward whatever surface
+            // gravity currently calls "down" (the ceiling, when inverted).
             var filter = new ContactFilter2D { useTriggers = false };
             filter.SetLayerMask(Physics2D.AllLayers);
             var hits = new RaycastHit2D[4];
-            int n = _col.Cast(Vector2.down, filter, hits, 0.08f);
+            int n = _col.Cast(Vector2.down * GravDir, filter, hits, 0.08f);
             _grounded = false;
             for (int i = 0; i < n; i++)
-                if (hits[i].collider != null && hits[i].normal.y > 0.5f) { _grounded = true; break; }
+                if (hits[i].collider != null && hits[i].normal.y * GravDir > 0.5f) { _grounded = true; break; }
             if (_grounded) _coyote = coyoteTime;
 
             // Landing dust on a real impact (juice).
-            if (_grounded && !_wasGrounded && _rb.linearVelocity.y < -3f)
-                Fx.Dust(transform.position + Vector3.down * 0.4f);
+            if (_grounded && !_wasGrounded && _rb.linearVelocity.y * GravDir < -3f)
+                Fx.Dust(transform.position + Vector3.down * (0.4f * GravDir));
             _wasGrounded = _grounded;
 
             var v = _rb.linearVelocity;
@@ -376,15 +408,15 @@ namespace TrustIssues
 
             if (_buffer > 0f && _coyote > 0f)
             {
-                v.y = jumpSpeed * jumpMul;
+                v.y = jumpSpeed * jumpMul * GravDir;         // inverted = jump "down" toward the floor
                 _buffer = 0f; _coyote = 0f;
                 _risingFromJump = true;
                 Audio.Play("jump", 0.5f);
-                Fx.Dust(transform.position + Vector3.down * 0.4f);
+                Fx.Dust(transform.position + Vector3.down * (0.4f * GravDir));
             }
             else if (_buffer > 0f && !_grounded && _coyote <= 0f && _airJumpsLeft > 0)
             {
-                v.y = jumpSpeed * jumpMul;                   // mid-air (double) jump
+                v.y = jumpSpeed * jumpMul * GravDir;         // mid-air (double) jump
                 _buffer = 0f; _airJumpsLeft--;
                 _risingFromJump = true;
                 Audio.Play("jump", 0.6f);
@@ -392,18 +424,21 @@ namespace TrustIssues
 
             // Bat form GLIDES: it slows the fall to a gentle descent but cannot
             // truly climb, so flight extends a jump / crosses a gap — it can't be
-            // used to fly up and over the whole level. (Was a free upward thrust,
-            // which let players cheese past every ground hazard.)
-            if (_flying && v.y < -glideFall) v.y = -glideFall;
+            // used to fly over the whole level. (Was a free upward thrust,
+            // which let players cheese past every ground hazard.) "Fall" means
+            // motion along gravity, so the cap mirrors when inverted.
+            if (_flying && v.y * GravDir < -glideFall) v.y = -glideFall * GravDir;
 
             _rb.linearVelocity = v;
             // Variable jump height — ONLY for rises we launched ourselves.
             // Jump held = floaty riseGravity full arc; released early = heavy
             // fallGravity cuts the hop short. Trampolines / boss knock-ups are
             // external launches and keep the full riseGravity arc regardless.
-            if (_rb.linearVelocity.y <= 0.1f) _risingFromJump = false;
+            // "Rising" = moving away from the current floor; the gravity scale
+            // carries GravDir's sign so the rigidbody falls the right way.
+            if (_rb.linearVelocity.y * GravDir <= 0.1f) _risingFromJump = false;
             bool cutJump = _risingFromJump && !_jumpHeld;
-            _rb.gravityScale = (_rb.linearVelocity.y > 0.1f && !cutJump) ? riseGravity : fallGravity;
+            _rb.gravityScale = ((_rb.linearVelocity.y * GravDir > 0.1f && !cutJump) ? riseGravity : fallGravity) * GravDir;
         }
     }
 }

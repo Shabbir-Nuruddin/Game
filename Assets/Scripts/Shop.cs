@@ -183,7 +183,10 @@ namespace TrustIssues
         float _t;
         const float Life = 0.8f;
 
-        public static void Spawn(Vector3 pos, int amount)
+        public static void Spawn(Vector3 pos, int amount) => SpawnText(pos, "+" + amount, Theme.Coin);
+
+        // Same rise-and-fade, arbitrary words — the "CALLED IT!" flourish rides this.
+        public static void SpawnText(Vector3 pos, string text, Color color)
         {
             var go = new GameObject("ShardFloater");
             // Parent to nothing persistent-scene-wise; it self-destructs fast and the
@@ -191,10 +194,10 @@ namespace TrustIssues
             Object.DontDestroyOnLoad(go);
             go.transform.position = pos + Vector3.up * 0.9f;
             var tm = go.AddComponent<TextMesh>();
-            tm.text = "+" + amount;
+            tm.text = text;
             tm.fontSize = 56; tm.characterSize = 0.06f; tm.fontStyle = FontStyle.Bold;
             tm.anchor = TextAnchor.LowerCenter; tm.alignment = TextAlignment.Center;
-            tm.color = Theme.Coin;
+            tm.color = color;
             go.GetComponent<MeshRenderer>().sortingOrder = 20;
             go.AddComponent<ShardFloater>()._tm = tm;
         }

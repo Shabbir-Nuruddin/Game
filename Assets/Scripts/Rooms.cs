@@ -78,6 +78,58 @@ namespace TrustIssues
     }
 
     /// <summary>
+    /// A spectral rune that INVERTS gravity: cross it and you fall toward the
+    /// ceiling (or back toward the floor). This is the Chapel's whole language —
+    /// the one truly physics-breaking object in the castle. It's a toggle, so
+    /// the same rune can be reused, and it stays armed across the run.
+    /// A DUD rune looks identical until touched, when it fizzles dark and does
+    /// nothing — the Chapel's lie. The real one is always somewhere in the room.
+    /// </summary>
+    public class GravityRuneZone : MonoBehaviour
+    {
+        public bool dud;
+        float _cooldown;               // physics can graze a trigger twice in a flip
+        bool _spent;                   // duds fizzle once, then just sit there dead
+        SpriteRenderer[] _glyph;
+
+        public void SetGlyph(SpriteRenderer[] parts) => _glyph = parts;
+
+        void Update() { if (_cooldown > 0f) _cooldown -= Time.deltaTime; }
+
+        void OnTriggerEnter2D(Collider2D other)
+        {
+            if (_cooldown > 0f) return;
+            var pc = other.GetComponent<PlayerController>();
+            if (pc == null) return;
+            _cooldown = 0.35f;
+
+            if (dud)
+            {
+                if (_spent) return;
+                _spent = true;
+                // The fizzle IS the punchline: a dark flicker, a dead little
+                // noise, and the gap you were sprinting at is still unjumpable.
+                // The breathing pulses must die first or they'd re-brighten the
+                // corpse every frame.
+                foreach (var p in GetComponentsInChildren<FaintPulse>()) Destroy(p);
+                if (_glyph != null)
+                    foreach (var g in _glyph)
+                        if (g != null) { var c = g.color; c.a *= 0.18f; g.color = c; }
+                Audio.PlayOr("tap", "click", 0.5f);
+                GameRoot.I?.RoomToast("The rune is dead. Someone used it all up.");
+                return;
+            }
+
+            pc.SetGravityDir(pc.GravDir > 0f ? -1 : 1);
+            // Sell the flip HARD — this is the game's most disorienting beat and
+            // it must read as "the rune did that", never "physics glitched".
+            Fx.Burst(transform.position, new Color(0.62f, 0.78f, 1f, 0.9f), 12, 5f, 0.22f, 0.5f, 8f);
+            Audio.PlayOr("portal", "jump", 0.6f);
+            GameRoot.I?.ShakeCam(0.18f, 0.12f);
+        }
+    }
+
+    /// <summary>
     /// The Endless Hall: cross the rune at the doorway on FOOT and you're
     /// silently back at the start of an identical room. Jumping it passes. The
     /// hall gets bored after five loops and lets you through — mercy disguised
@@ -374,6 +426,7 @@ namespace TrustIssues
                 if (_rooms[i].Rule == RoomRule.Loop) BuildLoopZone(_rooms[i]);
 
             foreach (var r in level.SleepRunes) BuildSleepRune(r);
+            foreach (var gr in level.GravRunes) BuildGravRune(gr);
             foreach (var g in level.Gates) BuildGate(g);
             foreach (var s in level.ShiftSpikes) BuildShiftSpike(s.x, s.y);
             BuildDots();
@@ -689,6 +742,49 @@ namespace TrustIssues
                 sr.color = new Color(candle.r, candle.g, candle.b, 0.10f);
                 sr.sortingOrder = 3;
             }
+        }
+
+        // A gravity rune: (x, y, dud flag, unused). Spectral blue-white — the
+        // same palette as the ghost floors, so "pale blue = the castle's dead
+        // magic" stays one consistent visual promise. Floor runes point their
+        // chevrons UP (you'll fall that way), ceiling runes point DOWN.
+        void BuildGravRune(Vector4 spec)
+        {
+            bool onCeiling = spec.y > 0f;
+            var go = new GameObject(spec.z > 0.5f ? "GravRuneDud" : "GravRune");
+            go.transform.SetParent(_levelRoot, false);
+            go.transform.position = new Vector3(spec.x, spec.y, 0f);
+            var col = go.AddComponent<BoxCollider2D>();
+            col.isTrigger = true;
+            col.size = new Vector2(1.1f, 0.5f);    // hugs its surface — jumping past skips it
+            var gz = go.AddComponent<GravityRuneZone>();
+            gz.dud = spec.z > 0.5f;
+
+            var spectral = new Color(0.62f, 0.78f, 1f, 0.85f);
+            var parts = new List<SpriteRenderer>(BuildRuneGlyph(go.transform, spectral));
+            // Two stacked chevrons pointing the way you'll fall (^ from rotated
+            // bars), floating just off the rune. A dud draws them IDENTICALLY —
+            // the lie only breaks on touch.
+            float dir = onCeiling ? -1f : 1f;
+            for (int c = 0; c < 2; c++)
+            {
+                for (int sSide = -1; sSide <= 1; sSide += 2)
+                {
+                    var barGo = new GameObject("Chev" + c + (sSide < 0 ? "L" : "R"));
+                    barGo.transform.SetParent(go.transform, false);
+                    barGo.transform.localPosition =
+                        new Vector3(sSide * 0.14f, dir * (0.42f + c * 0.3f), 0f);
+                    barGo.transform.localRotation = Quaternion.Euler(0f, 0f, sSide * dir * -35f);
+                    var sr = barGo.AddComponent<SpriteRenderer>();
+                    sr.sprite = Theme.Square;
+                    sr.color = spectral;
+                    sr.sortingOrder = 3;
+                    barGo.transform.localScale = new Vector3(0.34f, 0.09f, 1f);
+                    parts.Add(sr);
+                }
+            }
+            foreach (var p in parts) p.gameObject.AddComponent<FaintPulse>().max = 0.85f;
+            gz.SetGlyph(parts.ToArray());
         }
 
         // Everything outside the active chamber drowns in darkness: two huge
