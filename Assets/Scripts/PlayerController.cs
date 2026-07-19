@@ -58,6 +58,10 @@ namespace TrustIssues
         public int ammo = 0;                     // boss arenas: shots left in the held weapon
         public void GiveAmmo(int n) { ammo = Mathf.Max(ammo, n); }
 
+        // Mobile "bigger sprite" factor (set by GameRoot): scales VISUALS only —
+        // the bat-form world height here; the body scale already carries it.
+        public float visualMul = 1f;
+
         // ---- skin-granted traits/abilities (set by GameRoot from the equipped skin) ----
         public float moveMul = 1f, jumpMul = 1f;
         public bool dashEnabled = false;
@@ -280,7 +284,7 @@ namespace TrustIssues
             if (_flying && batSprite != null)
             {
                 float bh = batSprite.bounds.size.y;
-                float s = bh > 0.0001f ? 0.6f / bh : _baseY;
+                float s = (bh > 0.0001f ? 0.6f / bh : _baseY) * visualMul;
                 _visual.localScale = new Vector3(_facing * s, s, 1f);
             }
             else

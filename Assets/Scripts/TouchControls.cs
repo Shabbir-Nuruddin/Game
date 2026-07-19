@@ -243,7 +243,7 @@ namespace TrustIssues
             {
                 knobOffset = Vector2.ClampMagnitude(knobOffset, _radius);
                 if (_knob != null) _knob.anchoredPosition = knobOffset;
-                TouchInput.X = _radius > 0.01f ? Mathf.Clamp(knobOffset.x / _radius, -1f, 1f) : 0f;
+                TouchInput.X = _radius > 0.01f ? Shape(knobOffset.x / _radius) : 0f;
             }
             else if (_held)
             {
@@ -282,6 +282,21 @@ namespace TrustIssues
                 c.a = _idleAlpha[i];
                 _graphics[i].color = c;
             }
+        }
+
+        // Tilt → speed response. Raw knob position was fed to movement 1:1, which
+        // testers read as "too fast / can't place myself": with a thumb, almost any
+        // tilt was full tilt. A small deadzone kills resting-thumb jitter, and the
+        // squared curve makes the lower half of the stick a precision walk (half
+        // tilt ≈ quarter speed) while FULL tilt still returns exactly 1 — max run
+        // speed is untouched, so every gap tuned by JumpArcProbe stays clearable.
+        static float Shape(float raw)
+        {
+            const float Dead = 0.12f;
+            float a = Mathf.Min(1f, Mathf.Abs(raw));
+            if (a < Dead) return 0f;
+            float t = (a - Dead) / (1f - Dead);
+            return Mathf.Sign(raw) * t * t;
         }
 
         Vector2 LocalOffset(Vector2 screen)

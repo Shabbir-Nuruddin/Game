@@ -560,6 +560,13 @@ namespace TrustIssues
             _rotatePanel.SetActive(false);
         }
 
+        // Phones sit much smaller in the hand than the desktop test window the
+        // layout was tuned in — APK testers reported the stick and JUMP as "too
+        // small" to hit reliably. One multiplier scales every touch-control size
+        // AND offset (offsets too, so the cluster spreads instead of overlapping);
+        // desktop (Settings > ON-SCREEN PADS) keeps the compact layout.
+        static float TouchScale => Application.isMobilePlatform ? 1.35f : 1f;
+
         // On-screen buttons for phones (also work with the mouse). Hidden in menus.
         void BuildTouchControls()
         {
@@ -569,25 +576,28 @@ namespace TrustIssues
             rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
             rt.offsetMin = rt.offsetMax = Vector2.zero;
 
+            float k = TouchScale;
             // Movement bottom-left: either the two bare arrow glyphs (no circle,
             // no background — just the glyph) or the virtual joystick, whichever
             // Settings > MOVE has picked. Both are built; only one is ever shown,
             // toggled every frame in UpdateTouchLayout() like the ability buttons.
-            _btnLeft  = MakeArrowGlyph("‹", -1, new Vector2(0f, 0f), new Vector2(120, 145), new Vector2(150, 150));
-            _btnRight = MakeArrowGlyph("›", 1, new Vector2(0f, 0f), new Vector2(340, 145), new Vector2(150, 150));
+            _btnLeft  = MakeArrowGlyph("‹", -1, new Vector2(0f, 0f), new Vector2(120, 145) * k, new Vector2(150, 150) * k);
+            _btnRight = MakeArrowGlyph("›", 1, new Vector2(0f, 0f), new Vector2(340, 145) * k, new Vector2(150, 150) * k);
             // Base size drives the knob, the travel radius and the grab pad (see
             // TouchJoystick.Setup), so this one number is the whole stick's feel.
             // Bumped from 170: at that size it was fiddly to steer with a thumb.
-            _joystick = MakeJoystick(new Vector2(0f, 0f), new Vector2(250, 185), 240f);
+            // A bigger radius also means more finger travel per speed step, which
+            // is half of the precision fix (the other half is TouchJoystick.Shape).
+            _joystick = MakeJoystick(new Vector2(0f, 0f), new Vector2(250, 185) * k, 240f * k);
             // …action cluster bottom-right. JUMP is always there; the rest are shown
             // contextually (bat in Blood Moon/Endless, dash if the skin grants it,
             // SHOOT only while holding a loaded gun) via UpdateTouchLayout(). JUMP
             // is a bare up-arrow (no circle, no background, no label) per the same
             // "just the arrow" styling as the movement glyphs.
-            MakeArrowGlyph("▲", 0, new Vector2(1f, 0f), new Vector2(-150, 145), new Vector2(170, 170));
-            _btnFly   = MakeBatButton(new Vector2(1f, 0f), new Vector2(-360, 120), new Vector2(130, 130));
-            _btnDash  = MakeTouch("DASH",  4, new Vector2(1f, 0f), new Vector2(-140, 350), new Vector2(130, 130), 0.18f);
-            _btnShoot = MakeGunButton(new Vector2(1f, 0f), new Vector2(-360, 310), new Vector2(130, 130));
+            MakeArrowGlyph("▲", 0, new Vector2(1f, 0f), new Vector2(-150, 145) * k, new Vector2(170, 170) * k);
+            _btnFly   = MakeBatButton(new Vector2(1f, 0f), new Vector2(-360, 120) * k, new Vector2(130, 130) * k);
+            _btnDash  = MakeTouch("DASH",  4, new Vector2(1f, 0f), new Vector2(-140, 350) * k, new Vector2(130, 130) * k, 0.24f);
+            _btnShoot = MakeGunButton(new Vector2(1f, 0f), new Vector2(-360, 310) * k, new Vector2(130, 130) * k);
             SyncMoveMode();
             _touchPanel.SetActive(false);
         }
@@ -652,7 +662,8 @@ namespace TrustIssues
             rt.anchorMin = rt.anchorMax = anchor; rt.pivot = new Vector2(0.5f, 0.5f);
             rt.anchoredPosition = pos; rt.sizeDelta = size;
             go.AddComponent<TouchButton>().dir = dir;
-            int fontSize = (dir == -1 || dir == 1) ? 64 : (label.Length > 4 ? 20 : 24);
+            // Font tracks the pad size so the mobile scale-up grows the text too.
+            int fontSize = Mathf.RoundToInt(((dir == -1 || dir == 1) ? 0.43f : (label.Length > 4 ? 0.15f : 0.18f)) * size.y);
             Theme.Label(go.transform, label, fontSize, new Color(1, 1, 1, 0.9f),
                 new Vector2(0.5f, 0.5f), Vector2.zero, size);
             return go;
@@ -670,7 +681,10 @@ namespace TrustIssues
             rt.anchoredPosition = pos; rt.sizeDelta = size;
             var tb = go.AddComponent<TouchButton>();
             tb.dir = dir;
-            var label = Theme.Label(go.transform, glyph, 64, new Color(1, 1, 1, 0.55f),
+            // Glyph fills the button (font tracks size) and idles brighter than the
+            // old 0.55 — on a sunlit phone screen the faint glyphs disappeared.
+            var label = Theme.Label(go.transform, glyph, Mathf.RoundToInt(size.y * 0.5f),
+                new Color(1, 1, 1, 0.72f),
                 new Vector2(0.5f, 0.5f), Vector2.zero, size);
             tb.SetFeedback(new Graphic[] { label });
             return go;
@@ -698,7 +712,7 @@ namespace TrustIssues
             irt.sizeDelta = new Vector2(size.x, size.x * 0.5f);   // the glyph is 2:1
             var img = icon.AddComponent<Image>();
             img.sprite = Theme.BatGlyph;
-            img.color = new Color(1f, 1f, 1f, 0.32f);             // same idle alpha as the gun
+            img.color = new Color(1f, 1f, 1f, 0.45f);             // same idle alpha as the gun
             tb.SetFeedback(new Graphic[] { img });
             return go;
         }
@@ -716,12 +730,15 @@ namespace TrustIssues
             var tb = go.AddComponent<TouchButton>();
             tb.dir = 2;
 
-            var col = new Color(1f, 1f, 1f, 0.32f);
+            var col = new Color(1f, 1f, 1f, 0.45f);
+            // Icon geometry was drawn for a 130-unit button; scale the parts with
+            // the actual size so the mobile scale-up grows the artwork too.
+            float g = size.x / 130f;
             var parts = new[]
             {
-                GunIconPart(go.transform, "Body",   new Vector2(-6, -4),  new Vector2(58, 34), col),
-                GunIconPart(go.transform, "Barrel", new Vector2(38, 6),   new Vector2(56, 16), col),
-                GunIconPart(go.transform, "Grip",   new Vector2(-22, -28),new Vector2(20, 34), col),
+                GunIconPart(go.transform, "Body",   new Vector2(-6, -4) * g,  new Vector2(58, 34) * g, col),
+                GunIconPart(go.transform, "Barrel", new Vector2(38, 6) * g,   new Vector2(56, 16) * g, col),
+                GunIconPart(go.transform, "Grip",   new Vector2(-22, -28) * g,new Vector2(20, 34) * g, col),
             };
             tb.SetFeedback(parts);
             return go;
@@ -748,7 +765,7 @@ namespace TrustIssues
             go.transform.SetParent(_touchPanel.transform, false);
             var baseImg = go.AddComponent<Image>();
             baseImg.sprite = Theme.Ring;
-            baseImg.color = new Color(1f, 1f, 1f, 0.22f);
+            baseImg.color = new Color(1f, 1f, 1f, 0.3f);
             var rt = baseImg.rectTransform;
             rt.anchorMin = rt.anchorMax = anchor; rt.pivot = new Vector2(0.5f, 0.5f);
             rt.anchoredPosition = pos; rt.sizeDelta = new Vector2(baseSize, baseSize);
@@ -757,7 +774,7 @@ namespace TrustIssues
             knobGo.transform.SetParent(go.transform, false);
             var knobImg = knobGo.AddComponent<Image>();
             knobImg.sprite = Theme.Circle;
-            knobImg.color = new Color(1f, 1f, 1f, 0.35f);
+            knobImg.color = new Color(1f, 1f, 1f, 0.5f);
             var knobRt = knobImg.rectTransform;
             knobRt.anchorMin = knobRt.anchorMax = new Vector2(0.5f, 0.5f); knobRt.pivot = new Vector2(0.5f, 0.5f);
             knobRt.anchoredPosition = Vector2.zero; knobRt.sizeDelta = new Vector2(baseSize * 0.45f, baseSize * 0.45f);
@@ -2856,19 +2873,32 @@ namespace TrustIssues
             Sprite firstFrame = useVamp ? vIdle[0]
                 : (pmIdle != null && pmIdle.Length > 0) ? pmIdle[0] : beanie;
 
+            // Phones show a whole ~20-27-unit stage on a palm-sized screen, which
+            // left the character reading as a speck (APK feedback: "sprite too
+            // small"). Grow the VISUAL only — the collider is untouched, so every
+            // hazard hitbox and every JumpArcProbe-tuned gap behaves identically;
+            // the hurtbox just sits a little inside the art, which errs in the
+            // player's favour.
+            float vk = Application.isMobilePlatform ? 1.2f : 1f;
+
             if (firstFrame != null)
             {
                 var b = new GameObject("Body");
                 b.transform.SetParent(go.transform, false);
                 // Vampire frames have shadow/padding at the bottom; nudge down so
                 // the character's feet sit on the floor, not floating above it.
-                b.transform.localPosition = useVamp ? new Vector3(0f, -0.12f, 0f) : Vector3.zero;
+                // The enlarged mobile sprite is re-anchored about the FEET (the
+                // collider bottom at local y≈-0.445) so scaling up doesn't sink
+                // the boots into the floor.
+                const float footY = -0.445f;
+                float baseNudge = useVamp ? -0.12f : 0f;
+                b.transform.localPosition = new Vector3(0f, baseNudge - (footY - baseNudge) * (vk - 1f), 0f);
                 bodySr = b.AddComponent<SpriteRenderer>();
                 bodySr.sprite = firstFrame;
                 bodySr.color = Skins.Shade(skin);  // cosmetic skin colour (softened so it keeps detail)
                 bodySr.sortingOrder = 5;
                 float h = firstFrame.bounds.size.y;
-                float s = h > 0.0001f ? 1.35f / h : 1f;
+                float s = (h > 0.0001f ? 1.35f / h : 1f) * vk;
                 b.transform.localScale = new Vector3((VampFaceLeft ? -s : s), s, 1f);
                 vis = b.transform;
             }
@@ -2881,6 +2911,7 @@ namespace TrustIssues
             }
 
             _player = go.AddComponent<PlayerController>();
+            _player.visualMul = vk;   // bat form reads its size from this too
             // Roomed floors are precision mode: glide and double-jump are
             // suppressed so the dark-bridge gaps and the coffin chase can't be
             // flown over (see Level.PrecisionPlatforming). Corridor floors
