@@ -15,7 +15,7 @@ public static class DumpLevelMap
 {
     const float PPU = 18f;   // pixels per world unit
     const float MinX = -14f, MaxX = 145f, MinY = -6f, MaxY = 5f;   // full-screen stages: floors run ~110-125 wide
-    const int RoomedFloors = 10;
+    const int RoomedFloors = 39;
 
     // Physics for the arc overlay — mirrors PlayerController / JumpArcProbe.
     const float MoveSpeed = 7.5f, JumpSpeed = 14f, FallG = 5.5f, RiseG = 3.4f, G = 9.81f, Dt = 0.02f;
@@ -24,7 +24,11 @@ public static class DumpLevelMap
     public static void Dump()
     {
         for (int i = 1; i <= RoomedFloors; i++)
-            Draw(GetFloor(i), "level_map_L" + i + ".png");
+        {
+            var lvl = GetFloor(i);
+            if (lvl == null) continue;   // 20/30/40 are boss arenas — no Lnn method
+            Draw(lvl, "level_map_L" + i + ".png");
+        }
         Debug.Log("LEVELMAP_DONE roomed 1-" + RoomedFloors);
     }
 
@@ -41,7 +45,7 @@ public static class DumpLevelMap
     static Level GetFloor(int oneBased)
     {
         var m = typeof(Levels).GetMethod("L" + oneBased, BindingFlags.NonPublic | BindingFlags.Static);
-        return (Level)m.Invoke(null, null);
+        return m == null ? null : (Level)m.Invoke(null, null);   // 20/30/40 have no method (boss arenas)
     }
 
     static void Draw(Level lvl, string file)
