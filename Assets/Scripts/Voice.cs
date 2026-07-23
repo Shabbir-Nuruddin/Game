@@ -36,7 +36,49 @@ namespace TrustIssues
             if (Muted || Volume <= 0.001f || string.IsNullOrEmpty(text)) return;
 #if UNITY_WEBGL && !UNITY_EDITOR
             try { TI_Speak(text, Volume); } catch { /* TTS is best-effort */ }
+#elif UNITY_ANDROID && !UNITY_EDITOR
+            AndroidSpeak(text);
 #endif
         }
+
+#if UNITY_ANDROID && !UNITY_EDITOR
+        // The roast used to be WebGL-only, so the castle went completely SILENT in
+        // the installed app — it talked on the web build and then said nothing on a
+        // phone. Android gets the same voice through the platform's own TextToSpeech
+        // engine. Created once and reused; every call is best-effort so a device
+        // with no TTS engine simply stays quiet instead of throwing.
+        static AndroidJavaObject _tts;
+        static bool _ttsReady, _ttsFailed;
+
+        class InitListener : AndroidJavaProxy
+        {
+            public InitListener() : base("android.speech.tts.TextToSpeech$OnInitListener") { }
+            // MUST be public: AndroidJavaProxy resolves the callback by reflection.
+            public void onInit(int status) { _ttsReady = status == 0; _ttsFailed = status != 0; }
+        }
+
+        static void AndroidSpeak(string text)
+        {
+            try
+            {
+                if (_ttsFailed) return;
+                if (_tts == null)
+                {
+                    using var player = new AndroidJavaClass("com.unity3d.player.UnityPlayer");
+                    using var activity = player.GetStatic<AndroidJavaObject>("currentActivity");
+                    _tts = new AndroidJavaObject("android.speech.tts.TextToSpeech", activity, new InitListener());
+                }
+                if (!_ttsReady) return;                 // engine still warming up
+                _tts.Call<int>("setSpeechRate", 0.95f); // a touch slow = more menacing
+                _tts.Call<int>("setPitch", 0.75f);      // drop it: the castle, not a phone
+                // speak(CharSequence, int queueMode, Bundle params, String utteranceId)
+                // queueMode 0 = QUEUE_FLUSH, so a new roast cuts off the last one.
+                // The Bundle must be a TYPED null or the JNI bridge can't pick the
+                // overload and throws at runtime.
+                _tts.Call<int>("speak", text, 0, (AndroidJavaObject)null, "ti_roast");
+            }
+            catch { _ttsFailed = true; }
+        }
+#endif
     }
 }

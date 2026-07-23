@@ -58,6 +58,11 @@ namespace TrustIssues
         Mode _mode = Mode.Curated;
         int _endlessSeed;
         const int DailyLen = 5;
+
+        // The link that rides along with every share. PLACEHOLDER — point this at
+        // the Play Store listing (or the itch/web build) once the game is live and
+        // every share message starts pulling real players back in.
+        public const string GameLink = "https://trust-issues.game";
         int _hearts;          // lives in Endless/Daily; -1 = infinite (Curated)
         int _bossHp;          // chip-hits left in a boss arena (the rest of the game is one-shot)
         float _bossIFrames;   // brief mercy window after taking a boss chip hit
@@ -4072,7 +4077,15 @@ namespace TrustIssues
             UpdateHud();
             RecordReactiveTrap();                  // the game LEARNS where you felt safe
             string roast = Juice.Roast(cause, _deaths, _levelIndex + 1, nearMiss);
-            Voice.Speak(roast);                    // the game mocks you OUT LOUD (WebGL TTS)
+            // THE PUNCHLINE. The castle already learns the spot you hesitated on and
+            // grows a trap there — but it used to kill you in silence, so the joke
+            // never landed and the player just read it as "unfair". If you died
+            // within reach of a spot the castle learned from YOUR last attempt, it
+            // says so. That single line is what turns a death into something worth
+            // clipping and sending to someone.
+            if (_ghostTrapX.Exists(g => Mathf.Abs(g - deathPos.x) < 2.2f))
+                roast = CastleRemembersLines[Random.Range(0, CastleRemembersLines.Length)];
+            Voice.Speak(roast);                    // the game mocks you OUT LOUD
             // Every 10th death, dangle the next unlock — the moment a bored player
             // quits is exactly when the shop should whisper. Rides the hint bar so
             // the roast toast (and the instant retry) stay untouched.
@@ -4170,6 +4183,18 @@ namespace TrustIssues
         // The game LEARNS: bank the spot where you lingered longest this attempt, so
         // on the next retry a late-spike sprouts there. Avoidable (jump it) — never
         // makes a floor impossible — but it punishes the "safe spot" you trusted.
+        // Spoken (and toasted) when a trap the castle LEARNED from your own
+        // hesitation is the thing that kills you. Written to be said out loud.
+        static readonly string[] CastleRemembersLines =
+        {
+            "You stood right there last time.",
+            "I built that one just for you.",
+            "I watched you pause there. So I waited.",
+            "You keep going back to the same spot.",
+            "That was your safe place. Was.",
+            "I remembered. You didn't.",
+        };
+
         void RecordReactiveTrap()
         {
             if (InBossRoom || _mode == Mode.Versus) { _linger.Clear(); return; }
@@ -4457,11 +4482,19 @@ namespace TrustIssues
             }
             // Broke a friend's curse this run? The brag carries the receipt.
             if (Curse.LastBroken != null)
-                brag += $" — and I broke {Curse.LastBroken.nick}'s curse";
-            string bragFinal = brag;
+                brag += $" and I broke {Curse.LastBroken.nick}'s curse";
+            // Sanitize strips the typographic dashes/quotes the player asked to keep
+            // out of shared messages, and the link rides along so a share is
+            // actually clickable instead of orphan text.
+            string bragFinal = NativeShare.Sanitize(brag);
             Theme.Button(root, "SHARE", new Color(0.5f, 0.12f, 0.16f), Color.white, 34,
                 c, new Vector2(-350, -150), new Vector2(310, 96),
-                () => StartCoroutine(ShareCard.CaptureAndShare("trust-issues.png", bragFinal)));
+                () =>
+                {
+                    Analytics.Track("share_tapped", new System.Collections.Generic.Dictionary<string, object>
+                    { { "mode", ModeName }, { "level_index", _levelIndex } });
+                    StartCoroutine(NativeShare.ShareScreenshot("trust-issues", bragFinal, GameLink));
+                });
             // Haunt a friend: a link that spawns YOUR ghost on this floor in THEIR game.
             Theme.Button(root, "CURSE A FRIEND", new Color(0.32f, 0.08f, 0.4f), Color.white, 26,
                 c, new Vector2(0, -150), new Vector2(310, 96), () =>
@@ -4472,17 +4505,16 @@ namespace TrustIssues
                         cause = Memory.LastKillerName, mode = ModeName,
                     };
                     string link = Curse.BuildLink(d);
-                    int shared = Curse.ShareLink(link,
+                    string msg = NativeShare.Sanitize(
                         $"I cursed you in Trust Issues \U0001F987 survive floor {_levelIndex + 1} with {_floorDeaths} deaths or less, or my ghost stays");
+                    // Goes through the OS share sheet on phone (WhatsApp, Instagram,
+                    // Bluetooth...) rather than silently filling a clipboard.
+                    NativeShare.ShareText(msg, link);
                     Analytics.Track("curse_sent", new System.Collections.Generic.Dictionary<string, object>
                     {
-                        { "floor", _levelIndex }, { "mode", ModeName }, { "share_result", shared },
+                        { "floor", _levelIndex }, { "mode", ModeName },
                     });
-                    // Toast what actually happened — the old toast claimed success
-                    // even on browsers where every share path failed.
-                    BossToast(shared == 2 ? "CURSE LINK READY — SEND IT"
-                            : shared == 1 ? "CURSE LINK COPIED — PASTE IT ANYWHERE"
-                                          : "COPY BLOCKED — LINK: " + link);
+                    BossToast("CURSE READY - SEND IT TO THEM");
                 });
             Theme.Button(root, "LEADERBOARD", new Color(0.28f, 0.24f, 0.32f), Color.white, 30,
                 c, new Vector2(350, -150), new Vector2(310, 96), () => { Destroy(panel); ShowLeaderboard(lbMode); });
