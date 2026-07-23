@@ -2048,7 +2048,12 @@ namespace TrustIssues
                 // Now 1+idx — night 1 is a gentle spikes-only intro and the brutal
                 // paired/reverse tier holds off until night 4, with the climax on 5.
                 case Mode.Daily:   return Levels.Generate(DailySeed() * 31 + _levelIndex * 7919, 1 + _levelIndex);
-                case Mode.Endless: return Levels.Generate(_endlessSeed + _levelIndex * 7919, _levelIndex + 2);
+                // Endless ramp EASED at the mouth (analytics: 101 deaths on its
+                // very first floor — people bounced off the entrance): was idx+2,
+                // so floor 1 opened HARDER than Castle's. Now idx+1, a gentle
+                // spikes-only floor 1 that still climbs +1 forever (paired hazards
+                // from floor 4 on), so the deep run is exactly as brutal as before.
+                case Mode.Endless: return Levels.Generate(_endlessSeed + _levelIndex * 7919, _levelIndex + 1);
                 // Versus: a shared race track, identical for everyone in the room.
                 // The room code + ROUND number seed it, so each round is a fresh
                 // (still deterministic) layout and the match runs continuously. Kept
