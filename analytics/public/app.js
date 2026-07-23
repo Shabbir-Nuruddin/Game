@@ -33,6 +33,13 @@ const baseOpts = (extra = {}) => ({
 
 const fmtSecs = (s) => (!s ? '0s' : s < 60 ? s + 's' : Math.floor(s / 60) + 'm ' + (s % 60) + 's');
 
+// Escape anything player-controlled before it touches innerHTML. Event name and
+// props come from the OPEN /collect endpoint, so a crafted event could otherwise
+// inject <script>/<img onerror> that runs in the dashboard (stored XSS).
+const esc = (v) =>
+  String(v).replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
 // One KPI card. `bench` (optional) shows a target + colors the value vs it.
 function kpiCard({ label, value, sub, bench }) {
   let cls = '', badge = '';
@@ -149,7 +156,9 @@ function renderRecent(rows) {
       const t = new Date(r.received_at).toLocaleTimeString();
       const sid = (r.session_id || '').slice(0, 6);
       const props = JSON.stringify(r.props || {});
-      return `<tr><td>${t}</td><td><span class="tag">${r.name}</span></td><td>${sid}</td><td class="props">${props}</td></tr>`;
+      // esc() every player-controlled field — name, session id and props all
+      // originate from the open ingest endpoint and are otherwise raw HTML here.
+      return `<tr><td>${esc(t)}</td><td><span class="tag">${esc(r.name)}</span></td><td>${esc(sid)}</td><td class="props">${esc(props)}</td></tr>`;
     }).join('');
 }
 
