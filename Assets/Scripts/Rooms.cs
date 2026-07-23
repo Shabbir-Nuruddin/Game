@@ -635,7 +635,10 @@ namespace TrustIssues
             var canvasRT = (RectTransform)Theme.Canvas.transform;
             var size = canvasRT.rect.size;
             float diag = Mathf.Sqrt(size.x * size.x + size.y * size.y);
-            float s = diag * 2.2f;                 // ≥ 2× diagonal ⇒ covers every corner from anywhere
+            // GUTTERING CANDLE charm scales the whole mask up, which widens the lit
+            // hole in its middle — you see more of the room. Scaling UP always keeps
+            // the >=2x-diagonal coverage guarantee, so the screen edges stay dark.
+            float s = diag * 2.2f * Charms.DarkVisionMultiplier;
             _darkRT.sizeDelta = new Vector2(s, s);
 
             var cam = Camera.main;

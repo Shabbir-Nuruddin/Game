@@ -38,6 +38,7 @@ namespace TrustIssues
         {
             _deathsPaidThisFloor = 0;
             _nearMissPaidThisFloor = false;
+            Charms.ResetFloor();   // the Grave Ward recharges once per floor
         }
 
         /// <summary>Shards owed for the death that just happened (0 once the
@@ -47,7 +48,10 @@ namespace TrustIssues
             int pay = 0;
             if (_deathsPaidThisFloor < DeathPayCap) { pay += 1; _deathsPaidThisFloor++; }
             if (nearMiss && !_nearMissPaidThisFloor) { pay += 2; _nearMissPaidThisFloor = true; }
-            return pay;
+            // The Gravedigger's Cut charm doubles what a death is worth. The
+            // per-floor cap is applied BEFORE the multiplier, so the charm makes
+            // dying more valuable without re-opening death-farming.
+            return pay * Charms.DeathShardMultiplier;
         }
 
         public static void Earn(int amount, string source)

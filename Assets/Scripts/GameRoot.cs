@@ -1065,21 +1065,16 @@ namespace TrustIssues
             Theme.Button(root, "LEADERBOARD", new Color(1, 1, 1, 0.12f), new Color(1, 1, 1, 0.85f), 22,
                 new Vector2(0.5f, 0.5f), new Vector2(520, -262), sdim, () => ShowLeaderboard("daily"));
 
-            // The tithe banner — the "come back tomorrow" hook with teeth.
-            if (tithe > 0)
-            {
-                var titheLbl = Theme.Label(root, $"NIGHTLY TITHE: +{tithe} BLOOD SHARDS", 28, Theme.Coin,
-                    new Vector2(0.5f, 0.5f), new Vector2(0, -168), new Vector2(1200, 46));
-                StartCoroutine(Pulse(titheLbl.transform));
-            }
-
             // ---- Bottom notice stack -------------------------------------------
-            // These three were pinned to fixed y values (-338 / -382 / -412) that
-            // sat 30px apart, so whenever two or three of them showed at once the
-            // lines ran into each other — the overlap on the main screen. They are
-            // now STACKED: only the notices that actually apply are laid out, each
-            // one a fixed step below the last, so no combination can ever collide.
+            // Everything transient lives here now. These were previously pinned to
+            // fixed y values 30px apart, so any two showing at once ran into each
+            // other; the tithe banner then collided with the BUILD A TRAP button
+            // when that took Endless's slot. Stacking them means only the notices
+            // that apply are laid out, each a fixed step below the last, so no
+            // combination of them can ever overlap anything.
             var notices = new System.Collections.Generic.List<(string text, int size, Color col)>();
+            if (tithe > 0)
+                notices.Add(($"NIGHTLY TITHE: +{tithe} BLOOD SHARDS", 28, Theme.Coin));
             if (Meta.Streak > 0 && Meta.StreakAlive)
                 notices.Add(($"BLOOD MOON STREAK: {Meta.Streak} DAYS — keep it alive", 27, Theme.Coin));
             if (Curse.Pending != null)
@@ -4365,6 +4360,23 @@ namespace TrustIssues
         public void Die(string msg = null)
         {
             if (_state != State.Play || _dying) return;
+
+            // GRAVE WARD charm: eat the first death on this floor entirely. Checked
+            // before ANY death bookkeeping runs, so a warded hit costs no death, no
+            // heart and no analytics event — it simply didn't happen. Once per
+            // floor, and it never fires in a live race (a free life would make the
+            // race unfair to the other player).
+            if (_mode != Mode.Versus && Charms.ConsumeWard())
+            {
+                Audio.Play("levelup", 0.5f);
+                FlashRed();
+                ShakeCam(0.35f, 0.35f);
+                if (_player != null) StartCoroutine(Juice.Shake(_cam.transform, 0.3f, 0.2f));
+                RoomToast("THE WARD BREAKS - it only saves you once a floor.");
+                _dying = false;
+                return;
+            }
+
             _dying = true;
             _deaths++;
             _floorDeaths++;
@@ -4709,7 +4721,14 @@ namespace TrustIssues
                 bool firstClear = _mode == Mode.Curated &&
                     (_levelIndex + 1 == Levels.Count ? !Badges.Has("castle_clear")
                                                      : _levelIndex >= CastleUnlocked);
-                int shardPay = 10 + (firstClear ? 15 : 0) + (_floorDeaths < 5 ? 5 : 0);
+                // Rebalanced upward. The old rate (10 a floor) put the cheapest
+                // charm 15 clears away and the best one 60 clears away — far past
+                // where anyone was still playing, which is why the currency felt
+                // like it did nothing. Clearing is now clearly the best income,
+                // first clears pay a real bounty, and every 5th floor pays a
+                // milestone so long sessions keep landing rewards.
+                int shardPay = 15 + (firstClear ? 25 : 0) + (_floorDeaths < 5 ? 10 : 0);
+                if (firstClear && (_levelIndex + 1) % 5 == 0) shardPay += 50;   // milestone floor
                 Currency.Earn(shardPay, firstClear ? "first_clear" : "floor_clear");
                 if (_player != null) ShardFloater.Spawn(_player.transform.position, shardPay);
             }
@@ -5012,10 +5031,36 @@ namespace TrustIssues
                 { "balance", Currency.Balance },
             });
             var c = new Vector2(0.5f, 0.5f);
-            var panel = Overlay(new Color(0.04f, 0.02f, 0.06f, 0.92f), out var root);
-            Theme.Label(root, "THE CRYPT SHOP", 70, Theme.Player, c, new Vector2(0, 420), new Vector2(1400, 120)).font = Theme.TitleFont;
-            Theme.Label(root, $"{Currency.Balance} BLOOD SHARDS — the castle takes shards, never skill", 28, Theme.Coin,
-                c, new Vector2(0, 348), new Vector2(1400, 50));
+            var panel = Overlay(new Color(0.04f, 0.02f, 0.06f, 0.94f), out var root);
+            Theme.Label(root, "THE CRYPT SHOP", 62, Theme.Player, c, new Vector2(0, 452), new Vector2(1400, 110)).font = Theme.TitleFont;
+
+            // The header now states the two things that were invisible before: what
+            // you have, and what you have to DO to open the next shelf. A currency
+            // with no stated purpose reads as pointless, which is exactly how this
+            // shop felt when every shelf was cosmetics.
+            int floors = Charms.FloorsCleared;
+            Theme.Label(root, $"{Currency.Balance} BLOOD SHARDS     •     {floors} FLOORS CLEARED",
+                30, Theme.Coin, c, new Vector2(0, 392), new Vector2(1500, 46));
+
+            // ---- tabs ---------------------------------------------------------
+            string[] tabs = { "CHARMS", "SKINS", "STYLE" };
+            string[] blurb =
+            {
+                "Wear ONE. These change how the castle treats you.",
+                "Who you are on the way down.",
+                "Death effects, trails and last words.",
+            };
+            for (int t = 0; t < tabs.Length; t++)
+            {
+                int tab = t;
+                bool sel = _shopTab == t;
+                Theme.Button(root, tabs[t],
+                    sel ? new Color(0.55f, 0.14f, 0.18f) : new Color(1, 1, 1, 0.12f),
+                    Color.white, 30, c, new Vector2(-380 + t * 380, 320), new Vector2(360, 72),
+                    () => { _shopTab = tab; Destroy(panel); ShowShop(); });
+            }
+            Theme.Label(root, blurb[Mathf.Clamp(_shopTab, 0, 2)], 23, new Color(1, 1, 1, 0.5f),
+                c, new Vector2(0, 262), new Vector2(1500, 36));
 
             // Skin preview art (same sources as the Wardrobe previews).
             var vampFrames = Assets.Grid("vamp_idle_sheet", 64, 3);
@@ -5023,39 +5068,81 @@ namespace TrustIssues
             var pmFrames = Assets.Sheet("pinkman_idle", 32);
             Sprite pmSp = (pmFrames != null && pmFrames.Length > 0) ? pmFrames[0] : null;
 
-            // One flat list: the priced skins first (the aspirational shelf), then
-            // death effects, trails, and taunts from the Shop catalog.
-            int cols = 4; float spX = 350f, spY = 244f, startX = -((cols - 1) * spX) / 2f, startY = 196f;
+            // One tab's worth of cards fits on screen without stacking into the
+            // BACK button — the old flat list of every skin AND every cosmetic ran
+            // off the bottom of the panel.
+            int cols = 3; float spX = 430f, spY = 232f;
+            float startX = -((cols - 1) * spX) / 2f, startY = 130f;
             int slot = 0;
 
-            foreach (var s in Skins.All)
+            if (_shopTab == 0)
             {
-                if (s.price <= 0) continue;
-                var sd = s;
-                bool owned = Skins.IsUnlocked(sd);
-                bool equipped = owned && Skins.CurrentId == sd.id;
-                ShopCard(root, panel, slot++, cols, spX, spY, startX, startY,
-                    sd.name, "skin — pure style", sd.price, owned, equipped,
-                    sd.pinkman ? pmSp : vampSp, Skins.Shade(sd),
-                    buy: () => { if (Shop.BuySkin(sd)) Skins.Equip(sd.id); },
-                    equip: () => Skins.Equip(sd.id));
+                foreach (var d in Charms.All)
+                {
+                    var def = d;
+                    bool owned = Charms.Owns(def.id);
+                    bool worn = Charms.IsWorn(def.id);
+                    bool gated = !Charms.Unlocked(def);
+                    // A gated charm shows the FLOOR it opens at, not a dead button:
+                    // the requirement is the point, so it has to be readable.
+                    string desc = gated
+                        ? $"Locked - clear floor {def.reqFloors}"
+                        : def.desc;
+                    ShopCard(root, panel, slot++, cols, spX, spY, startX, startY,
+                        def.name, desc, def.price, owned, worn, null,
+                        gated ? new Color(def.tint.r * 0.3f, def.tint.g * 0.3f, def.tint.b * 0.3f) : def.tint,
+                        buy: gated ? (System.Action)(() => BossToast($"SEALED - clear floor {def.reqFloors} first"))
+                                   : () => { if (Charms.Buy(def)) Charms.Equip(def.id); },
+                        equip: () => Charms.Equip(def.id));
+                }
             }
-            foreach (var it in Shop.All)
+            else if (_shopTab == 1)
             {
-                var item = it;
-                bool owned = Shop.Owns(item.id);
-                bool equipped = owned && Shop.Equipped(item.kind) == item.id;
-                ShopCard(root, panel, slot++, cols, spX, spY, startX, startY,
-                    item.name, item.desc, item.price, owned, equipped,
-                    null, item.tint,
-                    buy: () => { if (Shop.Buy(item)) Shop.Equip(item.kind, item.id); },
-                    // Owned items TOGGLE: tap to wear, tap again to take off.
-                    equip: () => Shop.Equip(item.kind, equipped ? "" : item.id));
+                foreach (var s in Skins.All)
+                {
+                    if (s.price <= 0) continue;
+                    var sd = s;
+                    bool owned = Skins.IsUnlocked(sd);
+                    bool equipped = owned && Skins.CurrentId == sd.id;
+                    ShopCard(root, panel, slot++, cols, spX, spY, startX, startY,
+                        sd.name, "a different face for the fall", sd.price, owned, equipped,
+                        sd.pinkman ? pmSp : vampSp, Skins.Shade(sd),
+                        buy: () => { if (Shop.BuySkin(sd)) Skins.Equip(sd.id); },
+                        equip: () => Skins.Equip(sd.id));
+                }
+            }
+            else
+            {
+                foreach (var it in Shop.All)
+                {
+                    var item = it;
+                    bool owned = Shop.Owns(item.id);
+                    bool equipped = owned && Shop.Equipped(item.kind) == item.id;
+                    ShopCard(root, panel, slot++, cols, spX, spY, startX, startY,
+                        item.name, item.desc, item.price, owned, equipped,
+                        null, item.tint,
+                        buy: () => { if (Shop.Buy(item)) Shop.Equip(item.kind, item.id); },
+                        // Owned items TOGGLE: tap to wear, tap again to take off.
+                        equip: () => Shop.Equip(item.kind, equipped ? "" : item.id));
+                }
+            }
+
+            // Always name the next goal, so leaving the shop still leaves a target.
+            var goal = Charms.NextGoal();
+            if (goal != null)
+            {
+                int need = goal.price - Currency.Balance;
+                string line = !Charms.Unlocked(goal)
+                    ? $"NEXT: {goal.name} - opens when you clear floor {goal.reqFloors}"
+                    : need > 0 ? $"NEXT: {goal.name} - {need} more shards"
+                               : $"NEXT: {goal.name} - you can afford it NOW";
+                Theme.Label(root, line, 24, Theme.Coin, c, new Vector2(0, -300), new Vector2(1500, 38));
             }
 
             Theme.Button(root, "‹ BACK", new Color(1, 1, 1, 0.25f), Color.white, 40,
                 new Vector2(0.5f, 0f), new Vector2(0, 40), new Vector2(360, 100), () => { Destroy(panel); ShowMenu(); });
         }
+        int _shopTab;   // which shelf the Crypt Shop is showing
 
         // One shop card: preview (sprite or a tinted diamond), name, flavor line,
         // and a state footer — BUY (gold, affordable) / NEED N MORE (dim) /
