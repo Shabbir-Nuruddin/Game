@@ -475,11 +475,35 @@ namespace TrustIssues
             return -1;   // past the end wall — keep whatever was active
         }
 
+        // The ONLY mechanic explanation new players get before floor 10 was "die
+        // to it once" — playtesters bounced off floors 1-9 before ever reaching
+        // the exam that recaps them. A one-line, in-fiction heads-up the very
+        // FIRST time a room rule is ever seen (persisted in PlayerPrefs, so it
+        // never repeats for that player again) buys a beat of preparation
+        // without touching a single trap's difficulty.
+        static readonly Dictionary<RoomRule, string> _firstSeenWarning = new()
+        {
+            { RoomRule.Dark,    "The candles in here don't stay lit." },
+            { RoomRule.Flee,    "Something in here runs when you get close." },
+            { RoomRule.Press,   "The ceiling in here doesn't stay put." },
+            { RoomRule.Reverse, "This room won't let you keep your own hands." },
+            { RoomRule.Loop,    "This room remembers if you leave the way you came." },
+        };
+
         void EnterRoom(int idx)
         {
             _active = idx;
             _fired = false;
             var r = _rooms[idx];
+            if (_firstSeenWarning.TryGetValue(r.Rule, out var warning))
+            {
+                string key = "warned_rule_" + r.Rule;
+                if (PlayerPrefs.GetInt(key, 0) == 0)
+                {
+                    PlayerPrefs.SetInt(key, 1);
+                    GameRoot.I?.RoomToast(warning);
+                }
+            }
             // Crossing forward BANKS the stage you just finished (no-op on
             // respawn re-entry or the first room) — chime + shake live in
             // GameRoot.BankStage, so respawn seal rebuilds stay silent.

@@ -491,45 +491,48 @@ namespace TrustIssues
         // confidence, reveal. Never two new ideas at once across floors.
         // ====================================================================
 
-        // 1 — TRUST NOTHING. Fake floors, late spikes, a chandelier over the
-        // landing, a falling block, a bobbing slab over a pit, and a biting
-        // door — four directions of death across five full screens.
+        // 1 — TRUST NOTHING. The teaching floor. Analytics (60+ testers) put 407
+        // deaths here — the #1 onboarding wall — because it opened with 3-5
+        // simultaneous hazards per stage and a MANDATORY precision slab-ride, and
+        // the game's single biggest killer is falling in a pit. So floor 1 now
+        // teaches its ONE lie (fake floors) clean, adds one idea per stage, keeps
+        // every gap plainly jumpable, and saves the precision mover-ride for later
+        // floors. Still lethal — just legible.
         static Level L1()
         {
             var b = new B();
-            b.Room(RoomRule.None);              // S1: gaps + a spike + the first lying floor
+            b.Room(RoomRule.None);              // S1: learn the ONE lie — a floor that isn't
+            b.Plat(5f); b.Gap(2.2f);
+            float a1 = b.Plat(6f); b.Spike(a1 + 2f);
+            b.FakeFloor(2f);
+            b.Plat(6f);
+
+            b.Room(RoomRule.None);              // S2: add the late spike — the ground bites back
             b.Plat(4f); b.Gap(2.3f);
-            float a1 = b.Plat(5f); b.Spike(a1 + 1.5f);
-            b.FakeFloor(2.2f);
-            float c1 = b.Plat(6f); b.LateSpike(c1 + 1f);
-
-            b.Room(RoomRule.None);              // S2: saw + chandelier over the landing + fake
-            b.Plat(3.5f);
-            float a2 = b.Plat(4f); b.Saw(a2);
-            b.Gap(2.4f);
-            float c2 = b.Plat(5f); b.Chandelier(c2 - 1.4f); b.Spike(c2 + 1.6f);
-            b.FakeFloor(2f); b.Plat(4f);
-
-            b.Room(RoomRule.None);              // S3: falling block + dart lane + lying floor
-            b.Plat(3.5f);
-            float a3 = b.Plat(5f); b.Faller(a3 - 1f); b.Dart(a3 + 1.6f);
-            b.Gap(2.3f); b.FakeFloor(2.2f);
-            float c3 = b.Plat(4f); b.Spike(c3);
-            b.Gap(2.4f); b.Plat(3f);
-
-            b.Room(RoomRule.None);              // S4: ride the bobbing slab across the pit
-            b.Plat(3.5f); b.MoverGap(6.8f);
-            float a4 = b.Plat(5f); b.Spike(a4 - 1.3f); b.Spike(a4 + 1.3f);
+            float a2 = b.Plat(5f); b.LateSpike(a2 + 1f);
             b.Gap(2.3f);
-            float c4 = b.Plat(4f); b.Chandelier(c4);
+            b.FakeFloor(2f); b.Plat(5f);
+
+            b.Room(RoomRule.None);              // S3: add the saw — a moving threat to time
+            b.Plat(4f);
+            float a3 = b.Plat(5f); b.Saw(a3);
+            b.Gap(2.3f); b.FakeFloor(2f);
+            float c3 = b.Plat(5f); b.Spike(c3 + 1.5f);
             b.Plat(3f);
 
-            b.Room(RoomRule.None, 0.35f, true); // S5: the door bites, then the gauntlet
-            b.Plat(3.5f); b.FakeFloor(2f);
-            float a5 = b.Plat(4f); b.Saw(a5);
+            b.Room(RoomRule.None);              // S4: add the drop-from-above — falling block
+            b.Plat(4f); b.Gap(2.4f);
+            float a4 = b.Plat(6f); b.Faller(a4 - 1f);
             b.Gap(2.3f);
-            float c5 = b.Plat(4f); b.Faller(c5 - 1f); b.LateSpike(c5 + 1.2f);
-            b.FakeFloor(2f); b.Plat(2.5f);
+            float c4 = b.Plat(5f); b.LateSpike(c4 + 1.2f);
+            b.Plat(3f);
+
+            b.Room(RoomRule.None, 0.4f, true);  // S5 (gated): the exam — everything learned, spaced
+            b.Plat(4f); b.FakeFloor(2f);
+            float a5 = b.Plat(5f); b.Saw(a5);
+            b.Gap(2.3f);
+            float c5 = b.Plat(5f); b.Faller(c5 - 1f); b.Spike(c5 + 1.8f);
+            b.Plat(4f);
             return b.Finish();
         }
 
@@ -640,10 +643,10 @@ namespace TrustIssues
             float c3 = b.Plat(4f); b.LateSpike(c3);
             b.Plat(3.5f);
 
-            b.Room(RoomRule.Press, 0.22f);      // S4: ride the slab while the ceiling drops
-            b.Plat(3.5f); b.MoverGap(6.8f);
+            b.Room(RoomRule.Press, 0.22f);      // S4: keep moving under the drop — jumpable pits, not a slab-ride
+            b.Plat(4f); b.Gap(2.4f);
             float a4 = b.Plat(5f); b.HolyWater(a4);
-            b.Gap(2.3f); b.Plat(5f);
+            b.Gap(2.4f); b.Plat(5f);
 
             b.Room(RoomRule.Press, 0.2f, true); // S5: gate, press, two lying floors, saw
             b.Plat(3.5f); b.FakeFloor(2f);
@@ -852,7 +855,7 @@ namespace TrustIssues
         static Level L10()
         {
             var b = new B();
-            b.Room(RoomRule.Dark, 0.16f);       // S1: night floor + moving spike + saw
+            b.Room(RoomRule.Dark, 0.3f);        // S1: night floor + moving spike + saw (see it lit first)
             b.Plat(3.5f); b.NightFloor(2f);
             float a1 = b.Plat(6f); b.Saw(a1 - 1.5f); b.ShiftSpike(a1 + 2f, a1 + 0.8f);
             b.Gap(2.3f); b.Plat(6f);
@@ -880,7 +883,7 @@ namespace TrustIssues
             float c4 = b.Plat(5f); b.Pendulum(c4);
             b.Gap(2.3f); b.Plat(4f);
 
-            b.Room(RoomRule.Flee, 0.05f, true); // S5: the last chase, gate slammed behind
+            b.Room(RoomRule.Flee, 0.15f, true); // S5: the last chase, gate slammed behind (a beat to read it)
             float p5 = b.Plat(3.5f);
             float a5 = b.Plat(6f); b.Dart(a5 + 1f);
             b.Gap(2.3f);

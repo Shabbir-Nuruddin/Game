@@ -594,7 +594,9 @@ namespace TrustIssues
             // SHOOT only while holding a loaded gun) via UpdateTouchLayout(). JUMP
             // is a bare up-arrow (no circle, no background, no label) per the same
             // "just the arrow" styling as the movement glyphs.
-            MakeArrowGlyph("▲", 0, new Vector2(1f, 0f), new Vector2(-150, 145) * k, new Vector2(170, 170) * k);
+            // Jump is the single most-mashed button in the game — sized up again
+            // (170 -> 200) after testers kept fat-fingering past its edge.
+            MakeArrowGlyph("▲", 0, new Vector2(1f, 0f), new Vector2(-150, 145) * k, new Vector2(200, 200) * k);
             _btnFly   = MakeBatButton(new Vector2(1f, 0f), new Vector2(-360, 120) * k, new Vector2(130, 130) * k);
             _btnDash  = MakeTouch("DASH",  4, new Vector2(1f, 0f), new Vector2(-140, 350) * k, new Vector2(130, 130) * k, 0.24f);
             _btnShoot = MakeGunButton(new Vector2(1f, 0f), new Vector2(-360, 310) * k, new Vector2(130, 130) * k);
