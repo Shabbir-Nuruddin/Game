@@ -1028,16 +1028,21 @@ namespace TrustIssues
             // Secondary row — Shop / Wardrobe / Bestiary / Settings / Leaderboard.
             // The SHOP leads and wears gold with a live balance: it's the standing
             // ad for the death economy ("your deaths bought you something").
-            var sdim = new Vector2(260, 60);
-            Theme.Button(root, $"SHOP  {Currency.Balance}", new Color(0.5f, 0.38f, 0.1f, 0.4f), Theme.Coin, 26,
+            // Five buttons at 260 wide on a 260 pitch were EDGE-TO-EDGE with zero
+            // gap, and Theme.Label sets horizontalOverflow=Overflow — so the long
+            // captions ("BESTIARY 12/30", "LEADERBOARD") spilled straight over their
+            // neighbours. Narrower buttons on the same pitch give every caption a
+            // gutter to overflow into.
+            var sdim = new Vector2(244, 60);
+            Theme.Button(root, $"SHOP  {Currency.Balance}", new Color(0.5f, 0.38f, 0.1f, 0.4f), Theme.Coin, 25,
                 new Vector2(0.5f, 0.5f), new Vector2(-520, -262), sdim, ShowShop);
-            Theme.Button(root, "WARDROBE", new Color(1, 1, 1, 0.12f), new Color(1, 1, 1, 0.85f), 26,
+            Theme.Button(root, "WARDROBE", new Color(1, 1, 1, 0.12f), new Color(1, 1, 1, 0.85f), 25,
                 new Vector2(0.5f, 0.5f), new Vector2(-260, -262), sdim, ShowWardrobe);
-            Theme.Button(root, $"BESTIARY {Codex.KnownCount()}/{Codex.Total}", new Color(1, 1, 1, 0.12f), new Color(1, 1, 1, 0.85f), 24,
+            Theme.Button(root, $"BESTIARY {Codex.KnownCount()}/{Codex.Total}", new Color(1, 1, 1, 0.12f), new Color(1, 1, 1, 0.85f), 22,
                 new Vector2(0.5f, 0.5f), new Vector2(0, -262), sdim, ShowCodex);
-            Theme.Button(root, "SETTINGS", new Color(1, 1, 1, 0.12f), new Color(1, 1, 1, 0.85f), 26,
+            Theme.Button(root, "SETTINGS", new Color(1, 1, 1, 0.12f), new Color(1, 1, 1, 0.85f), 25,
                 new Vector2(0.5f, 0.5f), new Vector2(260, -262), sdim, ShowSettings);
-            Theme.Button(root, "LEADERBOARD", new Color(1, 1, 1, 0.12f), new Color(1, 1, 1, 0.85f), 24,
+            Theme.Button(root, "LEADERBOARD", new Color(1, 1, 1, 0.12f), new Color(1, 1, 1, 0.85f), 22,
                 new Vector2(0.5f, 0.5f), new Vector2(520, -262), sdim, () => ShowLeaderboard("daily"));
 
             // The tithe banner — the "come back tomorrow" hook with teeth.
@@ -1048,30 +1053,31 @@ namespace TrustIssues
                 StartCoroutine(Pulse(titheLbl.transform));
             }
 
-            // Daily streak — the "come back tomorrow" hook (bottom strip).
+            // ---- Bottom notice stack -------------------------------------------
+            // These three were pinned to fixed y values (-338 / -382 / -412) that
+            // sat 30px apart, so whenever two or three of them showed at once the
+            // lines ran into each other — the overlap on the main screen. They are
+            // now STACKED: only the notices that actually apply are laid out, each
+            // one a fixed step below the last, so no combination can ever collide.
+            var notices = new System.Collections.Generic.List<(string text, int size, Color col)>();
             if (Meta.Streak > 0 && Meta.StreakAlive)
-                Theme.Label(root, $"BLOOD MOON STREAK: {Meta.Streak} DAYS — keep it alive", 28, Theme.Coin,
-                    new Vector2(0.5f, 0.5f), new Vector2(0, -338), new Vector2(1200, 46));
-
-            // A pending curse outranks everything: name the challenger.
+                notices.Add(($"BLOOD MOON STREAK: {Meta.Streak} DAYS — keep it alive", 27, Theme.Coin));
             if (Curse.Pending != null)
-                Theme.Label(root,
-                    $"{Curse.Pending.nick} CURSED YOU from floor {Curse.Pending.floor + 1} of {Curse.Pending.mode}. Break it.",
-                    26, new Color(1f, 0.35f, 0.4f, 0.95f),
-                    new Vector2(0.5f, 0.5f), new Vector2(0, -412), new Vector2(1400, 44));
-
-            // The castle remembers: absence / rage-quit / nemesis greeting.
+                notices.Add(($"{Curse.Pending.nick} CURSED YOU from floor {Curse.Pending.floor + 1} of {Curse.Pending.mode}. Break it.",
+                             25, new Color(1f, 0.35f, 0.4f, 0.95f)));
             string greet = Memory.MenuGreeting();
             if (greet != null)
             {
-                Theme.Label(root, greet, 24, new Color(1f, 0.55f, 0.55f, 0.8f),
-                    new Vector2(0.5f, 0.5f), new Vector2(0, -382), new Vector2(1300, 40));
+                notices.Add((greet, 23, new Color(1f, 0.55f, 0.55f, 0.8f)));
                 if (!_greetTracked)
                 {
                     _greetTracked = true;
                     Analytics.Track("haunt_greeting", new System.Collections.Generic.Dictionary<string, object>());
                 }
             }
+            for (int i = 0; i < notices.Count; i++)
+                Theme.Label(root, notices[i].text, notices[i].size, notices[i].col,
+                    new Vector2(0.5f, 0.5f), new Vector2(0, -332 - i * 46), new Vector2(1400, 42));
 
             // Funnel: how many sessions actually reach an interactive menu (the
             // gap between session_start and this is load/boot bounce).
