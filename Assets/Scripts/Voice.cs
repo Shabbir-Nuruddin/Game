@@ -49,12 +49,25 @@ namespace TrustIssues
         // with no TTS engine simply stays quiet instead of throwing.
         static AndroidJavaObject _tts;
         static bool _ttsReady, _ttsFailed;
+        // The engine takes a moment to start, and the FIRST death is exactly when
+        // the castle most needs to speak. Hold that line and say it the instant the
+        // engine reports ready, instead of silently dropping it.
+        static string _pending;
 
         class InitListener : AndroidJavaProxy
         {
             public InitListener() : base("android.speech.tts.TextToSpeech$OnInitListener") { }
             // MUST be public: AndroidJavaProxy resolves the callback by reflection.
-            public void onInit(int status) { _ttsReady = status == 0; _ttsFailed = status != 0; }
+            public void onInit(int status)
+            {
+                _ttsReady = status == 0;
+                _ttsFailed = status != 0;
+                if (_ttsReady && !string.IsNullOrEmpty(_pending))
+                {
+                    var say = _pending; _pending = null;
+                    Utter(say);
+                }
+            }
         }
 
         static void AndroidSpeak(string text)
@@ -68,7 +81,17 @@ namespace TrustIssues
                     using var activity = player.GetStatic<AndroidJavaObject>("currentActivity");
                     _tts = new AndroidJavaObject("android.speech.tts.TextToSpeech", activity, new InitListener());
                 }
-                if (!_ttsReady) return;                 // engine still warming up
+                if (!_ttsReady) { _pending = text; return; }   // spoken on init
+                Utter(text);
+            }
+            catch { _ttsFailed = true; }
+        }
+
+        static void Utter(string text)
+        {
+            try
+            {
+                if (_tts == null) return;
                 _tts.Call<int>("setSpeechRate", 0.95f); // a touch slow = more menacing
                 _tts.Call<int>("setPitch", 0.75f);      // drop it: the castle, not a phone
                 // speak(CharSequence, int queueMode, Bundle params, String utteranceId)
