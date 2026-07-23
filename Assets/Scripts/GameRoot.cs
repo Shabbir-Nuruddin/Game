@@ -1729,7 +1729,7 @@ namespace TrustIssues
             var left = now.Date.AddDays(1) - now;   // until tonight's run rotates
             ShowBanner($"TONIGHT'S BLOOD MOON — {now:MMM d}",
                        $"rumor: \"{Rumor.CrypticLine}\" • resets in {(int)left.TotalHours}h {left.Minutes}m");
-            ShowHint($"BLOOD MOON — {Diff.StartHearts} lives, +1 per floor.  Jump, then hold {Controls.Name(Controls.Fly)}/FLY to glide as a bat.");
+            ShowHint($"BLOOD MOON — {Diff.StartHearts + 2} lives, +1 per night. Fall too many times and the night just resets. Jump, then hold {Controls.Name(Controls.Fly)}/FLY to glide as a bat.");
         }
 
         void StartEndless()
@@ -2012,7 +2012,10 @@ namespace TrustIssues
             _deaths = _mode == Mode.Curated ? PlayerPrefs.GetInt("castle_deaths", 0) : 0;
             // Curated and Versus both retry forever (a race death just sends you
             // back to start); Endless/Daily get a difficulty-scaled pool of lives.
-            _hearts = (_mode == Mode.Curated || _mode == Mode.Versus) ? -1 : Diff.StartHearts;
+            // Blood Moon gets a +2 cushion on top so a single attempt reaches
+            // deeper into the 5 nights before it loops — it beat NO ONE before.
+            _hearts = (_mode == Mode.Curated || _mode == Mode.Versus) ? -1
+                     : _mode == Mode.Daily ? Diff.StartHearts + 2 : Diff.StartHearts;
             _hud.gameObject.SetActive(true);
             if (_shardHud != null)
             {
@@ -2039,7 +2042,12 @@ namespace TrustIssues
         {
             switch (_mode)
             {
-                case Mode.Daily:   return Levels.Generate(DailySeed() * 31 + _levelIndex * 7919, 2 + _levelIndex);
+                // Blood Moon ramp EASED (analytics: nobody was finishing it): was
+                // 2+idx, which opened at difficulty 2 and hit the meanest tier
+                // (saws, flame jets, reversed controls, PAIRED hazards) by night 3.
+                // Now 1+idx — night 1 is a gentle spikes-only intro and the brutal
+                // paired/reverse tier holds off until night 4, with the climax on 5.
+                case Mode.Daily:   return Levels.Generate(DailySeed() * 31 + _levelIndex * 7919, 1 + _levelIndex);
                 case Mode.Endless: return Levels.Generate(_endlessSeed + _levelIndex * 7919, _levelIndex + 2);
                 // Versus: a shared race track, identical for everyone in the room.
                 // The room code + ROUND number seed it, so each round is a fresh
@@ -3736,9 +3744,11 @@ namespace TrustIssues
             if (_hearts == 0)
             {
                 // Endless never hard-ends on lives — drop back to the last checkpoint
-                // segment with a fresh pool and keep going. Blood Moon still ends (it's
-                // a fixed nightly challenge), as does any other heart mode.
+                // segment with a fresh pool and keep going. Blood Moon now AUTO-RESTARTS
+                // from night 1 (no trip to the menu to re-pick it — the #1 friction
+                // complaint); every other heart mode still ends on a result screen.
                 if (_mode == Mode.Endless) EndlessCheckpointRespawn();
+                else if (_mode == Mode.Daily) BloodMoonRestart();
                 else RunOver();
             }
             else BuildLevel();
@@ -3759,6 +3769,24 @@ namespace TrustIssues
             Audio.Play("levelup", 0.5f);
             ShowBanner("CHECKPOINT HOLDS",
                        $"back to floor {seg + 1} • {Diff.StartHearts} fresh lives • the night goes on");
+            BuildLevel();
+        }
+
+        // Blood Moon: out of lives → loop straight back to night 1 with a fresh
+        // pool of lives, no menu round-trip. Testers were bouncing off the mode
+        // and then having to re-select it from the menu every single time; this
+        // keeps the "just one more try" loop unbroken. Deaths keep accumulating
+        // (the mode still scores on fewest-deaths-to-clear, so a sloppy loop
+        // honestly costs you), and it stays tonight's shared seed.
+        void BloodMoonRestart()
+        {
+            _levelIndex = 0;
+            _hearts = Diff.StartHearts + 2;   // same generous cushion as a fresh start
+            _hasCheckpoint = false;
+            ResetFloorState();
+            Audio.Play("levelup", 0.5f);
+            ShowBanner("THE NIGHT RESETS",
+                       $"back to night 1 • {_hearts} fresh lives • trust nothing");
             BuildLevel();
         }
 
