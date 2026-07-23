@@ -505,6 +505,7 @@ namespace TrustIssues
             Currency.OnEarned += OnShardsEarned;
 
             BuildTouchControls();
+            BuildTrollButtons();
             BuildRotatePanel();
         }
 
@@ -605,6 +606,126 @@ namespace TrustIssues
         }
 
         GameObject _btnFly, _btnDash, _btnShoot, _btnLeft, _btnRight, _joystick;
+
+        // ==================== SABOTAGE (Versus troll buttons) ====================
+        // A right-edge column of buttons that let racers troll each other, Drive
+        // Ahead style. Each fires a Photon EvTroll at the rival; their client
+        // applies the effect to THEIR OWN vampire. We deliberately only mess with
+        // the victim's VISION and CONTROLS (never spawn a death-trap on their
+        // track) so a troll can make them blow a jump — real stakes — but can
+        // never turn a beatable track un-winnable. Shared per-button cooldown
+        // keeps it spicy, not a strobe. Works with mouse AND touch (Unity Button).
+        struct TrollDef { public string label; public Color col; public string sentMsg; public string hitMsg; }
+        static readonly TrollDef[] Trolls =
+        {
+            new TrollDef { label = "SNUFF",  col = new Color(0.10f, 0.10f, 0.16f), sentMsg = "You snuffed their candles!",   hitMsg = "SNUFFED — the lights went out!" },
+            new TrollDef { label = "CURSE",  col = new Color(0.42f, 0.12f, 0.52f), sentMsg = "You cursed their hands!",       hitMsg = "CURSED — your hands are flipped!" },
+            new TrollDef { label = "QUAKE",  col = new Color(0.55f, 0.30f, 0.08f), sentMsg = "You shook their whole world!",  hitMsg = "QUAKE — the castle is shaking!" },
+        };
+        const float TrollCooldown = 5f;   // seconds between uses of each button
+        GameObject _trollPanel;
+        Button[] _trollBtns;
+        Text[] _trollLabels;
+        float[] _trollCd;
+        GameObject _blackout;             // full-screen dim used by the SNUFF troll
+
+        void BuildTrollButtons()
+        {
+            _trollPanel = new GameObject("Trolls", typeof(RectTransform));
+            _trollPanel.transform.SetParent(Theme.Canvas.transform, false);
+            var rt = _trollPanel.GetComponent<RectTransform>();
+            rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
+            rt.offsetMin = rt.offsetMax = Vector2.zero;
+
+            float k = TouchScale;
+            _trollBtns = new Button[Trolls.Length];
+            _trollLabels = new Text[Trolls.Length];
+            _trollCd = new float[Trolls.Length];
+            // Left edge, vertically centred — clear of the bottom-left movement pad
+            // and the bottom-right action cluster (which the DASH button can reach).
+            for (int i = 0; i < Trolls.Length; i++)
+            {
+                int idx = i;
+                var size = new Vector2(150, 108) * k;
+                var pos = new Vector2(95, 128 - i * 128) * k;   // left-centre column
+                var btn = Theme.Button(_trollPanel.transform, Trolls[i].label, Trolls[i].col, Color.white, 30,
+                    new Vector2(0f, 0.5f), pos, size, () => FireTroll(idx));
+                _trollBtns[i] = btn;
+                _trollLabels[i] = btn.GetComponentInChildren<Text>();
+            }
+            _trollPanel.SetActive(false);
+        }
+
+        // Local player pressed a sabotage button.
+        void FireTroll(int type)
+        {
+            if (_mode != Mode.Versus || _state != State.Play || _raceOver) return;
+            if (type < 0 || type >= Trolls.Length || _trollCd[type] > 0f) return;
+            _trollCd[type] = TrollCooldown;
+            Net.SendTroll(type);
+            Audio.Play("click");
+            RoomToast(Trolls[type].sentMsg);
+        }
+
+        // A rival trolled us — apply it to our own vampire (vision/controls only).
+        void ReceiveTroll(int actor, int type)
+        {
+            if (_mode != Mode.Versus || _state != State.Play || _raceOver) return;
+            if (type < 0 || type >= Trolls.Length) return;
+            RoomToast(Trolls[type].hitMsg);
+            switch (type)
+            {
+                case 0: StartCoroutine(TrollBlackout(1.6f)); break;                       // SNUFF
+                case 1: if (_player != null) _player.SetReversed(1.9f); break;            // CURSE
+                case 2: ShakeCam(0.55f, 1.3f); break;                                     // QUAKE
+            }
+        }
+
+        // Full-screen dim that fades in fast and out slow — the SNUFF troll.
+        IEnumerator TrollBlackout(float hold)
+        {
+            if (_blackout == null)
+            {
+                _blackout = new GameObject("Blackout", typeof(RectTransform));
+                _blackout.transform.SetParent(Theme.Canvas.transform, false);
+                var brt = _blackout.GetComponent<RectTransform>();
+                brt.anchorMin = Vector2.zero; brt.anchorMax = Vector2.one;
+                brt.offsetMin = brt.offsetMax = Vector2.zero;
+                var bi = _blackout.AddComponent<Image>();
+                bi.color = new Color(0f, 0f, 0f, 0f);
+                bi.raycastTarget = false;   // never eat the victim's own button/joystick input
+            }
+            var img = _blackout.GetComponent<Image>();
+            _blackout.transform.SetAsLastSibling();
+            _blackout.SetActive(true);
+            // A hole of dim around nothing — near-total blackout with a faint edge
+            // so it reads as "the candles went out," not "the game froze."
+            for (float t = 0; t < 0.18f; t += Time.unscaledDeltaTime)
+            { img.color = new Color(0f, 0f, 0f, Mathf.Lerp(0f, 0.92f, t / 0.18f)); yield return null; }
+            img.color = new Color(0f, 0f, 0f, 0.92f);
+            yield return new WaitForSecondsRealtime(hold);
+            for (float t = 0; t < 0.5f; t += Time.unscaledDeltaTime)
+            { img.color = new Color(0f, 0f, 0f, Mathf.Lerp(0.92f, 0f, t / 0.5f)); yield return null; }
+            _blackout.SetActive(false);
+        }
+
+        // Ticked from Update(): show the sabotage column only during a live race,
+        // count down each button's cooldown, and grey a button while it's cooling.
+        void UpdateTrollButtons()
+        {
+            if (_trollPanel == null) return;
+            bool show = _mode == Mode.Versus && _state == State.Play && !_raceOver && Net.InRoom;
+            if (_trollPanel.activeSelf != show) _trollPanel.SetActive(show);
+            if (!show) return;
+            for (int i = 0; i < _trollBtns.Length; i++)
+            {
+                if (_trollCd[i] > 0f) _trollCd[i] = Mathf.Max(0f, _trollCd[i] - Time.unscaledDeltaTime);
+                bool ready = _trollCd[i] <= 0f;
+                if (_trollBtns[i] != null) _trollBtns[i].interactable = ready;
+                if (_trollLabels[i] != null)
+                    _trollLabels[i].text = ready ? Trolls[i].label : Mathf.CeilToInt(_trollCd[i]).ToString();
+            }
+        }
 
         // On-screen controls show on real mobile browsers (isMobilePlatform already
         // detects those on WebGL and excludes touch laptops) OR when force-enabled in
@@ -1832,8 +1953,8 @@ namespace TrustIssues
             _versusRound = 0; _versusWins = 0; _versusLosses = 0;   // fresh match
             _netSendTimer = 0f;          // broadcast our position on the very next frame
             BeginRun(0);
-            ShowBanner($"ROOM {Net.RoomCode}", "race the coffin every round • first to the most wins • it never stops");
-            ShowHint($"Race to the coffin — winner takes the round, then a NEW track loads. Jump, hold {Controls.Name(Controls.Fly)} to glide.");
+            ShowBanner($"ROOM {Net.RoomCode}", $"race to the coffin • a win is a point • FIRST TO {VersusMatchPoints} takes the match");
+            ShowHint($"Race to the coffin, then a NEW track loads. Tap the SABOTAGE buttons to troll your rival. Jump, hold {Controls.Name(Controls.Fly)} to glide.");
         }
 
         // Match score across rounds (continuous multiplayer).
@@ -1860,6 +1981,7 @@ namespace TrustIssues
             Net.OnState += OnRemoteState;
             Net.OnLeft  += OnRemoteLeft;
             Net.OnWin   += OnRemoteWin;
+            Net.OnTroll += ReceiveTroll;
         }
 
         // A remote player's position arrived — make/update their ghost.
@@ -1937,12 +2059,19 @@ namespace TrustIssues
             _ghosts.Clear();
         }
 
+        // First to this many round wins takes the whole match (Drive Ahead style).
+        const int VersusMatchPoints = 5;
+
         // Local player crossed the finish first (or a rival did) — end the race.
         void VersusResult(bool youWon)
         {
             _state = State.Win;
             if (youWon) { Badges.Award("versus_win"); _versusWins++; } else _versusLosses++;
             if (_versusWins >= 3) Badges.Award("versus_streak3");
+
+            // Match point reached? Show the champion screen instead of NEXT ROUND.
+            if (_versusWins >= VersusMatchPoints || _versusLosses >= VersusMatchPoints)
+            { VersusMatchOver(_versusWins >= VersusMatchPoints); return; }
             Analytics.Track("versus_result", new System.Collections.Generic.Dictionary<string, object>
             {
                 { "won", youWon },
@@ -1971,6 +2100,35 @@ namespace TrustIssues
             Theme.Button(root, "NEXT ROUND", Theme.Exit, Theme.Ink, 46,
                 new Vector2(0.5f, 0.5f), new Vector2(0, -120), new Vector2(560, 116),
                 () => { Destroy(panel); NextVersusRound(); });
+            Theme.Button(root, "LEAVE RACE", new Color(0.28f, 0.24f, 0.32f), Color.white, 40,
+                new Vector2(0.5f, 0.5f), new Vector2(0, -250), new Vector2(460, 100),
+                () => { Destroy(panel); LeaveVersus(); });
+        }
+
+        // Somebody hit VersusMatchPoints — the match is decided. Big champion
+        // screen, then REMATCH (same room, scores wiped, keep racing the same
+        // rival) or LEAVE. The room stays open on rematch so no re-code needed.
+        void VersusMatchOver(bool youWon)
+        {
+            _state = State.Win;
+            if (youWon) Badges.Award("versus_match");
+            Analytics.Track("versus_match", new System.Collections.Generic.Dictionary<string, object>
+            {
+                { "won", youWon }, { "wins", _versusWins }, { "losses", _versusLosses },
+            });
+            Audio.Play(youWon ? "win" : "death", 0.8f);
+            var panel = Overlay(new Color(0.05f, 0f, 0.02f, 0.9f), out var root);
+            Theme.Label(root, youWon ? "MATCH WON" : "MATCH LOST",
+                youWon ? 104 : 92, youWon ? Theme.Exit : Theme.Player,
+                new Vector2(0.5f, 0.5f), new Vector2(0, 170), new Vector2(1600, 170)).font = Theme.TitleFont;
+            Theme.Label(root, youWon ? $"first to {VersusMatchPoints} — you are the true heir"
+                                     : $"your rival reached {VersusMatchPoints} first",
+                44, Color.white, new Vector2(0.5f, 0.5f), new Vector2(0, 70), new Vector2(1500, 70));
+            Theme.Label(root, $"FINAL:  YOU {_versusWins}  –  {_versusLosses} RIVAL",
+                46, Theme.Coin, new Vector2(0.5f, 0.5f), new Vector2(0, 0), new Vector2(1400, 60));
+            Theme.Button(root, "REMATCH", Theme.Exit, Theme.Ink, 46,
+                new Vector2(0.5f, 0.5f), new Vector2(0, -120), new Vector2(560, 116),
+                () => { Destroy(panel); _versusWins = 0; _versusLosses = 0; NextVersusRound(); });
             Theme.Button(root, "LEAVE RACE", new Color(0.28f, 0.24f, 0.32f), Color.white, 40,
                 new Vector2(0.5f, 0.5f), new Vector2(0, -250), new Vector2(460, 100),
                 () => { Destroy(panel); LeaveVersus(); });
@@ -3416,6 +3574,15 @@ namespace TrustIssues
             // still has ammo, DASH only with a dash-granting skin, BAT only where
             // flight is allowed. Rebuild-time-only updates missed mid-level changes.
             UpdateTouchLayout();
+            UpdateTrollButtons();   // Versus sabotage column: visibility + cooldowns
+
+            // Desktop convenience: 1/2/3 fire the three sabotage trolls in a race.
+            if (_mode == Mode.Versus && _state == State.Play)
+            {
+                if (Input.GetKeyDown(KeyCode.Alpha1)) FireTroll(0);
+                else if (Input.GetKeyDown(KeyCode.Alpha2)) FireTroll(1);
+                else if (Input.GetKeyDown(KeyCode.Alpha3)) FireTroll(2);
+            }
 
             if ((_state == State.Play || _state == State.Paused) &&
                 Input.GetKeyDown(KeyCode.Escape))   // Esc ONLY — P was hijacking a letter key mid-play

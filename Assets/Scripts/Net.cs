@@ -76,6 +76,7 @@ namespace TrustIssues
 
         public const byte EvState = 1;   // x, y, faceLeft
         public const byte EvWin   = 2;   // sender won the race
+        public const byte EvTroll = 3;   // sender fired a troll (int type) at everyone else
 
         public static bool Available => true;
         public static bool InRoom => PhotonNetwork.InRoom;
@@ -95,6 +96,7 @@ namespace TrustIssues
         public static Action<int, Vector3, bool> OnState;  // actor, pos, faceLeft
         public static Action<int> OnLeft;                  // actor left
         public static Action<int> OnWin;                   // actor won the race
+        public static Action<int, int> OnTroll;            // actor, trollType — they trolled us
         public static Action OnRosterChanged;              // someone joined/left
 
         static NetClient _client;
@@ -140,6 +142,17 @@ namespace TrustIssues
         {
             if (!PhotonNetwork.InRoom) return;
             PhotonNetwork.RaiseEvent(EvWin, null,
+                new RaiseEventOptions { Receivers = ReceiverGroup.Others },
+                SendOptions.SendReliable);
+        }
+
+        // Fire a troll at every other racer. Reliable — a dropped sabotage would
+        // feel like a bug ("I pressed it and nothing happened").
+        public static void SendTroll(int type)
+        {
+            if (!PhotonNetwork.InRoom) return;
+            object[] data = { type };
+            PhotonNetwork.RaiseEvent(EvTroll, data,
                 new RaiseEventOptions { Receivers = ReceiverGroup.Others },
                 SendOptions.SendReliable);
         }
@@ -260,6 +273,11 @@ namespace TrustIssues
             {
                 Net.OnWin?.Invoke(e.Sender);
             }
+            else if (e.Code == Net.EvTroll)
+            {
+                var d = (object[])e.CustomData;
+                Net.OnTroll?.Invoke(e.Sender, (int)d[0]);
+            }
         }
     }
 }
@@ -283,6 +301,7 @@ namespace TrustIssues
         public static Action<int, Vector3, bool> OnState;
         public static Action<int> OnLeft;
         public static Action<int> OnWin;
+        public static Action<int, int> OnTroll;
         public static Action OnRosterChanged;
 
         public static void Host(Action onJoined, Action<string> onError) => onError?.Invoke("Import Photon PUN 2 to enable multiplayer.");
@@ -290,6 +309,7 @@ namespace TrustIssues
         public static void Leave() { }
         public static void SendState(Vector3 pos, bool faceLeft) { }
         public static void SendWin() { }
+        public static void SendTroll(int type) { }
     }
 }
 #endif
