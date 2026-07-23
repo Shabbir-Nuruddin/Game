@@ -1015,15 +1015,19 @@ namespace TrustIssues
             // Four mode buttons, demoted to a compact 2×2 grid under PLAY —
             // same callbacks and behavior, just no longer the first decision a
             // brand-new player is forced to make.
+            // ENDLESS NIGHT was cut from the menu: it was an infinite score chase
+            // with nothing to earn and no reason to keep climbing, and a fourth
+            // vague option only split attention away from the three modes that do
+            // have a point. The mode's code is untouched (Mode.Endless still works)
+            // so it can come back the moment it has a real goal — this is a menu
+            // decision, not a deletion.
             var dim = new Vector2(390, 64);
-            Theme.Button(root, "BLOOD MOON", new Color(0.6f, 0.08f, 0.12f), Color.white, 28,
-                new Vector2(0.5f, 0.5f), new Vector2(-205, 0), dim, StartDaily);
             Theme.Button(root, "THE CASTLE", new Color(0.28f, 0.24f, 0.32f), Color.white, 28,
-                new Vector2(0.5f, 0.5f), new Vector2(205, 0), dim, ShowLevelSelect);
-            Theme.Button(root, "ENDLESS NIGHT", Theme.Trick, Color.white, 28,
-                new Vector2(0.5f, 0.5f), new Vector2(-205, -76), dim, StartEndless);
+                new Vector2(0.5f, 0.5f), new Vector2(0, 4), new Vector2(600, 68), ShowLevelSelect);
+            Theme.Button(root, "BLOOD MOON", new Color(0.6f, 0.08f, 0.12f), Color.white, 28,
+                new Vector2(0.5f, 0.5f), new Vector2(-205, -74), dim, StartDaily);
             Theme.Button(root, "MULTIPLAYER", new Color(0.5f, 0.12f, 0.16f), Color.white, 28,
-                new Vector2(0.5f, 0.5f), new Vector2(205, -76), dim, ShowVersusLobby);
+                new Vector2(0.5f, 0.5f), new Vector2(205, -74), dim, ShowVersusLobby);
 
             // NIGHTLY TITHE: the first menu visit of each UTC day pays out, scaled
             // by the Blood Moon streak — granted BEFORE the shop button reads the
@@ -1935,9 +1939,11 @@ namespace TrustIssues
         {
             _modeSelectSource = "play_button";
             if (FreshPlayer) StartGame(0);
+            // "Endless" is intentionally absent: the mode is off the menu, so a
+            // returning player whose last run was Endless resumes into the Castle
+            // instead of being dropped into a mode they can no longer choose.
             else switch (PlayerPrefs.GetString("ti_last_mode", "Curated"))
             {
-                case "Endless": StartEndless(); break;
                 case "Daily":   StartDaily();   break;
                 default:        StartGame(Mathf.Min(CastleUnlocked, Levels.Count - 1)); break;
             }
@@ -1948,9 +1954,10 @@ namespace TrustIssues
         string PlayNowCaption()
         {
             if (FreshPlayer) return "PLAY";
+            // Endless is off the menu, so its caption is gone too — PlayNow() routes
+            // those players to the Castle and the button must not promise otherwise.
             switch (PlayerPrefs.GetString("ti_last_mode", "Curated"))
             {
-                case "Endless": return "CONTINUE — ENDLESS NIGHT";
                 case "Daily":   return "CONTINUE — BLOOD MOON";
                 default:        return $"CONTINUE — FLOOR {Mathf.Min(CastleUnlocked, Levels.Count - 1) + 1}";
             }
@@ -2342,7 +2349,12 @@ namespace TrustIssues
                 // (saws, flame jets, reversed controls, PAIRED hazards) by night 3.
                 // Now 1+idx — night 1 is a gentle spikes-only intro and the brutal
                 // paired/reverse tier holds off until night 4, with the climax on 5.
-                case Mode.Daily:   return Levels.Generate(DailySeed() * 31 + _levelIndex * 7919, 1 + _levelIndex);
+                case Mode.Daily:
+                {
+                    var night = Levels.Generate(DailySeed() * 31 + _levelIndex * 7919, 1 + _levelIndex);
+                    AddMidCheckpoint(night);   // a death costs HALF a night, not all of it
+                    return night;
+                }
                 // Endless ramp EASED at the mouth (analytics: 101 deaths on its
                 // very first floor — people bounced off the entrance): was idx+2,
                 // so floor 1 opened HARDER than Castle's. Now idx+1, a gentle
@@ -2367,6 +2379,54 @@ namespace TrustIssues
         // exam instead. The tier-1 Ghoul is benched, not deleted — he can come
         // back as an Endless mini-boss. Floors 20/30/40 keep their bosses as
         // world-capping spectacles once the player is invested.
+        /// <summary>
+        /// Drop a checkpoint on the platform nearest the middle of a generated
+        /// night. Blood Moon is one-hit AND life-limited AND has no mid-level
+        /// safety, so every death replayed the whole night from the door — the
+        /// tedium that made a 5-night run feel impossible rather than hard. Half a
+        /// night is still a real punishment; a whole one just made people quit.
+        /// </summary>
+        static void AddMidCheckpoint(Level lvl)
+        {
+            if (lvl == null || lvl.Platforms.Count == 0) return;
+            float minX = float.MaxValue, maxX = float.MinValue;
+            foreach (var p in lvl.Platforms)
+            { minX = Mathf.Min(minX, p.pos.x); maxX = Mathf.Max(maxX, p.pos.x); }
+            float mid = (minX + maxX) / 2f;
+
+            // Land it on a real platform (never over a pit), and never on the very
+            // first or last one — a checkpoint at the door or the exit is pointless.
+            // Generate() puts each platform's hazard at the platform CENTRE (and a
+            // second at centre+1.6), so the centre is exactly where a checkpoint
+            // must NOT go: an audit of all five nights found it buried in a spike
+            // every single time. Walk candidate spots across each platform and take
+            // the first that is genuinely clear of every hazard.
+            var order = new System.Collections.Generic.List<int>();
+            for (int i = 1; i < lvl.Platforms.Count - 1; i++) order.Add(i);
+            order.Sort((a, b) => Mathf.Abs(lvl.Platforms[a].pos.x - mid)
+                        .CompareTo(Mathf.Abs(lvl.Platforms[b].pos.x - mid)));
+
+            foreach (int i in order)
+            {
+                var plat = lvl.Platforms[i];
+                float half = plat.size.x / 2f;
+                // Left edge inward first — the hazard sits centre-and-right.
+                for (float off = 0.75f; off < plat.size.x - 0.5f; off += 0.45f)
+                {
+                    float x = plat.pos.x - half + off;
+                    bool clear = true;
+                    foreach (var t in lvl.Traps)
+                        if (t.type != TrapType.RealExit && Mathf.Abs(t.pos.x - x) < 1.15f)
+                        { clear = false; break; }
+                    if (!clear) continue;
+                    lvl.Traps.Add(new TrapSpec(TrapType.Checkpoint, x, -2f, 1f, 1.6f));
+                    return;
+                }
+            }
+            // No clear spot anywhere (very dense night) — better no checkpoint than
+            // one hidden inside a spike.
+        }
+
         static int BossTierForFloor(int idx)
         {
             switch (idx) { case 19: return 2; case 29: return 3; case 39: return 4; }
@@ -2491,8 +2551,17 @@ namespace TrustIssues
             // Versus and boss arenas are exempt.
             _sunRising = false; _sunWall = null;
             int plats = _level.Platforms.Count;
+            // Sunrise budget. Blood Moon used to run 11 + plats*1.8 — about 25s on
+            // night 1, THREE TIMES tighter than Castle's ~78s — while also being
+            // one-hit, life-limited and checkpoint-less. That triple penalty, not
+            // the traps, is what stopped anyone finishing it. Blood Moon now gets
+            // Castle's budget, and night 1 gets an extra grace cushion on top so
+            // the mode's front door is genuinely learnable.
+            float sunBudget = 16f + plats * 2.2f;
+            if (_mode == Mode.Daily) sunBudget += Mathf.Max(0f, 14f - _levelIndex * 3.5f);
             _sunThreshold = (_mode == Mode.Versus || InBossRoom || !Diff.SunRise) ? 999f
                           : _mode == Mode.Curated ? 16f + plats * 2.2f
+                          : _mode == Mode.Daily   ? sunBudget
                                                   : 11f + plats * 1.8f;
 
             _levelStartRealtime = Time.realtimeSinceStartup;
@@ -2777,6 +2846,26 @@ namespace TrustIssues
         // Lets the player controller refresh the ammo readout as a clip is spent.
         public void RefreshHud() => UpdateHud();
 
+        /// <summary>
+        /// The stone colour for the world currently being played, derived from the
+        /// same theme table the backdrop uses so floor and sky always agree. Kept
+        /// desaturated and dark — the stone should read as "this world's rock",
+        /// never as coloured plastic that fights the hazards for attention.
+        /// </summary>
+        Color WorldStone
+        {
+            get
+            {
+                int idx = Mathf.Clamp(_curTheme < 0 ? 0 : _curTheme, 0, ThemeMoon.Length - 1);
+                var t = ThemeMoon[idx];
+                // Pull most of the way back to neutral grey so hazards stay readable.
+                const float k = 0.30f;
+                return new Color(Mathf.Lerp(0.80f, t.r, k),
+                                 Mathf.Lerp(0.80f, t.g, k),
+                                 Mathf.Lerp(0.80f, t.b, k), 1f);
+            }
+        }
+
         // A platform: castle-stone tile (tiled) with a single blood-red lip on top.
         // EXCEPT room ceilings, which used to be built by this exact same call and
         // so rendered as a floor (bright blood lip and all) glued to the top of the
@@ -2849,6 +2938,11 @@ namespace TrustIssues
             sr.drawMode = SpriteDrawMode.Tiled;
             sr.size = size;
             sr.sortingOrder = 1;
+            // The stonework itself now takes the world's colour. Backdrops already
+            // changed per world, but the FLOOR you stare at for the whole level was
+            // the identical grey everywhere — so the crypt and the swamp still felt
+            // like the same place. This is the other half of the sameness fix.
+            sr.color = WorldStone;
             var col = go.AddComponent<BoxCollider2D>();
             col.size = size;
             // 2.5D: stacked darker copies behind the face read as extruded stone
@@ -2859,6 +2953,7 @@ namespace TrustIssues
             if (Depth25)
             {
                 float[] shade = { 0.72f, 0.55f, 0.4f };
+                var stone = WorldStone;               // extruded sides share the world's rock
                 for (int i = 0; i < 3; i++)
                 {
                     var slice = new GameObject("DepthSlice");
@@ -2869,7 +2964,7 @@ namespace TrustIssues
                     ssr.drawMode = SpriteDrawMode.Tiled;
                     ssr.size = size;                      // copy the SIZE, not the scale
                     ssr.sortingOrder = 1;
-                    ssr.color = new Color(shade[i], shade[i], shade[i], 1f);
+                    ssr.color = new Color(stone.r * shade[i], stone.g * shade[i], stone.b * shade[i], 1f);
                 }
             }
             // Single blood-red lip across the top edge (not tiled into the stone).

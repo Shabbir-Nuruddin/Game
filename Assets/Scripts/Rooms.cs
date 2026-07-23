@@ -517,6 +517,13 @@ namespace TrustIssues
             // Slide the darkness up to this room's walls.
             if (_curtainL != null) _curtainL.transform.position = new Vector3(r.MinX - 17f, 0.35f, 0f);
             if (_curtainR != null) _curtainR.transform.position = new Vector3(r.MaxX + 17f, 0.35f, 0f);
+            // The stage camera is far taller than the room, so ~4 units of open SKY
+            // sat above the stone ceiling — you were looking at the night sky from
+            // inside a sealed castle hall, which is exactly the "above the ceiling
+            // looks bad" complaint. Cap it with the same darkness that swallows the
+            // sides, so a hall reads as being deep inside a building.
+            if (_curtainT != null)
+                _curtainT.transform.position = new Vector3((r.MinX + r.MaxX) / 2f, B.CeilY + 5.6f, 0f);
             // Dots: banked stages fill GOLD and stay filled (the Level Devil
             // readout — progress you cannot lose), the live stage is bright
             // white, the future is dim.
@@ -819,12 +826,15 @@ namespace TrustIssues
         // first looked like goalposts — playtest: "you added some type of
         // doors… that does not look good" — so the doorways are now framed by
         // light instead of geometry.)
-        GameObject _curtainL, _curtainR;
+        GameObject _curtainL, _curtainR, _curtainT;
         void BuildCurtains()
         {
             var shade = new Color(0.035f, 0.015f, 0.05f, 0.97f);
             _curtainL = Theme.Box("CurtainL", _levelRoot, Vector2.zero, new Vector2(34f, 16f), shade, 60);
             _curtainR = Theme.Box("CurtainR", _levelRoot, Vector2.zero, new Vector2(34f, 16f), shade, 60);
+            // Wide enough to cover the widest stage at any aspect ratio; tall enough
+            // that nothing shows between the ceiling and the top of frame.
+            _curtainT = Theme.Box("CurtainT", _levelRoot, Vector2.zero, new Vector2(90f, 10f), shade, 60);
         }
 
         void BuildGate(float x)
