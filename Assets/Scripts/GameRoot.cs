@@ -1373,6 +1373,14 @@ namespace TrustIssues
             MakeMoveModeToggle(root, new Vector2(-290, -414));
             MakeToggle(root, new Vector2(290, -414), "2.5D DEPTH", "opt_25d", 1, 420f, ApplyDepthMode);
 
+            // REQUIRED ATTRIBUTION. Every music track is Kevin MacLeod's, licensed
+            // CC BY — free to ship commercially, but only while the credit is
+            // visible. Deleting this line invalidates the game's music licence, so
+            // it lives on the Settings screen where it can't be lost in a redesign.
+            Theme.Label(root, "Music by Kevin MacLeod (incompetech.com) - licensed under Creative Commons BY 4.0",
+                18, new Color(1, 1, 1, 0.42f),
+                new Vector2(0.5f, 0f), new Vector2(0, 156), new Vector2(1500, 28));
+
             Theme.Button(root, "‹ BACK", new Color(1, 1, 1, 0.25f), Color.white, 44,
                 new Vector2(0.5f, 0f), new Vector2(0, 40), new Vector2(360, 100), ShowMenu);
         }
