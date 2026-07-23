@@ -54,7 +54,12 @@ namespace TrustIssues
         Vector3 _checkpoint;
         bool _hasCheckpoint;
 
-        enum Mode { Curated, Endless, Daily, Versus }
+        enum Mode { Curated, Endless, Daily, Versus, Custom }
+        // The map currently being played in Mode.Custom (yours or a friend's), and
+        // the code it came from — the code is the identity a best time is filed under.
+        CustomMap _customMap;
+        string _customCode = "";
+        float _customStart;      // realtime the attempt began, for the race clock
         Mode _mode = Mode.Curated;
         int _endlessSeed;
         const int DailyLen = 5;
@@ -440,6 +445,7 @@ namespace TrustIssues
             {
                 case Mode.Daily:   idx = 4; break;                         // Blood Moon
                 case Mode.Versus:  idx = 8; break;                         // Arena
+                case Mode.Custom:  idx = 6; break;                         // The Void — a built place
                 case Mode.Endless: idx = 5 + (_levelIndex / 10) % 3; break;// Abyss → Void → Inferno
                 default:           idx = WorldOf(_levelIndex); break;      // Castle worlds
             }
@@ -1028,6 +1034,11 @@ namespace TrustIssues
                 new Vector2(0.5f, 0.5f), new Vector2(-205, -74), dim, StartDaily);
             Theme.Button(root, "MULTIPLAYER", new Color(0.5f, 0.12f, 0.16f), Color.white, 28,
                 new Vector2(0.5f, 0.5f), new Vector2(205, -74), dim, ShowVersusLobby);
+            // BUILD A TRAP takes the slot Endless vacated. It's the one mode that
+            // recruits players on its own: every map someone builds is an
+            // invitation sent to a friend who doesn't own the game yet.
+            Theme.Button(root, "BUILD A TRAP", new Color(0.32f, 0.08f, 0.4f), Color.white, 28,
+                new Vector2(0.5f, 0.5f), new Vector2(0, -148), new Vector2(600, 62), ShowMapEditor);
 
             // NIGHTLY TITHE: the first menu visit of each UTC day pays out, scaled
             // by the Blood Moon streak — granted BEFORE the shop button reads the
@@ -1707,6 +1718,228 @@ namespace TrustIssues
                 new Vector2(0.5f, 0f), new Vector2(0, 40), new Vector2(360, 100), ShowMenu);
         }
 
+        // ==================== MAP EDITOR ====================
+        // Build a map, prove it's beatable, share the code, race a friend on it.
+        // The whole point of the feature: a trap you made is an invitation, and an
+        // invitation is the only thing that brings a new player in by itself.
+        CustomMap _editMap;
+        int _editBrush = (int)CustomMap.Cell.Spike;   // what tapping a cell paints
+        Text _editStatus;
+
+        void ShowMapEditor()
+        {
+            Audio.Play("click");
+            _state = State.Menu;
+            _editMap ??= CustomMap.Load();
+            if (_menuPanel != null) Destroy(_menuPanel);
+            _menuPanel = Overlay(new Color(0.05f, 0.02f, 0.06f, 0.93f), out var root);
+            var c = new Vector2(0.5f, 0.5f);
+
+            Theme.Label(root, "BUILD A TRAP", 66, Theme.Player,
+                c, new Vector2(0, 452), new Vector2(1400, 100)).font = Theme.TitleFont;
+            Theme.Label(root, "tap a tool, then tap the track. share the code and watch them suffer.",
+                24, new Color(1, 1, 1, 0.5f), c, new Vector2(0, 396), new Vector2(1500, 40));
+
+            // ---- palette -----------------------------------------------------
+            float px = -760f;
+            for (int i = 0; i < CustomMap.CellKinds; i++)
+            {
+                int kind = i;
+                bool sel = _editBrush == i;
+                var col = EditCellColor((CustomMap.Cell)i);
+                Theme.Button(root, CustomMap.CellNames[i],
+                    sel ? col : new Color(col.r * 0.45f, col.g * 0.45f, col.b * 0.45f, 0.95f),
+                    sel ? Theme.Ink : Color.white, 19,
+                    c, new Vector2(px + i * 169f, 316), new Vector2(160, 56),
+                    () => { _editBrush = kind; ShowMapEditor(); });
+            }
+
+            // ---- the track ---------------------------------------------------
+            // Two rows of 12 so each cell stays big enough for a thumb.
+            const int perRow = 12;
+            float cellW = 122f, cellH = 96f;
+            for (int i = 0; i < CustomMap.Cells; i++)
+            {
+                int ix = i;
+                int r = i / perRow, q = i % perRow;
+                var cell = _editMap.cells[i];
+                bool locked = i < CustomMap.SpawnClear || i >= CustomMap.Cells - CustomMap.ExitClear;
+                var col = EditCellColor(cell);
+                if (locked) col = new Color(col.r * 0.5f, col.g * 0.5f, col.b * 0.5f, 1f);
+                var btn = Theme.Button(root, locked ? "" : CustomMap.CellNames[(int)cell].Substring(0, 2),
+                    col, Theme.Ink, 20, c,
+                    new Vector2(-((perRow - 1) * cellW) / 2f + q * cellW, 176 - r * (cellH + 10)),
+                    new Vector2(cellW - 8, cellH),
+                    locked ? (System.Action)null : () =>
+                    {
+                        _editMap.cells[ix] = (CustomMap.Cell)_editBrush;
+                        ShowMapEditor();
+                    });
+                if (locked) btn.interactable = false;
+                // Number the track so a builder can describe a spot out loud.
+                Theme.Label(btn.transform, (i + 1).ToString(), 15, new Color(0, 0, 0, 0.45f),
+                    new Vector2(0.5f, 0f), new Vector2(0, 12), new Vector2(60, 20));
+            }
+
+            // ---- the one lie -------------------------------------------------
+            Theme.Label(root, "THE LIE THIS ROOM TELLS", 22, new Color(1, 1, 1, 0.55f),
+                c, new Vector2(0, -20), new Vector2(900, 34));
+            for (int i = 0; i < CustomMap.LieKinds; i++)
+            {
+                int lie = i;
+                bool sel = (int)_editMap.lie == i;
+                Theme.Button(root, CustomMap.LieNames[i],
+                    sel ? Theme.Trick : new Color(1, 1, 1, 0.13f), Color.white, 21,
+                    c, new Vector2(-520 + i * 260f, -70), new Vector2(248, 56),
+                    () => { _editMap.lie = (CustomMap.Lie)lie; ShowMapEditor(); });
+            }
+
+            // ---- validation + actions ----------------------------------------
+            string problem = _editMap.Validate();
+            _editStatus = Theme.Label(root, problem ?? "This map is fair. Ship it.", 24,
+                problem != null ? new Color(1f, 0.45f, 0.45f) : new Color(0.5f, 1f, 0.6f),
+                c, new Vector2(0, -136), new Vector2(1600, 40));
+
+            bool ok = problem == null;
+            var playBtn = Theme.Button(root, "TEST IT", ok ? Theme.Exit : new Color(1, 1, 1, 0.12f),
+                ok ? Theme.Ink : new Color(1, 1, 1, 0.4f), 32,
+                c, new Vector2(-500, -216), new Vector2(300, 92),
+                ok ? (System.Action)(() => { _editMap.Save(); PlayCustom(_editMap, _editMap.ToCode()); }) : null);
+            playBtn.interactable = ok;
+
+            var shareBtn = Theme.Button(root, "SHARE CODE", ok ? new Color(0.5f, 0.12f, 0.16f) : new Color(1, 1, 1, 0.12f),
+                ok ? Color.white : new Color(1, 1, 1, 0.4f), 28,
+                c, new Vector2(-170, -216), new Vector2(300, 92),
+                ok ? (System.Action)(() =>
+                {
+                    _editMap.Save();
+                    string code = _editMap.ToCode();
+                    NativeShare.ShareText(
+                        "I built a trap in Trust Issues. Beat my map if you can. Code: " + code, GameLink);
+                    Analytics.Track("map_shared", new System.Collections.Generic.Dictionary<string, object>
+                    { { "lie", _editMap.lie.ToString() } });
+                    BossToast("CODE SENT - " + code);
+                }) : null);
+            shareBtn.interactable = ok;
+
+            Theme.Button(root, "CLEAR", new Color(0.3f, 0.12f, 0.14f), Color.white, 26,
+                c, new Vector2(160, -216), new Vector2(280, 92),
+                () => { _editMap = new CustomMap(); ShowMapEditor(); });
+
+            Theme.Button(root, "PLAY A FRIEND'S", new Color(0.32f, 0.08f, 0.4f), Color.white, 24,
+                c, new Vector2(480, -216), new Vector2(320, 92), ShowLoadMap);
+
+            Theme.Button(root, "‹ BACK", new Color(1, 1, 1, 0.25f), Color.white, 40,
+                new Vector2(0.5f, 0f), new Vector2(0, 34), new Vector2(320, 88), ShowMenu);
+        }
+
+        static Color EditCellColor(CustomMap.Cell c) => c switch
+        {
+            CustomMap.Cell.Floor => new Color(0.55f, 0.52f, 0.58f),
+            CustomMap.Cell.Gap => new Color(0.10f, 0.08f, 0.12f),
+            CustomMap.Cell.Fake => new Color(0.42f, 0.34f, 0.46f),
+            CustomMap.Cell.Spike => new Color(0.80f, 0.22f, 0.24f),
+            CustomMap.Cell.Saw => new Color(0.85f, 0.45f, 0.20f),
+            CustomMap.Cell.Late => new Color(0.72f, 0.18f, 0.42f),
+            CustomMap.Cell.Faller => new Color(0.55f, 0.30f, 0.70f),
+            CustomMap.Cell.Flame => new Color(0.90f, 0.55f, 0.15f),
+            CustomMap.Cell.Crush => new Color(0.40f, 0.40f, 0.75f),
+            _ => new Color(0.30f, 0.65f, 0.70f),
+        };
+
+        // Enter a friend's code and race their map.
+        void ShowLoadMap()
+        {
+            Audio.Play("click");
+            _state = State.Menu;
+            if (_menuPanel != null) Destroy(_menuPanel);
+            _menuPanel = Overlay(new Color(0.05f, 0.02f, 0.06f, 0.93f), out var root);
+            var c = new Vector2(0.5f, 0.5f);
+
+            Theme.Label(root, "SOMEONE'S TRAP", 62, Theme.Player,
+                c, new Vector2(0, 330), new Vector2(1400, 100)).font = Theme.TitleFont;
+            Theme.Label(root, "paste the code they sent you", 26, new Color(1, 1, 1, 0.5f),
+                c, new Vector2(0, 254), new Vector2(1200, 40));
+
+            var input = MakeInput(root, new Vector2(0, 150), new Vector2(900, 104), "CODE");
+            input.characterLimit = 40;
+            // Codes are letters AND digits and must survive a paste, so the strict
+            // 4-char alphanumeric validation the race lobby uses is wrong here.
+            input.characterValidation = InputField.CharacterValidation.None;
+
+            var status = Theme.Label(root, "", 26, new Color(1f, 0.5f, 0.5f),
+                c, new Vector2(0, 60), new Vector2(1500, 40));
+
+            Theme.Button(root, "PLAY IT", Theme.Exit, Theme.Ink, 34,
+                c, new Vector2(0, -40), new Vector2(420, 100), () =>
+                {
+                    var m = CustomMap.FromCode(input.text);
+                    if (m == null)
+                    { status.text = "That code isn't a valid map."; Audio.Play("death", 0.4f); return; }
+                    CustomMap.SaveFriend(input.text.Trim().ToUpperInvariant());
+                    PlayCustom(m, m.ToCode());
+                });
+
+            var friend = CustomMap.LoadFriend();
+            if (friend != null)
+                Theme.Button(root, "REPLAY THE LAST ONE", new Color(0.32f, 0.08f, 0.4f), Color.white, 26,
+                    c, new Vector2(0, -170), new Vector2(520, 88),
+                    () => PlayCustom(friend, friend.ToCode()));
+
+            Theme.Button(root, "‹ BACK", new Color(1, 1, 1, 0.25f), Color.white, 40,
+                new Vector2(0.5f, 0f), new Vector2(0, 40), new Vector2(320, 92), ShowMapEditor);
+        }
+
+        void PlayCustom(CustomMap map, string code)
+        {
+            _customMap = map;
+            _customCode = code;
+            _mode = Mode.Custom;
+            TrackModeSelected("Custom", 0);
+            BeginRun(0);
+            _customStart = Time.realtimeSinceStartup;   // clock starts on the first frame
+            float best = CustomMap.BestTime(code);
+            ShowBanner("THEIR TRAP", best > 0f
+                ? $"your best on this map: {CustomMap.Fmt(best)} - beat it"
+                : "clear it once, then race the clock");
+        }
+
+        // Cleared a custom map: the time, whether it's a new best, and the two
+        // things that make it social - send your time, or send the map on.
+        void ShowCustomResult(float secs, bool newBest)
+        {
+            var c = new Vector2(0.5f, 0.5f);
+            var panel = Overlay(new Color(0.04f, 0.02f, 0.06f, 0.9f), out var root);
+            Theme.Label(root, "CLEARED", 92, Theme.Exit,
+                c, new Vector2(0, 210), new Vector2(1400, 130)).font = Theme.TitleFont;
+            Theme.Label(root, CustomMap.Fmt(secs), 76, Color.white,
+                c, new Vector2(0, 108), new Vector2(1000, 100));
+            Theme.Label(root, newBest ? "NEW BEST ON THIS MAP" : $"your best: {CustomMap.Fmt(CustomMap.BestTime(_customCode))}",
+                30, Theme.Coin, c, new Vector2(0, 36), new Vector2(1200, 44));
+            Theme.Label(root, $"{_floorDeaths} deaths", 26, new Color(1, 1, 1, 0.6f),
+                c, new Vector2(0, -8), new Vector2(1000, 40));
+
+            string code = _customCode;
+            Theme.Button(root, "CHALLENGE THEM", new Color(0.5f, 0.12f, 0.16f), Color.white, 28,
+                c, new Vector2(-340, -120), new Vector2(400, 96), () =>
+                {
+                    NativeShare.ShareText(
+                        $"I beat this Trust Issues map in {CustomMap.Fmt(secs)} with {_floorDeaths} deaths. Try it. Code: {code}",
+                        GameLink);
+                    Analytics.Track("map_challenge", new System.Collections.Generic.Dictionary<string, object>
+                    { { "seconds", secs } });
+                });
+            Theme.Button(root, "AGAIN", Theme.Exit, Theme.Ink, 30,
+                c, new Vector2(80, -120), new Vector2(300, 96),
+                () => { Destroy(panel); PlayCustom(_customMap, code); });
+            Theme.Button(root, "EDITOR", new Color(0.32f, 0.08f, 0.4f), Color.white, 28,
+                c, new Vector2(400, -120), new Vector2(300, 96),
+                () => { Destroy(panel); if (_levelRoot != null) Destroy(_levelRoot.gameObject); ShowMapEditor(); });
+            Theme.Button(root, "MAIN MENU", new Color(1, 1, 1, 0.22f), Color.white, 30,
+                c, new Vector2(0, -246), new Vector2(400, 92),
+                () => { Destroy(panel); if (_levelRoot != null) Destroy(_levelRoot.gameObject); ShowMenu(); });
+        }
+
         void MenuCandy(Transform root, string sprite, Vector2 pos, float size, float rot)
         {
             var sp = Assets.Sprite(sprite);
@@ -2316,7 +2549,9 @@ namespace TrustIssues
             // back to start); Endless/Daily get a difficulty-scaled pool of lives.
             // Blood Moon gets a +2 cushion on top so a single attempt reaches
             // deeper into the 5 nights before it loops — it beat NO ONE before.
-            _hearts = (_mode == Mode.Curated || _mode == Mode.Versus) ? -1
+            // Custom joins Curated/Versus on infinite retries — a time trial ends
+            // when you finish it, never because you ran out of lives.
+            _hearts = (_mode == Mode.Curated || _mode == Mode.Versus || _mode == Mode.Custom) ? -1
                      : _mode == Mode.Daily ? Diff.StartHearts + 2 : Diff.StartHearts;
             _hud.gameObject.SetActive(true);
             if (_shardHud != null)
@@ -2366,6 +2601,10 @@ namespace TrustIssues
                 // (still deterministic) layout and the match runs continuously. Kept
                 // EASY (difficulty 1) so it stays a fun race, not a rage level.
                 case Mode.Versus:  return Levels.Generate(Net.Seed + _versusRound * 101, 1);
+                // A player-built map. CustomMap.ToLevel goes through the same B
+                // builder as every hand-made floor, so it inherits the ceiling
+                // vault, the stage camera and the beatability guarantees.
+                case Mode.Custom:  return (_customMap ?? new CustomMap()).ToLevel();
                 default:
                     int bt = BossTierForFloor(_levelIndex);          // Castle floors 10/20/30/40
                     return bt > 0 ? Levels.BossRoom(bt) : Levels.Get(_levelIndex);
@@ -2559,7 +2798,9 @@ namespace TrustIssues
             // the mode's front door is genuinely learnable.
             float sunBudget = 16f + plats * 2.2f;
             if (_mode == Mode.Daily) sunBudget += Mathf.Max(0f, 14f - _levelIndex * 3.5f);
-            _sunThreshold = (_mode == Mode.Versus || InBossRoom || !Diff.SunRise) ? 999f
+            // Custom maps are TIME TRIALS: the race clock is the only pressure, so a
+            // second hidden timer chasing you would just be noise.
+            _sunThreshold = (_mode == Mode.Versus || _mode == Mode.Custom || InBossRoom || !Diff.SunRise) ? 999f
                           : _mode == Mode.Curated ? 16f + plats * 2.2f
                           : _mode == Mode.Daily   ? sunBudget
                                                   : 11f + plats * 1.8f;
@@ -4418,6 +4659,19 @@ namespace TrustIssues
                     { "duration_ms", LevelDurationMs },
                     { "deaths", _floorDeaths },
                 });
+
+            // Custom map cleared: stop the clock, bank the best, offer the challenge.
+            if (_mode == Mode.Custom)
+            {
+                float secs = Time.realtimeSinceStartup - _customStart;
+                bool best = CustomMap.RecordTime(_customCode, secs);
+                Analytics.Track("custom_clear", new System.Collections.Generic.Dictionary<string, object>
+                { { "seconds", secs }, { "deaths", _floorDeaths }, { "best", best } });
+                _state = State.Win;
+                Audio.Play("win", 0.7f);
+                ShowCustomResult(secs, best);
+                return;
+            }
 
             // Versus: first to the coffin wins. Tell the room and show the result.
             if (_mode == Mode.Versus)
