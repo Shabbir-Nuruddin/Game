@@ -399,8 +399,32 @@ namespace TrustIssues
         public static int WorldOf(int floorIdx) => Mathf.Clamp((floorIdx / 10) % 4, 0, 3);
 
         int _curTheme = -1;
+        int _curShadeFloor = -1;       // which floor the current per-floor shade was built for
         SpriteRenderer _washSr;        // the themed colour wash (see BuildBackdrop)
         SpriteRenderer _moonSr;        // the big themed moon (bold per-theme anchor)
+
+        /// <summary>
+        /// A per-FLOOR shade laid on top of the world theme. The world only changes
+        /// every 10 floors (WorldOf), and the analytics say almost nobody survives
+        /// floor 10 — so without this, every floor a real player ever sees is the
+        /// SAME picture. That is the single biggest reason the game "looks samey".
+        /// Each floor rotates the hue a little and breathes the brightness, so
+        /// consecutive floors read as different rooms of one castle rather than one
+        /// repeated screen. Deterministic (same floor = same look, every time).
+        /// </summary>
+        static Color ShadeFor(Color c, int floorIdx, float hueSpan, float valSpan)
+        {
+            Color.RGBToHSV(c, out float h, out float s, out float v);
+            // Golden-angle-ish stepping: neighbouring floors land far apart on the
+            // wheel, so floor 3 never looks like floor 4, but it never drifts so far
+            // that the world stops reading as "the crypt" / "the swamp".
+            float f = Mathf.Sin(floorIdx * 2.399963f);        // stable, in [-1,1]
+            h = Mathf.Repeat(h + f * hueSpan, 1f);
+            v = Mathf.Clamp01(v * (1f + f * valSpan));
+            var o = Color.HSVToRGB(h, s, v);
+            o.a = c.a;                                        // keep the tuned alpha
+            return o;
+        }
         readonly System.Collections.Generic.List<Mote> _motes = new();
 
         // Pick the backdrop theme from the current mode/progress, then apply it.
@@ -427,8 +451,12 @@ namespace TrustIssues
         void ApplyTheme(int idx)
         {
             idx = Mathf.Clamp(idx, 0, ThemeTint.Length - 1);
-            if (idx == _curTheme) return;
+            // Re-apply when EITHER the world or the floor changes — the per-floor
+            // shade below is what stops ten floors of a world looking identical.
+            int shadeFloor = _levelIndex;
+            if (idx == _curTheme && shadeFloor == _curShadeFloor) return;
             _curTheme = idx;
+            _curShadeFloor = shadeFloor;
             var t = ThemeTint[idx];
             float castleVis = ThemeCastleVis[idx];
             for (int i = 0; i < _bgSr.Count; i++)
@@ -437,17 +465,26 @@ namespace TrustIssues
                 var b = _bgBase[i];
                 _bgSr[i].color = new Color(b.r * t.r, b.g * t.g, b.b * t.b, b.a * castleVis);
             }
-            if (_skySr != null) _skySr.color = ThemeSky[idx];
-            if (_washSr != null) _washSr.color = ThemeWash[idx];   // the actually-visible colour shift
+            // Every visible backdrop layer gets the per-floor shade, so the whole
+            // picture shifts together instead of one element looking recoloured.
+            var sky   = ShadeFor(ThemeSky[idx],    shadeFloor, 0.035f, 0.30f);
+            var wash  = ShadeFor(ThemeWash[idx],   shadeFloor, 0.050f, 0.18f);
+            var moonC = ShadeFor(ThemeMoon[idx],   shadeFloor, 0.045f, 0.12f);
+            var accent= ShadeFor(ThemeAccent[idx], shadeFloor, 0.060f, 0.15f);
+            if (_skySr != null) _skySr.color = sky;
+            if (_washSr != null) _washSr.color = wash;             // the actually-visible colour shift
             if (_moonSr != null && Theme.Moon != null)             // bold per-theme anchor (colour + size)
             {
-                _moonSr.color = ThemeMoon[idx];
+                _moonSr.color = moonC;
                 float mb = Theme.Moon.bounds.size.y;
-                float ms = mb > 0.0001f ? ThemeMoonSize[idx] / mb : 1f;
+                // Breathe the moon's size per floor too — the silhouette changes,
+                // not just the palette, so the skyline itself looks like a new place.
+                float sizeMul = 1f + 0.18f * Mathf.Sin(shadeFloor * 1.61803f);
+                float ms = mb > 0.0001f ? (ThemeMoonSize[idx] * sizeMul) / mb : 1f;
                 _moonSr.transform.localScale = new Vector3(ms, ms, 1f);
             }
-            if (_cam != null) _cam.backgroundColor = ThemeSky[idx];
-            foreach (var m in _motes) if (m != null) m.Recolor(ThemeAccent[idx]);
+            if (_cam != null) _cam.backgroundColor = sky;
+            foreach (var m in _motes) if (m != null) m.Recolor(accent);
         }
 
         void BuildHUD()
@@ -482,6 +519,17 @@ namespace TrustIssues
             _muteBtn = Theme.Button(Theme.Canvas.transform, Audio.Muted ? "✕" : "♪",
                 new Color(0, 0, 0, 0.45f), Color.white, 40,
                 new Vector2(1f, 1f), new Vector2(-70, -64), new Vector2(96, 96), ToggleMute);
+
+            // PAUSE (top-left). Pausing used to be Escape-ONLY, which on a phone —
+            // where there is no Esc key — meant a player could never open the pause
+            // menu and therefore could never reach MAIN MENU. Blood Moon made that
+            // fatal: it auto-restarts instead of ending, so there was no result
+            // screen to escape through either and the mode became a one-way trap.
+            // An on-screen button gives every mode a way out on every device.
+            _pauseBtn = Theme.Button(Theme.Canvas.transform, "II",
+                new Color(0, 0, 0, 0.45f), Color.white, 38,
+                new Vector2(0f, 1f), new Vector2(68, -58), new Vector2(88, 88), TogglePause);
+            _pauseBtn.gameObject.SetActive(false);   // shown only while actually playing
 
             // Blood-shard counter (top-right, left of the mute button). The diamond
             // icon is a 45°-rotated Image — the pixel font has no ♦ glyph (same
@@ -535,6 +583,7 @@ namespace TrustIssues
         }
 
         Button _muteBtn;
+        Button _pauseBtn;   // on-screen pause (phones have no Esc key)
         void ToggleMute()
         {
             Audio.Muted = !Audio.Muted;
@@ -1487,80 +1536,157 @@ namespace TrustIssues
         }
 
         // A CANDY MAP: levels are sweets along a snaking trail, not a boring grid.
+        // Which castle tier the map screen is showing (-1 = follow progress).
+        int _mapWorld = -1;
+        // Floors per castle tier — matches WorldOf()'s 10-floor worlds.
+        const int FloorsPerWorld = 10;
+
+        /// <summary>
+        /// THE CASTLE map. This replaced a flat 8-column grid of numbered discs
+        /// that told the player nothing about where they were — it read as a level
+        /// list, not a place. Now each world is a TOWER SECTION you climb: floor 1
+        /// sits at the bottom, the path switchbacks up the stonework, and the four
+        /// tiers (Castle / Crypt / Swamp / Throne) are their own coloured floors of
+        /// one building, tinted with the exact theme colours that world uses in
+        /// play. Tabs pick the tier; sealed tiers stay locked behind progress.
+        /// </summary>
         void ShowLevelSelect()
         {
             Audio.Play("click");
             _state = State.Menu;
             if (_menuPanel != null) Destroy(_menuPanel);
-            _menuPanel = Overlay(new Color(Theme.Sky.r, Theme.Sky.g, Theme.Sky.b, 0.7f), out var root);
+            _menuPanel = Overlay(new Color(Theme.Sky.r, Theme.Sky.g, Theme.Sky.b, 0.82f), out var root);
 
-            Theme.Label(root, "THE CASTLE", 78, Theme.Player,
-                new Vector2(0.5f, 0.5f), new Vector2(0, 440), new Vector2(1400, 120)).font = Theme.TitleFont;
-            Theme.Label(root, $"{Levels.Count} floors — pick your poison", 36, new Color(0.85f, 0.7f, 0.72f, 0.7f),
-                new Vector2(0.5f, 0.5f), new Vector2(0, 360), new Vector2(1300, 60));
+            int unlocked = CastleUnlocked;
+            int worlds = Mathf.CeilToInt(Levels.Count / (float)FloorsPerWorld);
+            if (_mapWorld < 0) _mapWorld = WorldOf(Mathf.Min(unlocked, Levels.Count - 1));
+            _mapWorld = Mathf.Clamp(_mapWorld, 0, worlds - 1);
+            int w = _mapWorld;
 
-            // Adaptive grid: widen to 8 columns past 20 floors and shrink the
-            // spacing/medallions so the whole snake fits between the title and the
-            // BACK button no matter how many floors there are.
-            int cols = Levels.Count <= 20 ? 5 : 8;
-            int rows = (Levels.Count + cols - 1) / cols;
-            float spX = Mathf.Min(360f, 1640f / cols);
-            float topY = 280f, botY = -330f;          // clear of the title and BACK button
-            float spY = rows > 1 ? Mathf.Min(195f, (topY - botY) / (rows - 1)) : 0f;
-            float startX = -((cols - 1) * spX) / 2f, startY = topY;
-            float node = Mathf.Clamp(Mathf.Min(spX, spY <= 0f ? 120f : spY) * 0.62f, 70f, 120f);
-            var pos = new Vector2[Levels.Count];
-            for (int i = 0; i < Levels.Count; i++)
+            Theme.Label(root, "THE CASTLE", 72, Theme.Player,
+                new Vector2(0.5f, 0.5f), new Vector2(0, 452), new Vector2(1400, 110)).font = Theme.TitleFont;
+
+            // ---- Tier tabs: the four floors of the castle -----------------------
+            for (int t = 0; t < worlds; t++)
             {
-                int r = i / cols, c = i % cols;
-                if (r % 2 == 1) c = cols - 1 - c;     // snake the path
-                pos[i] = new Vector2(startX + c * spX, startY - r * spY);
+                int tier = t;
+                bool tierLocked = unlocked < t * FloorsPerWorld;
+                bool sel = t == w;
+                var tint = ThemeMoon[Mathf.Clamp(t, 0, ThemeMoon.Length - 1)];
+                var bg = sel ? new Color(tint.r * 0.5f, tint.g * 0.5f, tint.b * 0.5f, 0.95f)
+                             : new Color(1f, 1f, 1f, tierLocked ? 0.06f : 0.14f);
+                var tab = Theme.Button(root, tierLocked ? "SEALED" : ThemeNames[t], bg,
+                    tierLocked ? new Color(1, 1, 1, 0.3f) : Color.white, 26,
+                    new Vector2(0.5f, 0.5f), new Vector2(-585 + t * 390, 366), new Vector2(370, 74),
+                    tierLocked ? (System.Action)null
+                               : () => { _mapWorld = tier; ShowLevelSelect(); });
+                if (tierLocked) tab.interactable = false;
             }
 
-            // dotted blood trail between nodes
-            for (int i = 0; i < Levels.Count - 1; i++)
-                for (int d = 1; d <= 3; d++)
+            // ---- The tower shaft this tier lives in -----------------------------
+            var shaft = new GameObject("Shaft", typeof(RectTransform));
+            shaft.transform.SetParent(root, false);
+            var si = shaft.AddComponent<Image>();
+            si.sprite = Theme.StoneTile;
+            si.type = Image.Type.Tiled;
+            var wTint = ThemeMoon[Mathf.Clamp(w, 0, ThemeMoon.Length - 1)];
+            si.color = new Color(wTint.r * 0.30f, wTint.g * 0.28f, wTint.b * 0.34f, 0.92f);
+            var srt = si.rectTransform;
+            srt.anchorMin = srt.anchorMax = new Vector2(0.5f, 0.5f); srt.pivot = new Vector2(0.5f, 0.5f);
+            srt.anchoredPosition = new Vector2(0, 20); srt.sizeDelta = new Vector2(760, 620);
+
+            // Buttresses either side so the shaft reads as masonry, not a panel.
+            for (int s = -1; s <= 1; s += 2)
+            {
+                var col = new GameObject("Buttress", typeof(RectTransform));
+                col.transform.SetParent(root, false);
+                var ci = col.AddComponent<Image>();
+                ci.sprite = Theme.StoneTile; ci.type = Image.Type.Tiled;
+                ci.color = new Color(wTint.r * 0.18f, wTint.g * 0.17f, wTint.b * 0.22f, 0.95f);
+                var crt = ci.rectTransform;
+                crt.anchorMin = crt.anchorMax = new Vector2(0.5f, 0.5f); crt.pivot = new Vector2(0.5f, 0.5f);
+                crt.anchoredPosition = new Vector2(s * 424, 20); crt.sizeDelta = new Vector2(88, 660);
+            }
+
+            // ---- Switchback climb: floor 1 at the bottom, 10 at the top ---------
+            int first = w * FloorsPerWorld;
+            int count = Mathf.Min(FloorsPerWorld, Levels.Count - first);
+            const int perRow = 2;
+            int rows = Mathf.CeilToInt(count / (float)perRow);
+            float botY = -228f, rowSp = 124f, colX = 186f, node = 104f;
+            var pos = new Vector2[count];
+            for (int i = 0; i < count; i++)
+            {
+                int r = i / perRow, c = i % perRow;
+                if (r % 2 == 1) c = perRow - 1 - c;          // switchback
+                pos[i] = new Vector2(-colX + c * (colX * 2f), botY + r * rowSp);
+            }
+
+            // Blood trail linking the climb, drawn under the seals.
+            for (int i = 0; i < count - 1; i++)
+                for (int d = 1; d <= 4; d++)
                 {
-                    var p = Vector2.Lerp(pos[i], pos[i + 1], d / 4f);
+                    var p = Vector2.Lerp(pos[i], pos[i + 1], d / 5f);
                     var dot = new GameObject("Dot", typeof(RectTransform));
                     dot.transform.SetParent(root, false);
                     var di = dot.AddComponent<Image>();
-                    di.color = new Color(0.7f, 0.12f, 0.16f, 0.4f); // faint blood trail
+                    di.color = (first + i) < unlocked
+                        ? new Color(0.88f, 0.72f, 0.25f, 0.55f)   // walked — candle gold
+                        : new Color(0.7f, 0.12f, 0.16f, 0.35f);   // ahead  — faint blood
                     var drt = di.rectTransform;
                     drt.anchorMin = drt.anchorMax = new Vector2(0.5f, 0.5f);
                     drt.pivot = new Vector2(0.5f, 0.5f);
-                    drt.anchoredPosition = p; drt.sizeDelta = new Vector2(node * 0.16f, node * 0.16f);
+                    drt.anchoredPosition = p; drt.sizeDelta = new Vector2(15, 15);
                 }
 
-            // Each floor is a blood-seal medallion. Floors are LOCKED until you
-            // clear the one before — locked nodes are dark and not clickable.
-            // Progress is the ONLY key: the old "unlock all" test toggle is gone.
-            int unlocked = CastleUnlocked;
-            for (int i = 0; i < Levels.Count; i++)
+            // ---- The floor seals ------------------------------------------------
+            for (int i = 0; i < count; i++)
             {
-                int lvl = i;
-                bool locked = i > unlocked;
-                var go = new GameObject("Node" + (i + 1), typeof(RectTransform));
+                int idx = first + i;
+                int lvl = idx;
+                bool locked = idx > unlocked;
+                bool cleared = idx < unlocked;
+                bool here = idx == unlocked;
+                bool boss = BossTierForFloor(idx) > 0;
+                float sz = boss ? node * 1.22f : node;
+
+                var go = new GameObject("Floor" + (idx + 1), typeof(RectTransform));
                 go.transform.SetParent(root, false);
                 var img = go.AddComponent<Image>();
                 img.sprite = Theme.Disc;
-                img.color = locked ? new Color(0.22f, 0.2f, 0.24f, 0.9f) : Color.white;
+                img.color = locked ? new Color(0.20f, 0.18f, 0.22f, 0.92f)
+                          : cleared ? new Color(0.86f, 0.68f, 0.24f, 1f)     // sealed in gold
+                          : new Color(0.88f, 0.23f, 0.26f, 1f);              // the live edge
                 var rt = img.rectTransform;
                 rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
                 rt.pivot = new Vector2(0.5f, 0.5f);
-                rt.anchoredPosition = pos[i]; rt.sizeDelta = new Vector2(node, node);
+                rt.anchoredPosition = pos[i]; rt.sizeDelta = new Vector2(sz, sz);
                 if (!locked)
                 {
                     var btn = go.AddComponent<Button>(); btn.targetGraphic = img;
                     btn.onClick.AddListener(() => StartGame(lvl));
                 }
-                // Floor number — bright when unlocked, ghosted when locked (the
-                // dark disc already reads as "sealed", and this avoids relying on
-                // an emoji glyph the built-in font may not have).
-                Theme.Label(go.transform, (i + 1).ToString(), Mathf.RoundToInt(46 * node / 120f),
-                    locked ? new Color(1, 1, 1, 0.22f) : Color.white,
-                    new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(node, node));
+                if (here) StartCoroutine(Pulse(go.transform));   // "you are here"
+
+                Theme.Label(go.transform, (idx + 1).ToString(), Mathf.RoundToInt(42 * sz / 120f),
+                    locked ? new Color(1, 1, 1, 0.25f) : Theme.Ink,
+                    new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(sz, sz));
+
+                // Mark the floors that are not just another corridor.
+                string tag = boss ? "BOSS" : (idx + 1) % FloorsPerWorld == 0 ? "EXAM" : null;
+                if (tag != null)
+                    Theme.Label(go.transform, tag, 20,
+                        locked ? new Color(1, 1, 1, 0.28f) : new Color(1f, 0.86f, 0.5f, 0.95f),
+                        new Vector2(0.5f, 0.5f), new Vector2(0, -sz * 0.72f), new Vector2(200, 34));
             }
+
+            // Where the climb is heading — the tier name sits at the top of the shaft.
+            Theme.Label(root, ThemeNames[Mathf.Clamp(w, 0, ThemeNames.Length - 1)], 34,
+                new Color(wTint.r, wTint.g, wTint.b, 0.85f),
+                new Vector2(0.5f, 0.5f), new Vector2(0, 300), new Vector2(700, 50));
+            Theme.Label(root, $"floors {first + 1}–{first + count}   •   climb from the bottom",
+                24, new Color(1, 1, 1, 0.45f),
+                new Vector2(0.5f, 0.5f), new Vector2(0, -308), new Vector2(900, 40));
 
             Theme.Button(root, "‹ BACK", new Color(1, 1, 1, 0.25f), Color.white, 44,
                 new Vector2(0.5f, 0f), new Vector2(0, 40), new Vector2(360, 100), ShowMenu);
@@ -2641,7 +2767,64 @@ namespace TrustIssues
         public void RefreshHud() => UpdateHud();
 
         // A platform: castle-stone tile (tiled) with a single blood-red lip on top.
-        void BuildPlatform(Rect2 p) => BuildStoneFloor("Platform", p.pos, p.size, null);
+        // EXCEPT room ceilings, which used to be built by this exact same call and
+        // so rendered as a floor (bright blood lip and all) glued to the top of the
+        // screen — the single reason every stage read as a sealed box instead of a
+        // hall. Ceilings now get a recessed vault look; the COLLIDER is untouched,
+        // so the gravity ceiling-road and the descending press still behave exactly
+        // as before.
+        void BuildPlatform(Rect2 p)
+        {
+            bool ceiling = p.pos.y > 2.5f && p.size.x > p.size.y * 2f;
+            if (ceiling) BuildCeilingVault(p);
+            else BuildStoneFloor("Platform", p.pos, p.size, null);
+        }
+
+        // A vaulted ceiling: dark recessed stone that falls AWAY from the eye, with
+        // pointed arch ribs hanging along its underside. Same collider as any
+        // platform — this is purely how it reads.
+        void BuildCeilingVault(Rect2 p)
+        {
+            var go = new GameObject("Ceiling");
+            go.transform.SetParent(_levelRoot, false);
+            go.transform.position = p.pos;
+            var sr = go.AddComponent<SpriteRenderer>();
+            sr.sprite = Theme.StoneTile;
+            sr.drawMode = SpriteDrawMode.Tiled;
+            sr.size = p.size;
+            sr.sortingOrder = 1;
+            // Deep shadow: a ceiling is the least-lit surface in a castle, and a dark
+            // band at the top of frame reads as "space above" instead of "lid".
+            sr.color = new Color(0.34f, 0.30f, 0.34f, 1f);
+            var col = go.AddComponent<BoxCollider2D>();
+            col.size = p.size;                       // unchanged — gameplay identical
+
+            // A soft underline along the underside so the surface still reads as
+            // solid ground when the Chapel flips gravity and you walk on it.
+            var lip = Theme.Box("VaultLip", go.transform, Vector2.zero,
+                new Vector2(p.size.x, 0.09f), new Color(0.11f, 0.07f, 0.10f, 0.95f), 2);
+            lip.transform.localPosition = new Vector3(0f, -p.size.y / 2f + 0.045f, 0f);
+
+            // Gothic ribs hanging off the vault every few units — the detail that
+            // turns a flat bar into architecture. Purely decorative (no colliders).
+            int ribs = Mathf.Max(1, Mathf.FloorToInt(p.size.x / 4.2f));
+            float step = p.size.x / (ribs + 1);
+            for (int i = 1; i <= ribs; i++)
+            {
+                float lx = -p.size.x / 2f + step * i;
+                // keystone block
+                var key = Theme.Box("Rib", go.transform, Vector2.zero,
+                    new Vector2(0.5f, 0.42f), new Color(0.26f, 0.22f, 0.26f, 1f), 2);
+                key.transform.localPosition = new Vector3(lx, -p.size.y / 2f - 0.16f, 0f);
+                // two short shoulders, stepped down, to suggest a pointed arch
+                var shL = Theme.Box("RibL", go.transform, Vector2.zero,
+                    new Vector2(0.30f, 0.24f), new Color(0.22f, 0.18f, 0.22f, 1f), 2);
+                shL.transform.localPosition = new Vector3(lx - 0.42f, -p.size.y / 2f - 0.07f, 0f);
+                var shR = Theme.Box("RibR", go.transform, Vector2.zero,
+                    new Vector2(0.30f, 0.24f), new Color(0.22f, 0.18f, 0.22f, 1f), 2);
+                shR.transform.localPosition = new Vector3(lx + 0.42f, -p.size.y / 2f - 0.07f, 0f);
+            }
+        }
 
         // Shared builder for real platforms AND fake floors so they look IDENTICAL
         // (same stone tile, same blood lip). `trapType` non-null tags it as a trap.
@@ -3575,6 +3758,16 @@ namespace TrustIssues
             // flight is allowed. Rebuild-time-only updates missed mid-level changes.
             UpdateTouchLayout();
             UpdateTrollButtons();   // Versus sabotage column: visibility + cooldowns
+
+            // The pause button rides the same rule as the rest of the play HUD:
+            // visible whenever the player is actually in a level (so there is
+            // always a route back to the menu), hidden on menus and result screens.
+            if (_pauseBtn != null)
+            {
+                bool showPause = _state == State.Play;
+                if (_pauseBtn.gameObject.activeSelf != showPause)
+                    _pauseBtn.gameObject.SetActive(showPause);
+            }
 
             // Desktop convenience: 1/2/3 fire the three sabotage trolls in a race.
             if (_mode == Mode.Versus && _state == State.Play)
