@@ -134,6 +134,17 @@ namespace TrustIssues
             // touch-capable LAPTOP, which wrongly showed phone buttons in the
             // browser — desktop web is keyboard-only.
             _isMobile = Application.isMobilePlatform;
+            // Lock to landscape at runtime as well as in Player Settings, so the
+            // phone just OPENS in landscape like every other game instead of nagging
+            // the player to rotate. AutoRotation + both landscape directions means
+            // it still flips 180 when they hold the phone the other way, but never
+            // drops into portrait — so the old "rotate your phone" panel can no
+            // longer trigger on a real device.
+            Screen.autorotateToPortrait = false;
+            Screen.autorotateToPortraitUpsideDown = false;
+            Screen.autorotateToLandscapeLeft = true;
+            Screen.autorotateToLandscapeRight = true;
+            Screen.orientation = ScreenOrientation.AutoRotation;
             // Keep simulating when the window isn't focused — otherwise a second
             // (unfocused) instance pauses, its Photon keepalive stops, and the
             // server times it out (the "no ghost" / AppOutOfFocus disconnect).
@@ -4078,8 +4089,12 @@ namespace TrustIssues
 
         void Update()
         {
-            // On phones, force landscape with a rotate prompt (desktop is exempt).
-            if (_isMobile)
+            // Orientation prompt is now a WEB-ONLY fallback. The native app locks
+            // itself to landscape (Player Settings + the Screen.orientation calls in
+            // Awake), so on Android/iOS it simply opens sideways like any other game
+            // and this panel can never trigger. A phone BROWSER can't be force-
+            // rotated reliably, so WebGL keeps the prompt as a last resort.
+            if (_isMobile && Application.platform == RuntimePlatform.WebGLPlayer)
             {
                 bool portrait = Screen.height > Screen.width;
                 if (_rotatePanel != null && _rotatePanel.activeSelf != portrait)
