@@ -17,6 +17,16 @@ namespace TrustIssues
         enum State { Menu, Play, Paused, Win }
         State _state = State.Menu;
 
+        // ---- back-button navigation ----
+        // The Android hardware BACK key arrives as KeyCode.Escape. It used to be
+        // handled ONLY during play, so on every menu/shop/settings screen the press
+        // fell through to Android's default and CLOSED THE APP — you had to force-
+        // quit to change modes. Every screen now points _onBack at the same thing
+        // its on-screen "‹ BACK" button does, and one handler routes the key there.
+        System.Action _onBack;
+        bool _capturingKey;       // true while rebinding a control (that eats Esc)
+        float _quitArmedUntil;    // main-menu "press back again to quit" window
+
         Camera _cam;
         Transform _levelRoot;
         PlayerController _player;
@@ -986,6 +996,7 @@ namespace TrustIssues
             Memory.RunEndedCleanly();   // back at the menu = not a rage-quit
             Rumor.Disarm();
             _state = State.Menu;
+            _onBack = BackFromMainMenu;  // top level: back arms "press again to quit"
             Time.timeScale = 1f;
             ApplyTheme(0);               // menu always shows the Castle mood
             Audio.Music("music", 0.3f);
@@ -1151,6 +1162,7 @@ namespace TrustIssues
             _state = State.Menu;
             if (_menuPanel != null) Destroy(_menuPanel);
             _menuPanel = Overlay(new Color(Theme.Sky.r, Theme.Sky.g, Theme.Sky.b, 0.96f), out var root);
+            _onBack = ShowMenu;
 
             var title = Theme.Label(root, "VAMPIRE'S BESTIARY", 72, Theme.Player,
                 new Vector2(0.5f, 0.5f), new Vector2(0, 452), new Vector2(1600, 110));
@@ -1344,6 +1356,7 @@ namespace TrustIssues
             _state = State.Menu;
             if (_menuPanel != null) Destroy(_menuPanel);
             _menuPanel = Overlay(new Color(Theme.Sky.r, Theme.Sky.g, Theme.Sky.b, 0.92f), out var root);
+            _onBack = ShowMenu;
 
             Theme.Label(root, "SETTINGS", 86, Theme.Player,
                 new Vector2(0.5f, 0.5f), new Vector2(0, 440), new Vector2(1400, 120));
@@ -1408,6 +1421,7 @@ namespace TrustIssues
         {
             var t = btn.GetComponentInChildren<Text>();
             if (t != null) t.text = $"{label}:  press a key…";
+            _capturingKey = true;    // stop HandleBackButton from also eating this Esc
             yield return null;   // swallow the click frame
             while (true)
             {
@@ -1426,6 +1440,7 @@ namespace TrustIssues
                 }
                 yield return null;
             }
+            _capturingKey = false;
             if (t != null) t.text = caption();
         }
 
@@ -1551,6 +1566,7 @@ namespace TrustIssues
             _state = State.Menu;
             if (_menuPanel != null) Destroy(_menuPanel);
             _menuPanel = Overlay(new Color(Theme.Sky.r, Theme.Sky.g, Theme.Sky.b, 0.88f), out var root);
+            _onBack = ShowMenu;
 
             Theme.Label(root, "BEANIE'S BAD DAY", 80, Theme.Player,
                 new Vector2(0.5f, 0.5f), new Vector2(0, 360), new Vector2(1600, 120));
@@ -1596,6 +1612,7 @@ namespace TrustIssues
             _state = State.Menu;
             if (_menuPanel != null) Destroy(_menuPanel);
             _menuPanel = Overlay(new Color(Theme.Sky.r, Theme.Sky.g, Theme.Sky.b, 0.82f), out var root);
+            _onBack = ShowMenu;
 
             int unlocked = CastleUnlocked;
             int worlds = Mathf.CeilToInt(Levels.Count / (float)FloorsPerWorld);
@@ -1747,6 +1764,7 @@ namespace TrustIssues
             _editMap ??= CustomMap.Load();
             if (_menuPanel != null) Destroy(_menuPanel);
             _menuPanel = Overlay(new Color(0.05f, 0.02f, 0.06f, 0.93f), out var root);
+            _onBack = ShowMenu;
             var c = new Vector2(0.5f, 0.5f);
 
             Theme.Label(root, "BUILD A TRAP", 66, Theme.Player,
@@ -1868,6 +1886,7 @@ namespace TrustIssues
             _state = State.Menu;
             if (_menuPanel != null) Destroy(_menuPanel);
             _menuPanel = Overlay(new Color(0.05f, 0.02f, 0.06f, 0.93f), out var root);
+            _onBack = ShowMapEditor;   // back returns to the editor, not the main menu
             var c = new Vector2(0.5f, 0.5f);
 
             Theme.Label(root, "SOMEONE'S TRAP", 62, Theme.Player,
@@ -1924,6 +1943,7 @@ namespace TrustIssues
         {
             var c = new Vector2(0.5f, 0.5f);
             var panel = Overlay(new Color(0.04f, 0.02f, 0.06f, 0.9f), out var root);
+            _onBack = () => { Destroy(panel); if (_levelRoot != null) Destroy(_levelRoot.gameObject); ShowMenu(); };
             Theme.Label(root, "CLEARED", 92, Theme.Exit,
                 c, new Vector2(0, 210), new Vector2(1400, 130)).font = Theme.TitleFont;
             Theme.Label(root, CustomMap.Fmt(secs), 76, Color.white,
@@ -2266,6 +2286,7 @@ namespace TrustIssues
             _state = State.Menu;
             if (_menuPanel != null) Destroy(_menuPanel);
             _menuPanel = Overlay(new Color(0.05f, 0.01f, 0.03f, 0.9f), out var root);
+            _onBack = () => { Net.Leave(); ShowMenu(); };   // drop the room on the way out
 
             Theme.Label(root, "MULTIPLAYER", 90, Theme.Player,
                 new Vector2(0.5f, 0.5f), new Vector2(0, 400), new Vector2(1400, 120));
@@ -2480,6 +2501,7 @@ namespace TrustIssues
             });
             Audio.Play(youWon ? "win" : "death", 0.7f);
             var panel = Overlay(new Color(0.05f, 0f, 0.02f, 0.85f), out var root);
+            _onBack = () => { Destroy(panel); LeaveVersus(); };
             Theme.Label(root, youWon ? "YOU WON THE RACE" : "YOU LOST THE RACE",
                 youWon ? 90 : 84, youWon ? Theme.Exit : Theme.Player,
                 new Vector2(0.5f, 0.5f), new Vector2(0, 160), new Vector2(1600, 150));
@@ -2509,6 +2531,7 @@ namespace TrustIssues
             });
             Audio.Play(youWon ? "win" : "death", 0.8f);
             var panel = Overlay(new Color(0.05f, 0f, 0.02f, 0.9f), out var root);
+            _onBack = () => { Destroy(panel); LeaveVersus(); };
             Theme.Label(root, youWon ? "MATCH WON" : "MATCH LOST",
                 youWon ? 104 : 92, youWon ? Theme.Exit : Theme.Player,
                 new Vector2(0.5f, 0.5f), new Vector2(0, 170), new Vector2(1600, 170)).font = Theme.TitleFont;
@@ -4142,9 +4165,8 @@ namespace TrustIssues
                 else if (Input.GetKeyDown(KeyCode.Alpha3)) FireTroll(2);
             }
 
-            if ((_state == State.Play || _state == State.Paused) &&
-                Input.GetKeyDown(KeyCode.Escape))   // Esc ONLY — P was hijacking a letter key mid-play
-                TogglePause();
+            // Desktop Esc AND the Android hardware BACK key both arrive here.
+            if (Input.GetKeyDown(KeyCode.Escape)) HandleBackButton();
 
             // "Still playing" ping every 15s — powers the time-spent-per-level view
             // and lets the dashboard see sessions that never reach an exit.
@@ -4847,6 +4869,8 @@ namespace TrustIssues
         // SHARE (captures a PNG card) + LEADERBOARD + MENU buttons.
         void ResultFooter(Transform root, GameObject panel, string brag, string lbMode)
         {
+            // Back on a result screen = the MAIN MENU button (tear the level down too).
+            _onBack = () => { Destroy(panel); if (_levelRoot != null) Destroy(_levelRoot.gameObject); ShowMenu(); };
             var c = new Vector2(0.5f, 0.5f);
             if (_newBest)
                 Theme.Label(root, "NEW BEST!", 38, Theme.Exit,
@@ -4919,6 +4943,7 @@ namespace TrustIssues
             Audio.Play("click");
             var c = new Vector2(0.5f, 0.5f);
             var panel = Overlay(new Color(0.04f, 0.02f, 0.06f, 0.92f), out var root);
+            _onBack = () => { Destroy(panel); ShowMenu(); };
             Theme.Label(root, "LEADERBOARD", 70, Theme.Player, c, new Vector2(0, 400), new Vector2(1400, 120)).font = Theme.TitleFont;
             string scope = mode == "daily" ? "today" : "all";
             string heading = mode == "daily" ? "Blood Moon — tonight (fewest deaths)"
@@ -4946,6 +4971,7 @@ namespace TrustIssues
             Audio.Play("click");
             var c = new Vector2(0.5f, 0.5f);
             var panel = Overlay(new Color(0.04f, 0.02f, 0.06f, 0.92f), out var root);
+            _onBack = () => { Destroy(panel); ShowMenu(); };
             Theme.Label(root, "WARDROBE", 70, Theme.Player, c, new Vector2(0, 420), new Vector2(1400, 120)).font = Theme.TitleFont;
             Theme.Label(root, "cosmetic look + a signature mobility trick — never pay-to-win", 28, Theme.Coin, c, new Vector2(0, 348), new Vector2(1400, 50));
 
@@ -5047,6 +5073,7 @@ namespace TrustIssues
             });
             var c = new Vector2(0.5f, 0.5f);
             var panel = Overlay(new Color(0.04f, 0.02f, 0.06f, 0.94f), out var root);
+            _onBack = () => { Destroy(panel); ShowMenu(); };
             Theme.Label(root, "THE CRYPT SHOP", 62, Theme.Player, c, new Vector2(0, 452), new Vector2(1400, 110)).font = Theme.TitleFont;
 
             // The header now states the two things that were invisible before: what
@@ -5244,6 +5271,33 @@ namespace TrustIssues
         {
             if (_state == State.Play) Pause();
             else if (_state == State.Paused) Resume();
+        }
+
+        // The single home for the BACK key (desktop Esc + Android hardware back).
+        // The golden rule: it must ALWAYS do something in-app, so Android can never
+        // fall through to its default and close the game.
+        void HandleBackButton()
+        {
+            if (_capturingKey) return;   // a control rebind is swallowing this Esc
+            switch (_state)
+            {
+                case State.Play:   Pause();  break;   // back opens the pause menu (which has MAIN MENU)
+                case State.Paused: Resume(); break;   // back closes it again
+                default:                              // Menu / Win screens
+                    if (_onBack != null) _onBack();
+                    else ShowMenu();                  // safety net: never nothing
+                    break;
+            }
+        }
+
+        // Standard mobile pattern for the top-level menu: one back arms a prompt,
+        // a second back within the window actually exits. Prevents a stray press
+        // from closing the app while still giving a real way out.
+        void BackFromMainMenu()
+        {
+            if (Time.unscaledTime <= _quitArmedUntil) { Application.Quit(); return; }
+            _quitArmedUntil = Time.unscaledTime + 2f;
+            ShowHint("Press back again to quit", 2f);
         }
 
         void Pause()
