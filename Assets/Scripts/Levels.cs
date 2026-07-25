@@ -138,7 +138,12 @@ namespace TrustIssues
         public void Reverse(float x) => T(TrapType.Reverse, x, -2.3f, 1.5f, 1.2f);
         public void WarpBack(float x) => T(TrapType.WarpBack, x, -2.3f, 0.8f, 1.2f);
         public void Crusher(float x) => T(TrapType.Crusher, x, -1f, 1.6f, 1.4f); // no coin tell — jump up here and you're crushed
-        public void Spring(float x) { T(TrapType.Spring, x, -2.55f, 1.0f, 0.5f); T(TrapType.Surprise, x, -0.4f, 1.4f, 1.4f); }
+        // A trampoline pad you can bounce on OR jump over — a real boost, not a
+        // death sentence. It used to have an INVISIBLE kill-zone bolted right above
+        // it, so any bounce was an unavoidable, un-telegraphed death ("kills no
+        // matter what"). That's gone: a spring is now beatable like every other
+        // trap. Levels that want danger above a spring must place a VISIBLE hazard.
+        public void Spring(float x) => T(TrapType.Spring, x, -2.55f, 1.0f, 0.5f);
         // --- vampire traps ---
         public void Pendulum(float x) => T(TrapType.Pendulum, x, 1.0f, 0.45f, 0.25f);   // pivot high; blade swings below
         public void FlameJet(float x) => T(TrapType.FlameJet, x, -2.0f, 0.8f, 1.6f);    // erupts up from the floor
@@ -376,11 +381,11 @@ namespace TrustIssues
         // Uses the same B builder, so every generated level is guaranteed
         // beatable (jumpable gaps, one spaced hazard per platform). Difficulty
         // grows the hazard variety and length.
-        public static Level Generate(int seed, int difficulty)
+        public static Level Generate(int seed, int difficulty, bool race = false)
         {
             var rng = new System.Random(seed);
             difficulty = Mathf.Max(0, difficulty);
-            var pool = HazardPool(difficulty);
+            var pool = HazardPool(difficulty, race);
             var b = new B();
             b.Plat(3.7f); // safe start
 
@@ -434,7 +439,7 @@ namespace TrustIssues
             return t;
         }
 
-        static List<TrapType> HazardPool(int d)
+        static List<TrapType> HazardPool(int d, bool race = false)
         {
             var l = new List<TrapType> { TrapType.SpikeStatic, TrapType.SpikeStatic };
             if (d >= 1) l.Add(TrapType.LateSpike);
@@ -445,6 +450,14 @@ namespace TrustIssues
                           l.Add(TrapType.FlameJet); l.Add(TrapType.HolyWater);
                           l.Add(TrapType.Reverse); }                                       // inverted controls (rare)
             if (d >= 5) { l.Add(TrapType.ArrowRain); l.Add(TrapType.BatSwoop); }
+
+            // MULTIPLAYER RACE: keep every visible, dodgeable trap for variety +
+            // fun, but drop the three that turn a fast race into a rage-quit — the
+            // invisible sunbeam (Surprise), the yank-to-start rune (WarpBack) and
+            // the flip-your-controls hex (Reverse). Nobody has fun losing a race to
+            // an invisible tile or a teleport.
+            if (race)
+                l.RemoveAll(t => t == TrapType.Surprise || t == TrapType.WarpBack || t == TrapType.Reverse);
             return l;
         }
 

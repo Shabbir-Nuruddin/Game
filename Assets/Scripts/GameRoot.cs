@@ -794,6 +794,11 @@ namespace TrustIssues
         // count down each button's cooldown, and grey a button while it's cooling.
         void UpdateTrollButtons()
         {
+            // The match score rides at the top for the whole race (independent of the
+            // troll column, which hides once someone reaches the coffin).
+            if (_versusScore != null)
+                _versusScore.gameObject.SetActive(_mode == Mode.Versus && _state == State.Play && Net.InRoom);
+
             if (_trollPanel == null) return;
             bool show = _mode == Mode.Versus && _state == State.Play && !_raceOver && Net.InRoom;
             if (_trollPanel.activeSelf != show) _trollPanel.SetActive(show);
@@ -2551,9 +2556,19 @@ namespace TrustIssues
                 return;
             }
 
+            // YOUR NAME — persisted, and shown to the rival you race. Pre-filled with
+            // the stored name; every keystroke saves it.
+            Theme.Label(root, "YOUR NAME", 26, new Color(1, 1, 1, 0.55f), new Vector2(0.5f, 0.5f),
+                new Vector2(-360, 235), new Vector2(300, 40), TextAnchor.MiddleRight);
+            var nameField = MakeInput(root, new Vector2(60, 235), new Vector2(520, 84), "type a name");
+            nameField.characterLimit = 14;
+            nameField.characterValidation = InputField.CharacterValidation.None;
+            nameField.text = Net.PlayerName;
+            nameField.onValueChanged.AddListener(v => Net.PlayerName = v);
+
             // HOST
             Theme.Button(root, "HOST A RACE", new Color(0.6f, 0.08f, 0.12f), Color.white, 48,
-                new Vector2(0.5f, 0.5f), new Vector2(0, 160), new Vector2(560, 100),
+                new Vector2(0.5f, 0.5f), new Vector2(0, 120), new Vector2(560, 100),
                 () => { SetLobbyStatus("Creating room…"); Net.Host(StartVersus, LobbyError); });
 
             // JOIN: a code box + button
@@ -2611,6 +2626,7 @@ namespace TrustIssues
             _endlessSeed = Net.Seed;
             _versusRound = 0; _versusWins = 0; _versusLosses = 0;   // fresh match
             _netSendTimer = 0f;          // broadcast our position on the very next frame
+            UpdateVersusScore();
             BeginRun(0);
             ShowBanner($"ROOM {Net.RoomCode}", $"race to the coffin • a win is a point • FIRST TO {VersusMatchPoints} takes the match");
             ShowHint($"Race to the coffin, then a NEW track loads. Tap the SABOTAGE buttons to troll your rival. Jump, hold {Controls.Name(Controls.Fly)} to glide.");
@@ -2618,6 +2634,20 @@ namespace TrustIssues
 
         // Match score across rounds (continuous multiplayer).
         int _versusRound, _versusWins, _versusLosses;
+        UnityEngine.UI.Text _versusScore;   // persistent top-of-screen score during a race
+
+        // Build/refresh the always-visible match score at the top of the screen, so
+        // both racers can read the exact standings at any moment ("YOU 2 — 1 RIVAL").
+        void UpdateVersusScore()
+        {
+            if (_versusScore == null)
+            {
+                _versusScore = Theme.Label(Theme.Canvas.transform, "", 40, Theme.Coin,
+                    new Vector2(0.5f, 1f), new Vector2(0, -104), new Vector2(1100, 60));
+                _versusScore.raycastTarget = false;
+            }
+            _versusScore.text = $"{Net.PlayerName}   {_versusWins} — {_versusLosses}   RIVAL";
+        }
 
         // Start the next race in the SAME room: a new deterministic track (seed +
         // round), ghosts cleared, room kept open. Both clients advance one round per
@@ -2726,6 +2756,7 @@ namespace TrustIssues
         {
             _state = State.Win;
             if (youWon) { Badges.Award("versus_win"); _versusWins++; } else _versusLosses++;
+            UpdateVersusScore();
             if (_versusWins >= 3) Badges.Award("versus_streak3");
 
             // Match point reached? Show the champion screen instead of NEXT ROUND.
@@ -2884,7 +2915,12 @@ namespace TrustIssues
                 // The room code + ROUND number seed it, so each round is a fresh
                 // (still deterministic) layout and the match runs continuously. Kept
                 // EASY (difficulty 1) so it stays a fun race, not a rage level.
-                case Mode.Versus:  return Levels.Generate(Net.Seed + _versusRound * 101, 1);
+                case Mode.Versus:  return Levels.Generate(Net.Seed + _versusRound * 101,
+                                       Mathf.Min(5, 4 + _versusRound), race: true);
+                                   // Full trap variety (spikes, saws, darts, flame jets, holy water,
+                                   // pendulums, chandeliers, bats…), ramping each round, minus the
+                                   // three race-ruiners (see HazardPool race filter). Same seed for
+                                   // both players, so the track stays identical and fair.
                 // A player-built map. CustomMap.ToLevel goes through the same B
                 // builder as every hand-made floor, so it inherits the ceiling
                 // vault, the stage camera and the beatability guarantees.
