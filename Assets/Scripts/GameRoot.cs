@@ -1015,6 +1015,21 @@ namespace TrustIssues
             // buttons stay legible on top.
             _menuPanel = Overlay(new Color(0.05f, 0.02f, 0.06f, 0.45f), out var root);
 
+            // NIGHTLY TITHE granted up front so BOTH the skinned and classic layouts
+            // read a balance that already includes today's payout.
+            int tithe = Currency.GrantDailyIfDue();
+
+            // HYBRID SKIN: if the exact main-menu artwork is present (Resources/ui/
+            // menu_bg), paint it and lay only live text + tap-zones on top. Otherwise
+            // fall through to the code-built menu below, unchanged.
+            if (Skin.Background(root, "menu_bg") != null)
+            {
+                BuildSkinnedMenu(root, tithe);
+                BuildMenuNotices(root, tithe);
+                TrackMenuShown();
+                return;
+            }
+
             // Animated menu backdrop (blood moon, drifting fog, bats, lightning).
             // Parented under the menu panel, so it's torn down automatically with
             // every screen transition — no leak into gameplay.
@@ -1062,10 +1077,7 @@ namespace TrustIssues
             Theme.Button(root, "BUILD A TRAP", new Color(0.32f, 0.08f, 0.4f), Color.white, 28,
                 new Vector2(0.5f, 0.5f), new Vector2(0, -148), new Vector2(600, 62), ShowMapEditor);
 
-            // NIGHTLY TITHE: the first menu visit of each UTC day pays out, scaled
-            // by the Blood Moon streak — granted BEFORE the shop button reads the
-            // balance, so its caption already includes today's payout.
-            int tithe = Currency.GrantDailyIfDue();
+            // (NIGHTLY TITHE was granted up top so both layouts share one payout.)
 
             // Secondary row — Shop / Wardrobe / Bestiary / Settings / Leaderboard.
             // The SHOP leads and wears gold with a live balance: it's the standing
@@ -1087,13 +1099,18 @@ namespace TrustIssues
             Theme.Button(root, "LEADERBOARD", new Color(1, 1, 1, 0.12f), new Color(1, 1, 1, 0.85f), 22,
                 new Vector2(0.5f, 0.5f), new Vector2(520, -262), sdim, () => ShowLeaderboard("daily"));
 
-            // ---- Bottom notice stack -------------------------------------------
-            // Everything transient lives here now. These were previously pinned to
-            // fixed y values 30px apart, so any two showing at once ran into each
-            // other; the tithe banner then collided with the BUILD A TRAP button
-            // when that took Endless's slot. Stacking them means only the notices
-            // that apply are laid out, each a fixed step below the last, so no
-            // combination of them can ever overlap anything.
+            BuildMenuNotices(root, tithe);
+            TrackMenuShown();
+        }
+
+        // ---- Bottom notice stack -------------------------------------------
+        // Everything transient lives here. These were previously pinned to fixed y
+        // values 30px apart, so any two showing at once ran into each other. Stacking
+        // them means only the notices that apply are laid out, each a fixed step below
+        // the last, so no combination of them can ever overlap anything. Shared by the
+        // classic and skinned menus (the artwork must leave this bottom strip clear).
+        void BuildMenuNotices(Transform root, int tithe)
+        {
             var notices = new System.Collections.Generic.List<(string text, int size, Color col)>();
             if (tithe > 0)
                 notices.Add(($"NIGHTLY TITHE: +{tithe} BLOOD SHARDS", 28, Theme.Coin));
@@ -1115,18 +1132,66 @@ namespace TrustIssues
             for (int i = 0; i < notices.Count; i++)
                 Theme.Label(root, notices[i].text, notices[i].size, notices[i].col,
                     new Vector2(0.5f, 0.5f), new Vector2(0, -332 - i * 46), new Vector2(1400, 42));
+        }
 
-            // Funnel: how many sessions actually reach an interactive menu (the
-            // gap between session_start and this is load/boot bounce).
-            if (!_menuShownTracked)
+        // ==================== SKINNED MAIN MENU ====================
+        // Renders the exact main-menu artwork (Resources/ui/menu_bg) with only the
+        // live pieces on top: transparent tap-zones over every drawn button, and live
+        // text over the spots whose value changes (the Continue floor, the difficulty
+        // value, the Shop balance, the Bestiary count). Positions are fractions of the
+        // screen measured from the top-left of the mockup, so they scale with the art.
+        //
+        // The artwork should leave those four dynamic spots' TEXT blank (frame/icon
+        // only) so the live text below doesn't double up; every other button keeps its
+        // painted label and just gets an invisible tap-zone.
+        void BuildSkinnedMenu(Transform root, int tithe)
+        {
+            string gold = "#" + ColorUtility.ToHtmlStringRGB(Theme.Coin);
+
+            // --- dynamic live text (art leaves these blank) ---
+            Skin.LiveText(root, PlayNowCaption(), 0.29f, 0.305f, 0.71f, 0.395f, 46, Color.white, title: true);
+
+            var diff = Skin.LiveText(root, $"DIFFICULTY:  <color={gold}>{Diff.Name}</color>",
+                0.40f, 0.415f, 0.60f, 0.470f, 30, Color.white);
+
+            Skin.LiveText(root, $"<color={gold}>SHOP  {Currency.Balance}</color>",
+                0.085f, 0.725f, 0.245f, 0.790f, 24, Theme.Coin);
+            Skin.LiveText(root, $"BESTIARY {Codex.KnownCount()}/{Codex.Total}",
+                0.430f, 0.725f, 0.590f, 0.790f, 22, new Color(1, 1, 1, 0.9f));
+
+            // --- tap-zones over the painted buttons (art supplies the look) ---
+            Skin.Zone(root, 0.29f, 0.295f, 0.71f, 0.405f, PlayNow, "continue");
+            Skin.Zone(root, 0.40f, 0.410f, 0.60f, 0.478f, () =>
             {
-                _menuShownTracked = true;
-                Analytics.Track("menu_shown", new System.Collections.Generic.Dictionary<string, object>
-                {
-                    { "returning", !Memory.IsFirstSession },
-                    { "has_curse", Curse.Pending != null },
-                });
-            }
+                Diff.Current = (Difficulty)(((int)Diff.Current + 1) % 3);
+                if (!Audio.Muted) Audio.Play("click", 0.6f);
+                if (diff != null) diff.text = $"DIFFICULTY:  <color={gold}>{Diff.Name}</color>";
+            }, "difficulty");
+
+            Skin.Zone(root, 0.255f, 0.505f, 0.475f, 0.585f, StartDaily,       "bloodmoon");
+            Skin.Zone(root, 0.525f, 0.505f, 0.745f, 0.585f, ShowLevelSelect,  "castle");
+            Skin.Zone(root, 0.255f, 0.605f, 0.475f, 0.685f, StartEndless,     "endless");
+            Skin.Zone(root, 0.525f, 0.605f, 0.745f, 0.685f, ShowVersusLobby,  "multiplayer");
+
+            // Bottom bar — five cells across the lower frame.
+            Skin.Zone(root, 0.085f, 0.715f, 0.245f, 0.795f, ShowShop,     "shop");
+            Skin.Zone(root, 0.255f, 0.715f, 0.415f, 0.795f, ShowWardrobe, "wardrobe");
+            Skin.Zone(root, 0.425f, 0.715f, 0.585f, 0.795f, ShowCodex,    "bestiary");
+            Skin.Zone(root, 0.595f, 0.715f, 0.755f, 0.795f, ShowSettings, "settings");
+            Skin.Zone(root, 0.765f, 0.715f, 0.925f, 0.795f, () => ShowLeaderboard("daily"), "leaderboard");
+        }
+
+        // Funnel: how many sessions actually reach an interactive menu (the gap
+        // between session_start and this is load/boot bounce).
+        void TrackMenuShown()
+        {
+            if (_menuShownTracked) return;
+            _menuShownTracked = true;
+            Analytics.Track("menu_shown", new System.Collections.Generic.Dictionary<string, object>
+            {
+                { "returning", !Memory.IsFirstSession },
+                { "has_curse", Curse.Pending != null },
+            });
         }
         bool _greetTracked;      // one analytics ping per session, not per menu visit
         bool _menuShownTracked;  // same contract for the funnel's menu_shown
