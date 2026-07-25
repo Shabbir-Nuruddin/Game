@@ -1024,8 +1024,9 @@ namespace TrustIssues
             // fall through to the code-built menu below, unchanged.
             if (Skin.Background(root, "menu_bg") != null)
             {
+                // Art paints the whole screen (incl. the bottom notice line), so we
+                // add only tap-zones — no live text/notices that would double up.
                 BuildSkinnedMenu(root, tithe);
-                BuildMenuNotices(root, tithe);
                 TrackMenuShown();
                 return;
             }
@@ -1146,39 +1147,37 @@ namespace TrustIssues
         // painted label and just gets an invisible tap-zone.
         void BuildSkinnedMenu(Transform root, int tithe)
         {
-            string gold = "#" + ColorUtility.ToHtmlStringRGB(Theme.Coin);
+            // The artwork already has every label + number painted in, so we add NO
+            // text on top (that would double it) — just invisible tap-zones over each
+            // painted button. Coordinates are fractions measured off menu_bg.jpg from
+            // the top-left; tuned so each zone sits on its button.
+            //
+            // Trade-off of using the picture as-is: the painted values (FLOOR 1,
+            // DIFFICULTY NORMAL, SHOP 65, BESTIARY 1/19) are frozen at what the art
+            // shows — the buttons still WORK, they just don't re-print live numbers.
+            // Drop in a menu_bg with those five spots left blank and BuildSkinnedMenu's
+            // sibling (the live-text path in git history) can repaint them for real.
+            Skin.Zone(root, 0.30f, 0.29f, 0.70f, 0.40f, PlayNow, "continue");
 
-            // --- dynamic live text (art leaves these blank) ---
-            Skin.LiveText(root, PlayNowCaption(), 0.29f, 0.305f, 0.71f, 0.395f, 46, Color.white, title: true);
-
-            var diff = Skin.LiveText(root, $"DIFFICULTY:  <color={gold}>{Diff.Name}</color>",
-                0.40f, 0.415f, 0.60f, 0.470f, 30, Color.white);
-
-            Skin.LiveText(root, $"<color={gold}>SHOP  {Currency.Balance}</color>",
-                0.085f, 0.725f, 0.245f, 0.790f, 24, Theme.Coin);
-            Skin.LiveText(root, $"BESTIARY {Codex.KnownCount()}/{Codex.Total}",
-                0.430f, 0.725f, 0.590f, 0.790f, 22, new Color(1, 1, 1, 0.9f));
-
-            // --- tap-zones over the painted buttons (art supplies the look) ---
-            Skin.Zone(root, 0.29f, 0.295f, 0.71f, 0.405f, PlayNow, "continue");
-            Skin.Zone(root, 0.40f, 0.410f, 0.60f, 0.478f, () =>
+            // The difficulty pill still cycles Casual→Normal→Nightmare on tap (it
+            // drives real gameplay); only its painted label stays put.
+            Skin.Zone(root, 0.40f, 0.405f, 0.60f, 0.47f, () =>
             {
                 Diff.Current = (Difficulty)(((int)Diff.Current + 1) % 3);
                 if (!Audio.Muted) Audio.Play("click", 0.6f);
-                if (diff != null) diff.text = $"DIFFICULTY:  <color={gold}>{Diff.Name}</color>";
             }, "difficulty");
 
-            Skin.Zone(root, 0.255f, 0.505f, 0.475f, 0.585f, StartDaily,       "bloodmoon");
-            Skin.Zone(root, 0.525f, 0.505f, 0.745f, 0.585f, ShowLevelSelect,  "castle");
-            Skin.Zone(root, 0.255f, 0.605f, 0.475f, 0.685f, StartEndless,     "endless");
-            Skin.Zone(root, 0.525f, 0.605f, 0.745f, 0.685f, ShowVersusLobby,  "multiplayer");
+            Skin.Zone(root, 0.255f, 0.50f, 0.475f, 0.58f, StartDaily,      "bloodmoon");
+            Skin.Zone(root, 0.525f, 0.50f, 0.745f, 0.58f, ShowLevelSelect, "castle");
+            Skin.Zone(root, 0.255f, 0.595f, 0.475f, 0.675f, StartEndless,    "endless");
+            Skin.Zone(root, 0.525f, 0.595f, 0.745f, 0.675f, ShowVersusLobby, "multiplayer");
 
             // Bottom bar — five cells across the lower frame.
-            Skin.Zone(root, 0.085f, 0.715f, 0.245f, 0.795f, ShowShop,     "shop");
-            Skin.Zone(root, 0.255f, 0.715f, 0.415f, 0.795f, ShowWardrobe, "wardrobe");
-            Skin.Zone(root, 0.425f, 0.715f, 0.585f, 0.795f, ShowCodex,    "bestiary");
-            Skin.Zone(root, 0.595f, 0.715f, 0.755f, 0.795f, ShowSettings, "settings");
-            Skin.Zone(root, 0.765f, 0.715f, 0.925f, 0.795f, () => ShowLeaderboard("daily"), "leaderboard");
+            Skin.Zone(root, 0.055f, 0.70f, 0.225f, 0.795f, ShowShop,     "shop");
+            Skin.Zone(root, 0.235f, 0.70f, 0.395f, 0.795f, ShowWardrobe, "wardrobe");
+            Skin.Zone(root, 0.405f, 0.70f, 0.605f, 0.795f, ShowCodex,    "bestiary");
+            Skin.Zone(root, 0.615f, 0.70f, 0.755f, 0.795f, ShowSettings, "settings");
+            Skin.Zone(root, 0.765f, 0.70f, 0.955f, 0.795f, () => ShowLeaderboard("daily"), "leaderboard");
         }
 
         // Funnel: how many sessions actually reach an interactive menu (the gap
