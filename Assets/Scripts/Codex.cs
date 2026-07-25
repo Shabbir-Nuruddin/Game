@@ -22,7 +22,23 @@ namespace TrustIssues
 
         static string Key(TrapType t) => "codex_" + (int)t;
 
-        public static bool IsKnown(TrapType t) => PlayerPrefs.GetInt(Key(t), 0) == 1;
+        // PREVIEW MODE: when on, every page reads as "known" so you can flip through
+        // the whole book without earning it — WITHOUT touching real progress. Turning
+        // it back off instantly restores the true locked/unlocked state (the locked
+        // silhouette look), so it's a safe look-around toggle, not a cheat that sticks.
+        // Defaults ON right now so the book opens fully unlocked for review; the toggle
+        // on the Bestiary screen locks it back.
+        public static bool PreviewAll
+        {
+            get => PlayerPrefs.GetInt("codex_preview_all", 1) == 1;
+            set { PlayerPrefs.SetInt("codex_preview_all", value ? 1 : 0); PlayerPrefs.Save(); }
+        }
+
+        /// <summary>The TRUE unlock state (ignores preview) — used by gameplay/progression.</summary>
+        public static bool RealKnown(TrapType t) => PlayerPrefs.GetInt(Key(t), 0) == 1;
+
+        /// <summary>What the book DISPLAYS: really earned, or shown because preview is on.</summary>
+        public static bool IsKnown(TrapType t) => RealKnown(t) || PreviewAll;
 
         /// <summary>Fired the first time a trap is revealed, so the HUD can toast it.</summary>
         public static System.Action<TrapType> OnUnlocked;
@@ -31,7 +47,7 @@ namespace TrustIssues
         public static bool Unlock(TrapType t)
         {
             if (System.Array.IndexOf(Entries, t) < 0) return false;   // not a codex trap
-            if (IsKnown(t)) return false;
+            if (RealKnown(t)) return false;   // real progress only — preview never blocks a genuine unlock
             PlayerPrefs.SetInt(Key(t), 1); PlayerPrefs.Save();
             Analytics.Track("codex_unlock", new System.Collections.Generic.Dictionary<string, object>
             { { "trap", t.ToString() } });
@@ -95,19 +111,26 @@ namespace TrustIssues
             _ => "A trap of the castle.",
         };
 
-        // Which sprite best represents this trap in the book (falls back gracefully).
+        // Which sprite represents this trap in the book. EVERY entry maps to a real
+        // sprite that exists in Resources/art so no discovered page is ever a blank
+        // "?" — several traps reuse the closest-matching art (e.g. the pendulum and
+        // saw share the blade sprite) until bespoke per-trap icons are dropped in.
         public static string Art(TrapType t) => t switch
         {
             TrapType.SpikeStatic or TrapType.LateSpike or TrapType.GrowSpike or TrapType.ArrowRain => "spike",
-            TrapType.Saw => "saw",
+            TrapType.Saw or TrapType.Pendulum => "saw",       // both are sweeping blades
             TrapType.Faller or TrapType.Crusher => "rockhead",
-            TrapType.Chandelier => "chandelier",
-            TrapType.Pendulum => "pendulum",
+            TrapType.Chandelier => "torch",                    // a hanging light fixture
+            TrapType.FakeFloor => "platform",                 // the treacherous floor tile
+            TrapType.FlameJet => "explosion",                 // erupting fire
+            TrapType.HolyWater => "blood",                    // a glistening floor puddle
+            TrapType.Surprise => "torch",                     // the hidden sunbeam / light
+            TrapType.Reverse or TrapType.WarpBack => "portal",// swirling magic (hex / banishment)
             TrapType.BatSwoop => "bat_fly",
             TrapType.Spring => "trampoline",
             TrapType.FakeExit => "door",
             TrapType.Dart => "bolt",
-            _ => "",
+            _ => "spike",                                      // last-ditch: never blank
         };
     }
 }

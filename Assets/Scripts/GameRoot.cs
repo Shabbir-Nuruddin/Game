@@ -1179,7 +1179,16 @@ namespace TrustIssues
                     new Vector2(startX + (i % cols) * stepX, startY - (i / cols) * stepY), card);
 
             Theme.Button(root, "‹ BACK", new Color(1, 1, 1, 0.25f), Color.white, 40,
-                new Vector2(0.5f, 0f), new Vector2(0, 40), new Vector2(360, 100), ShowMenu);
+                new Vector2(0.5f, 0f), new Vector2(-260, 40), new Vector2(360, 100), ShowMenu);
+
+            // PREVIEW toggle — flip the whole book open (to review every page) or back
+            // to its real locked/unlocked state (the "UNDISCOVERED" silhouette look).
+            // Re-opens the screen so all cards re-draw in the new state.
+            bool prev = Codex.PreviewAll;
+            Theme.Button(root, prev ? "PREVIEW: ON" : "PREVIEW: OFF",
+                prev ? new Color(0.16f, 0.40f, 0.22f) : new Color(1, 1, 1, 0.20f), Color.white, 34,
+                new Vector2(0.5f, 0f), new Vector2(260, 40), new Vector2(360, 100),
+                () => { Codex.PreviewAll = !Codex.PreviewAll; ShowCodex(); });
         }
 
         void BuildCodexCard(Transform root, TrapType t, Vector2 pos, Vector2 size)
