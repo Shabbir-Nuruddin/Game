@@ -45,7 +45,11 @@ namespace TrustIssues
             if (sp == null) return null;
             var go = new GameObject("Skin_" + name, typeof(RectTransform));
             go.transform.SetParent(root, false);
-            go.transform.SetAsFirstSibling();          // behind all live overlays
+            // Draw the art IN FRONT of whatever the Overlay already put down (its dark
+            // wash + code-built ornate frame) so those don't tint the picture — the
+            // artwork supplies its own frame. Tap-zones/live text are added by the
+            // caller AFTER this, so they still land on top of the art.
+            go.transform.SetAsLastSibling();
             var img = go.AddComponent<Image>();
             img.sprite = sp;
             img.raycastTarget = false;                 // clicks pass through to the tap-zones

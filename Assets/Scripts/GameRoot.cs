@@ -1180,6 +1180,65 @@ namespace TrustIssues
             Skin.Zone(root, 0.765f, 0.70f, 0.955f, 0.795f, () => ShowLeaderboard("daily"), "leaderboard");
         }
 
+        // ==================== SKINNED SUB-SCREENS ====================
+        // Each paints its exact artwork and lays invisible tap-zones over the buttons
+        // the art draws. Coordinates are fractions from the top-left of that screen's
+        // mockup. Painted labels/values stay as-is (the picture supplies the look);
+        // the zones just make them work.
+
+        // THE CASTLE — 40 floor seals in an 8x5 grid, numbered in a switchback the
+        // same way the artwork paints them (row1 L→R 1-8, row2 L→R 16-9, etc.).
+        void BuildSkinnedCastle(Transform root)
+        {
+            int unlocked = CastleUnlocked;
+            float[] rowY = { 0.30f, 0.43f, 0.55f, 0.675f, 0.795f };
+            float x0 = 0.135f, x7 = 0.865f;
+            for (int r = 0; r < 5; r++)
+                for (int col = 0; col < 8; col++)
+                {
+                    int number = r == 0 ? 1 + col
+                               : r == 1 ? 16 - col
+                               : r == 2 ? 17 + col
+                               : r == 3 ? 32 - col
+                                        : 33 + col;
+                    int idx = number - 1;
+                    if (idx < 0 || idx >= Levels.Count) continue;
+                    float cx = Mathf.Lerp(x0, x7, col / 7f), cy = rowY[r];
+                    bool locked = idx > unlocked;
+                    Skin.Zone(root, cx - 0.048f, cy - 0.058f, cx + 0.048f, cy + 0.058f,
+                        locked ? (System.Action)(() => ShowHint("Sealed — clear the floor before it first."))
+                               : (System.Action)(() => StartGame(idx)), "floor" + number);
+                }
+            Skin.Zone(root, 0.42f, 0.87f, 0.58f, 0.965f, ShowMenu, "back");
+        }
+
+        // WARDROBE — 10 character cards in a 5x2 grid, same order as Skins.All.
+        void BuildSkinnedWardrobe(Transform root, GameObject panel)
+        {
+            float[] colX = { 0.205f, 0.3575f, 0.51f, 0.6625f, 0.815f };
+            float[] rowY = { 0.40f, 0.68f };
+            for (int i = 0; i < Skins.All.Count && i < 10; i++)
+            {
+                var s = Skins.All[i];
+                int r = i / 5, col = i % 5;
+                if (r > 1) break;
+                float cx = colX[col], cy = rowY[r];
+                bool unlocked = Skins.IsUnlocked(s);
+                string sid = s.id; var sdef = s;
+                Skin.Zone(root, cx - 0.07f, cy - 0.135f, cx + 0.07f, cy + 0.135f,
+                    unlocked ? (System.Action)(() => { Skins.Equip(sid); Destroy(panel); ShowWardrobe(); })
+                    : sdef.price > 0 ? (System.Action)(() => { Destroy(panel); ShowShop(); })
+                                     : (System.Action)(() => ShowHint(sdef.unlockHint)), "skin_" + sid);
+            }
+            Skin.Zone(root, 0.42f, 0.87f, 0.58f, 0.965f, () => { Destroy(panel); ShowMenu(); }, "back");
+        }
+
+        // LEADERBOARD — the art is a self-contained placeholder; only BACK is live.
+        void BuildSkinnedLeaderboard(Transform root, GameObject panel)
+        {
+            Skin.Zone(root, 0.40f, 0.85f, 0.60f, 0.955f, () => { Destroy(panel); ShowMenu(); }, "back");
+        }
+
         // Funnel: how many sessions actually reach an interactive menu (the gap
         // between session_start and this is load/boot bounce).
         void TrackMenuShown()
@@ -1686,6 +1745,9 @@ namespace TrustIssues
             if (_menuPanel != null) Destroy(_menuPanel);
             _menuPanel = Overlay(new Color(Theme.Sky.r, Theme.Sky.g, Theme.Sky.b, 0.82f), out var root);
             _onBack = ShowMenu;
+
+            // Exact artwork if present: 40 tap-zones over the painted seal grid.
+            if (Skin.Background(root, "castle_bg") != null) { BuildSkinnedCastle(root); return; }
 
             int unlocked = CastleUnlocked;
             int worlds = Mathf.CeilToInt(Levels.Count / (float)FloorsPerWorld);
@@ -5017,6 +5079,7 @@ namespace TrustIssues
             var c = new Vector2(0.5f, 0.5f);
             var panel = Overlay(new Color(0.04f, 0.02f, 0.06f, 0.92f), out var root);
             _onBack = () => { Destroy(panel); ShowMenu(); };
+            if (Skin.Background(root, "leaderboard_bg") != null) { BuildSkinnedLeaderboard(root, panel); return; }
             Theme.Label(root, "LEADERBOARD", 70, Theme.Player, c, new Vector2(0, 400), new Vector2(1400, 120)).font = Theme.TitleFont;
             string scope = mode == "daily" ? "today" : "all";
             string heading = mode == "daily" ? "Blood Moon — tonight (fewest deaths)"
@@ -5045,6 +5108,7 @@ namespace TrustIssues
             var c = new Vector2(0.5f, 0.5f);
             var panel = Overlay(new Color(0.04f, 0.02f, 0.06f, 0.92f), out var root);
             _onBack = () => { Destroy(panel); ShowMenu(); };
+            if (Skin.Background(root, "wardrobe_bg") != null) { BuildSkinnedWardrobe(root, panel); return; }
             Theme.Label(root, "WARDROBE", 70, Theme.Player, c, new Vector2(0, 420), new Vector2(1400, 120)).font = Theme.TitleFont;
             Theme.Label(root, "cosmetic look + a signature mobility trick — never pay-to-win", 28, Theme.Coin, c, new Vector2(0, 348), new Vector2(1400, 50));
 
