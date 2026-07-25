@@ -1239,6 +1239,85 @@ namespace TrustIssues
             Skin.Zone(root, 0.40f, 0.85f, 0.60f, 0.955f, () => { Destroy(panel); ShowMenu(); }, "back");
         }
 
+        // SETTINGS — tap-zones over the painted controls. The picture shows the
+        // DEFAULT bindings/values (which is what a fresh install has); the zones make
+        // every control work — rebinds capture a key, sliders step the volume,
+        // toggles flip, difficulty cycles. Painted labels stay put (art as-is).
+        void BuildSkinnedSettings(Transform root)
+        {
+            // Ability key rebinds — tap, then press the new key (Esc cancels).
+            Skin.Zone(root, 0.28f, 0.245f, 0.485f, 0.315f, () => StartCoroutine(CaptureKeySilent("jump")),  "jump");
+            Skin.Zone(root, 0.515f, 0.245f, 0.72f, 0.315f, () => StartCoroutine(CaptureKeySilent("shoot")), "shoot");
+            Skin.Zone(root, 0.28f, 0.315f, 0.485f, 0.385f, () => StartCoroutine(CaptureKeySilent("dash")),  "dash");
+            Skin.Zone(root, 0.515f, 0.315f, 0.72f, 0.385f, () => StartCoroutine(CaptureKeySilent("fly")),   "fly");
+
+            // Volume tracks — tap to step 100→75→50→25→0→100 (you'll hear it change).
+            Skin.Zone(root, 0.37f, 0.485f, 0.635f, 0.535f, () => VolStep(() => Audio.MusicVol, v => Audio.MusicVol = v), "music");
+            Skin.Zone(root, 0.37f, 0.54f, 0.635f, 0.59f, () => VolStep(() => Audio.SfxVol, v => Audio.SfxVol = v),   "sfx");
+            Skin.Zone(root, 0.37f, 0.595f, 0.635f, 0.645f, () => VolStep(() => Voice.Volume, v => Voice.Volume = v),  "voice");
+
+            // Difficulty + gameplay toggles.
+            Skin.Zone(root, 0.33f, 0.67f, 0.67f, 0.725f, () =>
+            {
+                Diff.Current = (Difficulty)(((int)Diff.Current + 1) % 3);
+                if (!Audio.Muted) Audio.Play("click", 0.6f);
+            }, "difficulty");
+            Skin.Zone(root, 0.235f, 0.755f, 0.475f, 0.815f, () => FlipPref("opt_replay_ghost", 0), "replayghost");
+            Skin.Zone(root, 0.525f, 0.755f, 0.765f, 0.815f, () => FlipPref("opt_touch", 0),        "pads");
+            Skin.Zone(root, 0.235f, 0.815f, 0.475f, 0.875f, () =>
+            {
+                PlayerPrefs.SetInt("opt_joystick", JoystickMode ? 0 : 1); PlayerPrefs.Save();
+                if (!Audio.Muted) Audio.Play("click", 0.6f); SyncMoveMode();
+            }, "move");
+            Skin.Zone(root, 0.525f, 0.815f, 0.765f, 0.875f, () => FlipPref("opt_25d", 1, ApplyDepthMode), "depth");
+
+            Skin.Zone(root, 0.42f, 0.895f, 0.58f, 0.975f, ShowMenu, "back");
+        }
+
+        // Flip a 0/1 PlayerPrefs setting (used by the skinned Settings toggles).
+        void FlipPref(string key, int def, System.Action after = null)
+        {
+            PlayerPrefs.SetInt(key, PlayerPrefs.GetInt(key, def) == 1 ? 0 : 1);
+            PlayerPrefs.Save();
+            if (!Audio.Muted) Audio.Play("click", 0.6f);
+            after?.Invoke();
+        }
+
+        // Step a volume to the next preset (loops back to full after mute).
+        void VolStep(System.Func<float> get, System.Action<float> set)
+        {
+            float[] steps = { 1f, 0.75f, 0.5f, 0.25f, 0f };
+            float cur = get(); int idx = 0; float best = 999f;
+            for (int i = 0; i < steps.Length; i++) { float d = Mathf.Abs(steps[i] - cur); if (d < best) { best = d; idx = i; } }
+            set(steps[(idx + 1) % steps.Length]);
+            if (!Audio.Muted) Audio.Play("click", 0.6f);
+        }
+
+        // Like CaptureKey but with no label to update (the skinned art shows the key).
+        System.Collections.IEnumerator CaptureKeySilent(string action)
+        {
+            _capturingKey = true;
+            yield return null;   // swallow the click frame
+            while (true)
+            {
+                if (Input.GetKeyDown(KeyCode.Escape)) break;
+                KeyCode picked = KeyCode.None;
+                foreach (KeyCode kc in System.Enum.GetValues(typeof(KeyCode)))
+                {
+                    if (kc == KeyCode.None || (int)kc >= 323 || !Controls.Bindable(kc)) continue;
+                    if (Input.GetKeyDown(kc)) { picked = kc; break; }
+                }
+                if (picked != KeyCode.None)
+                {
+                    Controls.Set(action, picked);
+                    if (!Audio.Muted) Audio.Play("click", 0.6f);
+                    break;
+                }
+                yield return null;
+            }
+            _capturingKey = false;
+        }
+
         // Funnel: how many sessions actually reach an interactive menu (the gap
         // between session_start and this is load/boot bounce).
         void TrackMenuShown()
@@ -1287,9 +1366,27 @@ namespace TrustIssues
             _menuPanel = Overlay(new Color(Theme.Sky.r, Theme.Sky.g, Theme.Sky.b, 0.96f), out var root);
             _onBack = ShowMenu;
 
-            var title = Theme.Label(root, "VAMPIRE'S BESTIARY", 72, Theme.Player,
-                new Vector2(0.5f, 0.5f), new Vector2(0, 452), new Vector2(1600, 110));
-            if (Theme.TitleFont != null) title.font = Theme.TitleFont;
+            // HYBRID: wear the bestiary artwork's ornate frame + title, but keep the
+            // REAL, live cards (so progress + the preview toggle still work). A dark
+            // panel covers the art's illustrative card grid so only the outer frame,
+            // gargoyles, candles and painted title show; live cards draw on top.
+            bool skinned = Skin.Background(root, "bestiary_bg") != null;
+            if (skinned)
+            {
+                var cover = new GameObject("Cover", typeof(RectTransform));
+                cover.transform.SetParent(root, false);
+                var ci = cover.AddComponent<Image>();
+                ci.color = new Color(0.05f, 0.035f, 0.07f, 0.98f); ci.raycastTarget = false;
+                var crt = ci.rectTransform;
+                crt.anchorMin = new Vector2(0.075f, 0.135f); crt.anchorMax = new Vector2(0.925f, 0.88f);
+                crt.offsetMin = crt.offsetMax = Vector2.zero;
+            }
+            else
+            {
+                var title = Theme.Label(root, "VAMPIRE'S BESTIARY", 72, Theme.Player,
+                    new Vector2(0.5f, 0.5f), new Vector2(0, 452), new Vector2(1600, 110));
+                if (Theme.TitleFont != null) title.font = Theme.TitleFont;
+            }
             Theme.Label(root, $"{Codex.KnownCount()} / {Codex.Total} catalogued — die to a new trap to reveal its page",
                 26, Theme.Coin, new Vector2(0.5f, 0.5f), new Vector2(0, 388), new Vector2(1600, 44));
 
@@ -1301,17 +1398,29 @@ namespace TrustIssues
                 BuildCodexCard(root, entries[i],
                     new Vector2(startX + (i % cols) * stepX, startY - (i / cols) * stepY), card);
 
-            Theme.Button(root, "‹ BACK", new Color(1, 1, 1, 0.25f), Color.white, 40,
-                new Vector2(0.5f, 0f), new Vector2(-260, 40), new Vector2(360, 100), ShowMenu);
-
             // PREVIEW toggle — flip the whole book open (to review every page) or back
             // to its real locked/unlocked state (the "UNDISCOVERED" silhouette look).
             // Re-opens the screen so all cards re-draw in the new state.
             bool prev = Codex.PreviewAll;
-            Theme.Button(root, prev ? "PREVIEW: ON" : "PREVIEW: OFF",
-                prev ? new Color(0.16f, 0.40f, 0.22f) : new Color(1, 1, 1, 0.20f), Color.white, 34,
-                new Vector2(0.5f, 0f), new Vector2(260, 40), new Vector2(360, 100),
-                () => { Codex.PreviewAll = !Codex.PreviewAll; ShowCodex(); });
+            if (skinned)
+            {
+                // BACK rides on the painted button; PREVIEW fills the empty 20th slot
+                // (19 entries in a 5-wide grid leave the bottom-right cell open).
+                Skin.Zone(root, 0.42f, 0.88f, 0.58f, 0.965f, ShowMenu, "back");
+                Theme.Button(root, prev ? "PREVIEW: ON" : "PREVIEW: OFF",
+                    prev ? new Color(0.16f, 0.40f, 0.22f) : new Color(0.14f, 0.10f, 0.16f, 0.98f), Color.white, 26,
+                    new Vector2(0.5f, 0.5f), new Vector2(startX + 4 * stepX, startY - 3 * stepY), card,
+                    () => { Codex.PreviewAll = !Codex.PreviewAll; ShowCodex(); });
+            }
+            else
+            {
+                Theme.Button(root, "‹ BACK", new Color(1, 1, 1, 0.25f), Color.white, 40,
+                    new Vector2(0.5f, 0f), new Vector2(-260, 40), new Vector2(360, 100), ShowMenu);
+                Theme.Button(root, prev ? "PREVIEW: ON" : "PREVIEW: OFF",
+                    prev ? new Color(0.16f, 0.40f, 0.22f) : new Color(1, 1, 1, 0.20f), Color.white, 34,
+                    new Vector2(0.5f, 0f), new Vector2(260, 40), new Vector2(360, 100),
+                    () => { Codex.PreviewAll = !Codex.PreviewAll; ShowCodex(); });
+            }
         }
 
         void BuildCodexCard(Transform root, TrapType t, Vector2 pos, Vector2 size)
@@ -1489,6 +1598,9 @@ namespace TrustIssues
             if (_menuPanel != null) Destroy(_menuPanel);
             _menuPanel = Overlay(new Color(Theme.Sky.r, Theme.Sky.g, Theme.Sky.b, 0.92f), out var root);
             _onBack = ShowMenu;
+
+            // Exact artwork if present: tap-zones over the painted controls.
+            if (Skin.Background(root, "settings_bg") != null) { BuildSkinnedSettings(root); return; }
 
             Theme.Label(root, "SETTINGS", 86, Theme.Player,
                 new Vector2(0.5f, 0.5f), new Vector2(0, 440), new Vector2(1400, 120));
