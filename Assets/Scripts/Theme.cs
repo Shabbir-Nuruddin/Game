@@ -476,6 +476,20 @@ namespace TrustIssues
             }
         }
 
+        // The menu's Roman-serif (Resources/fonts/menu.ttf = Cinzel, OFL). Matches the
+        // serif painted into the skin artwork, so live numbers drawn over the art look
+        // native. Returns null if absent — callers guard and only override when set.
+        static Font _menuFont;
+        static bool _menuFontTried;
+        public static Font MenuFont
+        {
+            get
+            {
+                if (!_menuFontTried) { _menuFont = Resources.Load<Font>("fonts/menu"); _menuFontTried = true; }
+                return _menuFont;
+            }
+        }
+
         /// <summary>A clickable menu button (Image + Button + centered label).</summary>
         public static Button Button(Transform parent, string text, Color bg, Color textColor,
             int size, Vector2 anchor, Vector2 pos, Vector2 dim, System.Action onClick)

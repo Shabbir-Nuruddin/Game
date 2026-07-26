@@ -1152,6 +1152,14 @@ namespace TrustIssues
         // painted label and just gets an invisible tap-zone.
         void BuildSkinnedMenu(Transform root, int tithe)
         {
+            // LIVE SHARD BALANCE over where the artwork said "SHOP 65". The baked
+            // digits were erased from menu_bg (they sat on a near-flat panel), so we
+            // drop ONLY the live number in their place — no box, "SHOP" untouched — in
+            // the menu serif (Cinzel) so it matches the painted label and just changes.
+            var shopNum = Skin.LiveText(root, $"{Currency.Balance}", 0.191f, 0.748f, 0.27f, 0.790f,
+                36, Theme.Coin, align: TextAnchor.MiddleLeft);
+            if (Theme.MenuFont != null) shopNum.font = Theme.MenuFont;
+
             Skin.Zone(root, 0.30f, 0.29f, 0.70f, 0.40f, PlayNow, "continue");
 
             // The difficulty pill cycles Casual→Normal→Nightmare on tap.
