@@ -441,6 +441,19 @@ namespace TrustIssues
 
         static List<TrapType> HazardPool(int d, bool race = false)
         {
+            // MULTIPLAYER RACE: deliberately TINY + simple. The fun of a race is the
+            // SABOTAGE buttons (curse = flip their controls, snuff = blind them, quake
+            // = shake their screen) — those only work if the level itself is easy
+            // enough to actually finish. So the track is just spikes to jump and the
+            // odd overhead bat; falling floors come from the FakeFloor gap logic. No
+            // saws/darts/crushers/flame-jets/etc. — a hard level + sabotage = unbeatable.
+            if (race)
+                return new List<TrapType>
+                {
+                    TrapType.SpikeStatic, TrapType.SpikeStatic, TrapType.SpikeStatic,
+                    TrapType.SpikeStatic, TrapType.BatSwoop,
+                };
+
             var l = new List<TrapType> { TrapType.SpikeStatic, TrapType.SpikeStatic };
             if (d >= 1) l.Add(TrapType.LateSpike);
             if (d >= 2) { l.Add(TrapType.Dart); l.Add(TrapType.Crusher); l.Add(TrapType.GrowSpike); }
@@ -450,14 +463,6 @@ namespace TrustIssues
                           l.Add(TrapType.FlameJet); l.Add(TrapType.HolyWater);
                           l.Add(TrapType.Reverse); }                                       // inverted controls (rare)
             if (d >= 5) { l.Add(TrapType.ArrowRain); l.Add(TrapType.BatSwoop); }
-
-            // MULTIPLAYER RACE: keep every visible, dodgeable trap for variety +
-            // fun, but drop the three that turn a fast race into a rage-quit — the
-            // invisible sunbeam (Surprise), the yank-to-start rune (WarpBack) and
-            // the flip-your-controls hex (Reverse). Nobody has fun losing a race to
-            // an invisible tile or a teleport.
-            if (race)
-                l.RemoveAll(t => t == TrapType.Surprise || t == TrapType.WarpBack || t == TrapType.Reverse);
             return l;
         }
 

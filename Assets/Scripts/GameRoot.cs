@@ -2912,12 +2912,11 @@ namespace TrustIssues
                 // The room code + ROUND number seed it, so each round is a fresh
                 // (still deterministic) layout and the match runs continuously. Kept
                 // EASY (difficulty 1) so it stays a fun race, not a rage level.
-                case Mode.Versus:  return Levels.Generate(Net.Seed + _versusRound * 101,
-                                       Mathf.Min(5, 4 + _versusRound), race: true);
-                                   // Full trap variety (spikes, saws, darts, flame jets, holy water,
-                                   // pendulums, chandeliers, bats…), ramping each round, minus the
-                                   // three race-ruiners (see HazardPool race filter). Same seed for
-                                   // both players, so the track stays identical and fair.
+                case Mode.Versus:  return Levels.Generate(Net.Seed + _versusRound * 101, 2, race: true);
+                                   // SIMPLE by design (difficulty 2, never ramps): spikes to jump,
+                                   // the odd overhead bat, occasional falling floor — beatable so the
+                                   // SABOTAGE buttons (curse/snuff/quake) are the real fun. Same seed
+                                   // for both players → identical, fair track.
                 // A player-built map. CustomMap.ToLevel goes through the same B
                 // builder as every hand-made floor, so it inherits the ceiling
                 // vault, the stage camera and the beatability guarantees.
