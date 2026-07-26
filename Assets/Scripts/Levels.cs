@@ -447,11 +447,14 @@ namespace TrustIssues
             // enough to actually finish. So the track is just spikes to jump and the
             // odd overhead bat; falling floors come from the FakeFloor gap logic. No
             // saws/darts/crushers/flame-jets/etc. — a hard level + sabotage = unbeatable.
+            // A SMALL set, weighted so spikes dominate: enough variety that no two
+            // rounds feel the same (and each seed lays them out differently), but
+            // every hazard here is a simple read — jump it, or time one swing.
             if (race)
                 return new List<TrapType>
                 {
                     TrapType.SpikeStatic, TrapType.SpikeStatic, TrapType.SpikeStatic,
-                    TrapType.SpikeStatic, TrapType.BatSwoop,
+                    TrapType.Saw, TrapType.BatSwoop,
                 };
 
             var l = new List<TrapType> { TrapType.SpikeStatic, TrapType.SpikeStatic };
