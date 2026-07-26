@@ -1152,30 +1152,13 @@ namespace TrustIssues
         // painted label and just gets an invisible tap-zone.
         void BuildSkinnedMenu(Transform root, int tithe)
         {
-            // LIVE VALUES: the artwork baked in sample numbers (SHOP 65, FLOOR 1,
-            // DIFFICULTY NORMAL, BESTIARY 1/19). We paint the REAL values over them —
-            // an opaque chip hides the painted sample, then the true value is drawn on
-            // top — so the menu reflects your actual balance/floor/difficulty and is no
-            // longer a dead picture. Chip colours match the buttons' dark interiors.
-            string gold = "#" + ColorUtility.ToHtmlStringRGB(Theme.Coin);
-            Skin.LiveValue(root, PlayNowCaption(), 0.31f, 0.315f, 0.69f, 0.385f, 44, Color.white,
-                Theme.Hex("1A0A0E"), title: true);
-            Skin.LiveValue(root, $"DIFFICULTY:  <color={gold}>{Diff.Name}</color>",
-                0.405f, 0.415f, 0.595f, 0.468f, 27, Color.white, Theme.Hex("0E0910"));
-            Skin.LiveValue(root, $"<color={gold}>SHOP   {Currency.Balance}</color>",
-                0.075f, 0.715f, 0.225f, 0.785f, 21, Theme.Coin, Theme.Hex("0C0810"));
-            Skin.LiveValue(root, $"BESTIARY {Codex.KnownCount()}/{Codex.Total}",
-                0.415f, 0.715f, 0.595f, 0.785f, 19, new Color(1, 1, 1, 0.92f), Theme.Hex("0C0810"));
-
             Skin.Zone(root, 0.30f, 0.29f, 0.70f, 0.40f, PlayNow, "continue");
 
-            // The difficulty pill cycles Casual→Normal→Nightmare on tap; rebuild the
-            // menu so its live label repaints with the new value.
+            // The difficulty pill cycles Casual→Normal→Nightmare on tap.
             Skin.Zone(root, 0.40f, 0.405f, 0.60f, 0.47f, () =>
             {
                 Diff.Current = (Difficulty)(((int)Diff.Current + 1) % 3);
                 if (!Audio.Muted) Audio.Play("click", 0.6f);
-                ShowMenu();
             }, "difficulty");
 
             Skin.Zone(root, 0.255f, 0.50f, 0.475f, 0.58f, StartDaily,      "bloodmoon");
