@@ -1152,24 +1152,30 @@ namespace TrustIssues
         // painted label and just gets an invisible tap-zone.
         void BuildSkinnedMenu(Transform root, int tithe)
         {
-            // The artwork already has every label + number painted in, so we add NO
-            // text on top (that would double it) — just invisible tap-zones over each
-            // painted button. Coordinates are fractions measured off menu_bg.jpg from
-            // the top-left; tuned so each zone sits on its button.
-            //
-            // Trade-off of using the picture as-is: the painted values (FLOOR 1,
-            // DIFFICULTY NORMAL, SHOP 65, BESTIARY 1/19) are frozen at what the art
-            // shows — the buttons still WORK, they just don't re-print live numbers.
-            // Drop in a menu_bg with those five spots left blank and BuildSkinnedMenu's
-            // sibling (the live-text path in git history) can repaint them for real.
+            // LIVE VALUES: the artwork baked in sample numbers (SHOP 65, FLOOR 1,
+            // DIFFICULTY NORMAL, BESTIARY 1/19). We paint the REAL values over them —
+            // an opaque chip hides the painted sample, then the true value is drawn on
+            // top — so the menu reflects your actual balance/floor/difficulty and is no
+            // longer a dead picture. Chip colours match the buttons' dark interiors.
+            string gold = "#" + ColorUtility.ToHtmlStringRGB(Theme.Coin);
+            Skin.LiveValue(root, PlayNowCaption(), 0.31f, 0.315f, 0.69f, 0.385f, 44, Color.white,
+                Theme.Hex("1A0A0E"), title: true);
+            Skin.LiveValue(root, $"DIFFICULTY:  <color={gold}>{Diff.Name}</color>",
+                0.405f, 0.415f, 0.595f, 0.468f, 27, Color.white, Theme.Hex("0E0910"));
+            Skin.LiveValue(root, $"<color={gold}>SHOP   {Currency.Balance}</color>",
+                0.075f, 0.715f, 0.225f, 0.785f, 21, Theme.Coin, Theme.Hex("0C0810"));
+            Skin.LiveValue(root, $"BESTIARY {Codex.KnownCount()}/{Codex.Total}",
+                0.415f, 0.715f, 0.595f, 0.785f, 19, new Color(1, 1, 1, 0.92f), Theme.Hex("0C0810"));
+
             Skin.Zone(root, 0.30f, 0.29f, 0.70f, 0.40f, PlayNow, "continue");
 
-            // The difficulty pill still cycles Casual→Normal→Nightmare on tap (it
-            // drives real gameplay); only its painted label stays put.
+            // The difficulty pill cycles Casual→Normal→Nightmare on tap; rebuild the
+            // menu so its live label repaints with the new value.
             Skin.Zone(root, 0.40f, 0.405f, 0.60f, 0.47f, () =>
             {
                 Diff.Current = (Difficulty)(((int)Diff.Current + 1) % 3);
                 if (!Audio.Muted) Audio.Play("click", 0.6f);
+                ShowMenu();
             }, "difficulty");
 
             Skin.Zone(root, 0.255f, 0.50f, 0.475f, 0.58f, StartDaily,      "bloodmoon");
@@ -5595,8 +5601,12 @@ namespace TrustIssues
             });
             Time.timeScale = 0f;
             _pausePanel = Overlay(new Color(0, 0, 0, 0.6f), out var root);
-            Theme.Label(root, "PAUSED", 96, Theme.Player,
+            // If a pause artwork is dropped in (Resources/ui/pause_bg), wear it; the
+            // ornate frame from Overlay themes it either way.
+            Skin.Background(root, "pause_bg");
+            var pausedTitle = Theme.Label(root, "PAUSED", 96, Theme.Player,
                 new Vector2(0.5f, 0.5f), new Vector2(0, 250), new Vector2(1000, 130));
+            pausedTitle.font = Theme.TitleFont;   // the dripping-blood heading, like every other screen
             // Endless never ends on lives, so it needs an explicit "END RUN" to bank
             // your depth and see the score — that's the 4-button layout.
             bool endless = _mode == Mode.Endless;

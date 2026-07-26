@@ -759,12 +759,13 @@ namespace TrustIssues
             col.isTrigger = true;
             col.size = new Vector2(1.1f, 0.35f);   // hugging the floor — jump it
             var sz = go.AddComponent<SleepRuneZone>();
-            // Candle-bone gold, not purple — the lullaby is candlelight, and the
-            // palette here is stone/blood/bone/gold only (playtest: "where did
-            // purple come from?"). A soft haze of the same light sells "drowsy"
-            // without leaving the theme.
+            // An actual little RED BED — the castle's lullaby is a bed that begs you
+            // to lie down. Its parts double as the rune "glyph": SleepRuneZone dims
+            // them once used, so a spent bed reads as "already napped here". A soft
+            // candle haze above sells "drowsy" without leaving the stone/blood/bone
+            // /gold palette.
             var candle = new Color(0.93f, 0.85f, 0.6f, 0.85f);
-            sz.SetGlyph(BuildRuneGlyph(go.transform, candle));
+            sz.SetGlyph(BuildBed(go.transform, go.transform.position + Vector3.up * 0.2f));
             for (int i = 0; i < 2; i++)
             {
                 var m = new GameObject("Haze" + i);
@@ -776,6 +777,28 @@ namespace TrustIssues
                 sr.color = new Color(candle.r, candle.g, candle.b, 0.10f);
                 sr.sortingOrder = 3;
             }
+        }
+
+        // A small side-on RED BED built from primitives. Returns every part so the
+        // SleepRuneZone can dim the whole bed once it's been slept on.
+        SpriteRenderer[] BuildBed(Transform parent, Vector3 b)
+        {
+            var wood   = Theme.Hex("3A2118");   // dark bed frame
+            var red    = Theme.Hex("9A1420");   // blood-red mattress
+            var redDk  = Theme.Hex("5E0E18");   // blanket fold
+            var pillow = Theme.Hex("E8DED0");   // bone-white pillow
+            var parts = new System.Collections.Generic.List<SpriteRenderer>();
+            void Part(string n, Vector3 off, Vector2 size, Color c, int o)
+                => parts.Add(Theme.Box(n, parent, b + off, size, c, o).GetComponent<SpriteRenderer>());
+            Part("BedLegL",  new Vector3(-0.55f, -0.36f, 0f), new Vector2(0.12f, 0.22f), wood,  3);
+            Part("BedLegR",  new Vector3( 0.55f, -0.36f, 0f), new Vector2(0.12f, 0.22f), wood,  3);
+            Part("BedFrame", new Vector3( 0f,    -0.16f, 0f), new Vector2(1.50f, 0.24f), wood,  4);
+            Part("BedMattr", new Vector3( 0f,     0.04f, 0f), new Vector2(1.42f, 0.24f), red,   5);
+            Part("BedBlank", new Vector3( 0.30f,  0.06f, 0f), new Vector2(0.82f, 0.20f), redDk, 6);
+            Part("BedPillw", new Vector3(-0.50f,  0.12f, 0f), new Vector2(0.34f, 0.18f), pillow,6);
+            Part("BedHead",  new Vector3(-0.74f,  0.16f, 0f), new Vector2(0.12f, 0.52f), wood,  5);
+            Part("BedFoot",  new Vector3( 0.74f,  0.06f, 0f), new Vector2(0.12f, 0.34f), wood,  5);
+            return parts.ToArray();
         }
 
         // A gravity rune: (x, y, dud flag, unused). Spectral blue-white — the

@@ -96,6 +96,25 @@ namespace TrustIssues
         }
 
         /// <summary>
+        /// A live value painted OVER a spot where the artwork baked in a sample number
+        /// (SHOP 65, FLOOR 1…). Lays an opaque chip to hide the painted text, then the
+        /// real value on top — so the menu shows your actual balance/floor/difficulty
+        /// instead of a frozen picture. Tune the chip colour to the button's interior.
+        /// </summary>
+        public static Text LiveValue(Transform root, string text, float x0, float top0, float x1, float top1,
+            int size, Color color, Color chip, bool title = false)
+        {
+            var cg = new GameObject("Chip", typeof(RectTransform));
+            cg.transform.SetParent(root, false);
+            var ci = cg.AddComponent<Image>();
+            ci.color = chip; ci.raycastTarget = false;
+            Anchors(x0, top0, x1, top1, out var cmin, out var cmax);
+            var crt = ci.rectTransform;
+            crt.anchorMin = cmin; crt.anchorMax = cmax; crt.offsetMin = crt.offsetMax = Vector2.zero;
+            return LiveText(root, text, x0, top0, x1, top1, size, color, title);
+        }
+
+        /// <summary>
         /// Live text laid over the artwork for a value that changes (floor number,
         /// difficulty, shard balance, a nightly line…). Sits in the rect you measured
         /// off the mockup; use the title font for headings via the `title` flag.

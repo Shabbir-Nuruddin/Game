@@ -80,23 +80,29 @@ namespace TrustIssues
                 var go = sp != null
                     ? Theme.SpriteBox(chand ? "Chandelier" : "RockHead", transform, pos, size, sp, 4)
                     : Theme.Box(chand ? "Chandelier" : "RockHead", transform, pos, size,
-                                chand ? Theme.Hex("2A2430") : Theme.Trick, 4);
+                                chand ? Theme.Hex("4A3016") : Theme.Trick, 4);   // bronze body
                 if (sp != null && !chand) go.GetComponent<SpriteRenderer>().color = new Color(0.5f, 0.45f, 0.5f);
                 // WROUGHT IRON, not gold. The imported sprite is a bright brass
                 // blob that reads as a mystery cheese block against the night sky
                 // (playtest: "how does that fit the theme") — tint it down to
                 // black iron so only its shape and the drop threat read.
                 if (sp != null && chand) go.GetComponent<SpriteRenderer>().color = new Color(0.34f, 0.3f, 0.38f);
-                if (chand && sp == null) // fallback art: a bronze frame, candles, and a chain
+                if (chand && sp == null) // fallback art: the exact hanging fixture from the game art
                 {
-                    // The old dark frame vanished against the night sky, so all players
-                    // saw was three floating gold "candles" — a mystery object. A
-                    // brighter frame + a chain up to the ceiling reads as "hanging
-                    // chandelier", i.e. "this thing can DROP".
-                    Theme.Box("Chain", go.transform, (Vector2)pos + new Vector2(0f, 2.2f), new Vector2(0.08f, 4f), Theme.Hex("4A3A28"), 3);
-                    Theme.Box("Candle", go.transform, (Vector2)pos + new Vector2(-0.7f, 0.5f), new Vector2(0.14f, 0.4f), Theme.Coin, 5);
-                    Theme.Box("Candle", go.transform, (Vector2)pos + new Vector2(0.0f, 0.55f), new Vector2(0.14f, 0.4f), Theme.Coin, 5);
-                    Theme.Box("Candle", go.transform, (Vector2)pos + new Vector2(0.7f, 0.5f), new Vector2(0.14f, 0.4f), Theme.Coin, 5);
+                    // A bronze bar with a red gem at its heart and a row of red spikes
+                    // hanging beneath, on a chain to the ceiling — matches the chandelier
+                    // drawn in the gameplay art and reads instantly as "this can DROP".
+                    var bronze = Theme.Hex("8A5A26");
+                    Theme.Box("Chain", go.transform, (Vector2)pos + new Vector2(0f, 2.3f), new Vector2(0.10f, 4f), Theme.Hex("4A3016"), 3);
+                    Theme.Box("Bar",   go.transform, (Vector2)pos + new Vector2(0f, 0.14f), new Vector2(2.3f, 0.30f), bronze, 5);
+                    var gem = Theme.Box("Gem", go.transform, (Vector2)pos + new Vector2(0f, 0.14f), new Vector2(0.34f, 0.34f), Theme.Danger, 6);
+                    gem.transform.rotation = Quaternion.Euler(0f, 0f, 45f);   // a red diamond
+                    for (int i = -2; i <= 2; i++)   // a row of red spikes hanging below the bar
+                    {
+                        var spk = Theme.Box("Spike", go.transform, (Vector2)pos + new Vector2(i * 0.46f, -0.22f),
+                            new Vector2(0.24f, 0.34f), Theme.Danger, 5);
+                        spk.transform.rotation = Quaternion.Euler(0f, 0f, 45f);
+                    }
                 }
                 var col = go.AddComponent<BoxCollider2D>(); col.isTrigger = true;
                 var kz = go.AddComponent<KillZone>();
