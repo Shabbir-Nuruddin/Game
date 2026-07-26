@@ -419,6 +419,11 @@ namespace TrustIssues
             new Color(0.80f, 0.85f, 1.00f, 0.50f),
         };
 
+        // The versus rotation: each race lands in a different world, ordered so
+        // consecutive rounds are maximally different (cold steel → searing red →
+        // cold blue → ember → violet → green → teal → gold → crimson).
+        static readonly int[] VersusThemes = { 8, 4, 1, 7, 5, 2, 6, 3, 0 };
+
         // How visible the castle parallax is per theme — faded to a distant ruin in the
         // open "void" modes (Endless) so they don't read as "the same castle" as Castle.
         static readonly float[] ThemeCastleVis =
@@ -465,7 +470,11 @@ namespace TrustIssues
             switch (_mode)
             {
                 case Mode.Daily:   idx = 4; break;                         // Blood Moon
-                case Mode.Versus:  idx = 8; break;                         // Arena
+                // Every versus ROUND races somewhere new — the arena travels through
+                // the whole castle (steel → blood moon → crypt → inferno → …) so a
+                // long match never replays the same picture. Both players share the
+                // round number, so they always see the same place.
+                case Mode.Versus:  idx = VersusThemes[_versusRound % VersusThemes.Length]; break;
                 case Mode.Custom:  idx = 6; break;                         // The Void — a built place
                 case Mode.Endless: idx = 5 + (_levelIndex / 10) % 3; break;// Abyss → Void → Inferno
                 default:           idx = WorldOf(_levelIndex); break;      // Castle worlds
@@ -485,7 +494,9 @@ namespace TrustIssues
             idx = Mathf.Clamp(idx, 0, ThemeTint.Length - 1);
             // Re-apply when EITHER the world or the floor changes — the per-floor
             // shade below is what stops ten floors of a world looking identical.
-            int shadeFloor = _levelIndex;
+            // In Versus the floor is always 0, so the ROUND drives the shade instead;
+            // otherwise every race would be tinted identically.
+            int shadeFloor = _mode == Mode.Versus ? _versusRound : _levelIndex;
             if (idx == _curTheme && shadeFloor == _curShadeFloor) return;
             _curTheme = idx;
             _curShadeFloor = shadeFloor;
@@ -794,10 +805,10 @@ namespace TrustIssues
         // count down each button's cooldown, and grey a button while it's cooling.
         void UpdateTrollButtons()
         {
-            // The match score rides at the top for the whole race (independent of the
+            // The scoreboard rides at the top for the whole race (independent of the
             // troll column, which hides once someone reaches the coffin).
-            if (_versusScore != null)
-                _versusScore.gameObject.SetActive(_mode == Mode.Versus && _state == State.Play && Net.InRoom);
+            if (_versusHud != null)
+                _versusHud.SetActive(_mode == Mode.Versus && _state == State.Play && Net.InRoom);
 
             if (_trollPanel == null) return;
             bool show = _mode == Mode.Versus && _state == State.Play && !_raceOver && Net.InRoom;
@@ -2631,19 +2642,82 @@ namespace TrustIssues
 
         // Match score across rounds (continuous multiplayer).
         int _versusRound, _versusWins, _versusLosses;
-        UnityEngine.UI.Text _versusScore;   // persistent top-of-screen score during a race
+        // ---- The versus scoreboard -------------------------------------------
+        // A framed plate at top-centre (clear of the top-left HUD and the top-right
+        // mute/shard icons), in the menus' visual language: near-black plate, ornate
+        // gold frame, serif type. Reads at a glance mid-race:
+        //
+        //        YOUR NAME      3  –  1      RIVAL NAME
+        //             ROUND 5  ·  FIRST TO 5
+        //
+        // Scores are the main-menu blood red; the leader's name wears candle gold.
+        GameObject _versusHud;
+        UnityEngine.UI.Text _vsYouName, _vsYouScore, _vsRivalName, _vsRivalScore, _vsRound;
+        static readonly Color VsBone = new Color(0.90f, 0.86f, 0.82f, 0.92f);
 
-        // Build/refresh the always-visible match score at the top of the screen, so
-        // both racers can read the exact standings at any moment ("YOU 2 — 1 RIVAL").
+        void BuildVersusHud()
+        {
+            if (_versusHud != null) return;
+            _versusHud = new GameObject("VersusHud", typeof(RectTransform));
+            _versusHud.transform.SetParent(Theme.Canvas.transform, false);
+            var rt = (RectTransform)_versusHud.transform;
+            rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 1f);
+            rt.pivot = new Vector2(0.5f, 1f);
+            rt.anchoredPosition = new Vector2(0f, -12f);
+            rt.sizeDelta = new Vector2(820f, 112f);   // room for two 14-char names
+
+            var plate = _versusHud.AddComponent<Image>();
+            plate.color = new Color(0.05f, 0.02f, 0.035f, 0.88f);
+            plate.raycastTarget = false;
+
+            // The same ornate gold frame the menus use, so the HUD belongs to the game.
+            var frameSp = Theme.NineSlice("panel_frame", 16);
+            if (frameSp != null)
+            {
+                var fr = new GameObject("Frame", typeof(RectTransform));
+                fr.transform.SetParent(_versusHud.transform, false);
+                var fi = fr.AddComponent<Image>();
+                fi.sprite = frameSp; fi.type = Image.Type.Sliced;
+                fi.pixelsPerUnitMultiplier = 0.42f;
+                fi.color = new Color(0.86f, 0.72f, 0.42f, 0.95f);
+                fi.raycastTarget = false;
+                var frt = fi.rectTransform;
+                frt.anchorMin = Vector2.zero; frt.anchorMax = Vector2.one;
+                frt.offsetMin = new Vector2(-8, -8); frt.offsetMax = new Vector2(8, 8);
+            }
+
+            // Columns: [name ▸][score] – [score][◂ name], names pushed outward so a
+            // long name can never crowd the digits.
+            _vsYouName    = VsLabel("",  27, VsBone,        new Vector2(-250, 16), new Vector2(264, 40), TextAnchor.MiddleRight);
+            _vsYouScore   = VsLabel("0", 52, Theme.Player,  new Vector2(-78, 16),  new Vector2(84, 62),  TextAnchor.MiddleCenter);
+            VsLabel("–", 40, new Color(0.80f, 0.70f, 0.45f, 0.80f), new Vector2(0, 16), new Vector2(50, 56), TextAnchor.MiddleCenter);
+            _vsRivalScore = VsLabel("0", 52, Theme.Player,  new Vector2(78, 16),   new Vector2(84, 62),  TextAnchor.MiddleCenter);
+            _vsRivalName  = VsLabel("",  27, VsBone,        new Vector2(250, 16),  new Vector2(264, 40), TextAnchor.MiddleLeft);
+            _vsRound      = VsLabel("",  20, new Color(0.85f, 0.70f, 0.35f, 0.85f),
+                                    new Vector2(0, -32), new Vector2(780, 30), TextAnchor.MiddleCenter);
+        }
+
+        // A scoreboard label in the menu serif (matches the skin artwork's type).
+        UnityEngine.UI.Text VsLabel(string txt, int size, Color col, Vector2 pos, Vector2 dim, TextAnchor align)
+        {
+            var t = Theme.Label(_versusHud.transform, txt, size, col, new Vector2(0.5f, 0.5f), pos, dim, align);
+            if (Theme.MenuFont != null) t.font = Theme.MenuFont;
+            t.raycastTarget = false;
+            return t;
+        }
+
+        // Refresh the scoreboard's live values (names, points, round line).
         void UpdateVersusScore()
         {
-            if (_versusScore == null)
-            {
-                _versusScore = Theme.Label(Theme.Canvas.transform, "", 40, Theme.Coin,
-                    new Vector2(0.5f, 1f), new Vector2(0, -104), new Vector2(1100, 60));
-                _versusScore.raycastTarget = false;
-            }
-            _versusScore.text = $"{Net.PlayerName}   {_versusWins} — {_versusLosses}   RIVAL";
+            BuildVersusHud();
+            bool youLead = _versusWins > _versusLosses, rivalLead = _versusLosses > _versusWins;
+            _vsYouName.text    = Net.PlayerName.ToUpperInvariant();
+            _vsRivalName.text  = Net.RivalName().ToUpperInvariant();
+            _vsYouName.color   = youLead ? Theme.Coin : VsBone;
+            _vsRivalName.color = rivalLead ? Theme.Coin : VsBone;
+            _vsYouScore.text   = _versusWins.ToString();
+            _vsRivalScore.text = _versusLosses.ToString();
+            _vsRound.text      = $"ROUND {_versusRound + 1}   ·   {ThemeNames[VersusThemes[_versusRound % VersusThemes.Length]]}   ·   FIRST TO {VersusMatchPoints}";
         }
 
         // Start the next race in the SAME room: a new deterministic track (seed +
@@ -2657,6 +2731,7 @@ namespace TrustIssues
             ClearGhosts();
             _netSendTimer = 0f;
             BeginRun(0);
+            UpdateVersusScore();   // new round + new arena name on the scoreboard
             ShowHint($"ROUND {_versusRound + 1}  •  you {_versusWins} – {_versusLosses} rival.  Race!");
         }
 

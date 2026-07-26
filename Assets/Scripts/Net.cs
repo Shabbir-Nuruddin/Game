@@ -116,6 +116,16 @@ namespace TrustIssues
             return (p != null && !string.IsNullOrEmpty(p.NickName)) ? p.NickName : ("Heir-" + actor);
         }
 
+        /// <summary>The other racer's chosen name, for the versus scoreboard.</summary>
+        public static string RivalName()
+        {
+            if (!InRoom) return "RIVAL";
+            var others = PhotonNetwork.PlayerListOthers;
+            if (others == null || others.Length == 0) return "WAITING…";
+            var n = others[0].NickName;
+            return string.IsNullOrEmpty(n) ? "RIVAL" : n;
+        }
+
         // GameRoot subscribes to these.
         public static Action<int, Vector3, bool> OnState;  // actor, pos, faceLeft
         public static Action<int> OnLeft;                  // actor left
@@ -341,6 +351,7 @@ namespace TrustIssues
             }
         }
         public static string NickOf(int actor) => "Heir";
+        public static string RivalName() => "RIVAL";
 
         public static Action<int, Vector3, bool> OnState;
         public static Action<int> OnLeft;
