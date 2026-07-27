@@ -161,26 +161,60 @@ namespace TrustIssues
     public class TouchJoystick : MonoBehaviour
     {
         // Generous catch radius for the initial finger-down so a slightly
-        // off-center tap still grabs the stick.
+        // off-center tap still grabs the stick (FIXED mode only — in floating
+        // mode the catch area is already the whole zone).
         const float GrabPad = 1.4f;
 
-        RectTransform _rt, _knob;
+        // FLOATING mode: this component's own rect is a big invisible catch ZONE
+        // (one half of the screen), and the visible ring is a child that jumps to
+        // wherever the thumb lands, then hides again on release. That's the layout
+        // every modern touch platformer uses, and it's the fix for "my character
+        // hides beneath the joystick" — with nothing drawn until you touch, and the
+        // ring drawn around your thumb rather than in a corner you have to reach
+        // for, the stick is never sitting on top of the action.
+        //
+        // FIXED mode keeps the old behaviour: the rect IS the ring, always visible.
+        RectTransform _rt, _base, _knob;
         Graphic[] _graphics = System.Array.Empty<Graphic>();
         float[] _idleAlpha = System.Array.Empty<float>();
         float _radius;
+        bool _floating;
+        Vector2 _origin;    // where the thumb landed, in zone-local space
         int _fingerId = -1; // -1 = not tracking a finger (or the mouse fallback)
         bool _mouseDrag;
         bool _held;
 
-        public void Setup(RectTransform knob, Graphic[] feedbackGraphics)
+        public void Setup(RectTransform baseRt, RectTransform knob, Graphic[] feedbackGraphics,
+            float radius, bool floating)
         {
             _rt = (RectTransform)transform;
+            _base = baseRt;
             _knob = knob;
-            _radius = _rt.rect.width * 0.5f;
+            _radius = radius;
+            _floating = floating;
             _graphics = feedbackGraphics ?? System.Array.Empty<Graphic>();
             _idleAlpha = new float[_graphics.Length];
             for (int i = 0; i < _graphics.Length; i++)
                 _idleAlpha[i] = _graphics[i] != null ? _graphics[i].color.a : 1f;
+            if (_floating && _base != null) _base.gameObject.SetActive(false);
+        }
+
+        // Park the ring under the thumb (floating) and reveal it.
+        void PlaceBase(Vector2 zoneLocal)
+        {
+            _origin = _floating ? zoneLocal : Vector2.zero;
+            if (_base == null) return;
+            if (_floating)
+            {
+                _base.anchoredPosition = _origin;
+                if (!_base.gameObject.activeSelf) _base.gameObject.SetActive(true);
+            }
+        }
+
+        void HideBase()
+        {
+            if (_floating && _base != null && _base.gameObject.activeSelf)
+                _base.gameObject.SetActive(false);
         }
 
         void Update()
@@ -201,7 +235,7 @@ namespace TrustIssues
                     if (t.phase == TouchPhase.Ended || t.phase == TouchPhase.Canceled) break;
                     stillDown = true;
                     held = true;
-                    knobOffset = LocalOffset(t.position);
+                    knobOffset = LocalOffset(t.position) - _origin;
                     break;
                 }
                 if (!stillDown) _fingerId = -1;
@@ -211,13 +245,14 @@ namespace TrustIssues
                 if (Input.GetMouseButton(0))
                 {
                     held = true;
-                    knobOffset = LocalOffset(Input.mousePosition);
+                    knobOffset = LocalOffset(Input.mousePosition) - _origin;
                 }
                 else _mouseDrag = false;
             }
             else
             {
-                // Not tracking anything: look for a fresh press that lands on the base.
+                // Not tracking anything: look for a fresh press. In floating mode that
+                // means anywhere in the zone, and the ring is planted right there.
                 if (Input.touchCount > 0)
                 {
                     for (int i = 0; i < Input.touchCount; i++)
@@ -227,7 +262,8 @@ namespace TrustIssues
                         if (!Contains(t.position)) continue;
                         _fingerId = t.fingerId;
                         held = true;
-                        knobOffset = LocalOffset(t.position);
+                        PlaceBase(LocalOffset(t.position));
+                        knobOffset = Vector2.zero;   // the stick starts centred on your thumb
                         break;
                     }
                 }
@@ -235,7 +271,8 @@ namespace TrustIssues
                 {
                     _mouseDrag = true;
                     held = true;
-                    knobOffset = LocalOffset(Input.mousePosition);
+                    PlaceBase(LocalOffset(Input.mousePosition));
+                    knobOffset = Vector2.zero;
                 }
             }
 
@@ -247,8 +284,9 @@ namespace TrustIssues
             }
             else if (_held)
             {
-                // Just released: snap the knob home and zero movement.
+                // Just released: snap the knob home, hide a floating ring, stop moving.
                 if (_knob != null) _knob.anchoredPosition = Vector2.zero;
+                HideBase();
                 TouchInput.X = 0f;
             }
 
@@ -279,6 +317,7 @@ namespace TrustIssues
             _held = false;
             TouchInput.X = 0f;
             if (_knob != null) _knob.anchoredPosition = Vector2.zero;
+            HideBase();
             for (int i = 0; i < _graphics.Length; i++)
             {
                 if (_graphics[i] == null) continue;
@@ -314,8 +353,11 @@ namespace TrustIssues
             if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(_rt, screen, null, out var p))
                 return false;
             var r = _rt.rect;
-            return Mathf.Abs(p.x - r.center.x) <= r.width * 0.5f * GrabPad &&
-                   Mathf.Abs(p.y - r.center.y) <= r.height * 0.5f * GrabPad;
+            // No grab padding in floating mode: the rect is already a screen-half-sized
+            // zone, and padding it would reach across into the action buttons.
+            float pad = _floating ? 1f : GrabPad;
+            return Mathf.Abs(p.x - r.center.x) <= r.width * 0.5f * pad &&
+                   Mathf.Abs(p.y - r.center.y) <= r.height * 0.5f * pad;
         }
     }
 }

@@ -664,7 +664,16 @@ namespace TrustIssues
         // small" to hit reliably. One multiplier scales every touch-control size
         // AND offset (offsets too, so the cluster spreads instead of overlapping);
         // desktop (Settings > ON-SCREEN PADS) keeps the compact layout.
-        static float TouchScale => Application.isMobilePlatform ? 1.35f : 1f;
+        // ---- touch-control preferences (Settings > CONTROLS on a phone) --------
+        // PAD SIZE: 0 small, 1 normal, 2 large. Multiplies the mobile base scale.
+        static int PadSizePref => PlayerPrefs.GetInt("opt_pad_size", 1);
+        static float TouchScale => (Application.isMobilePlatform ? 1.35f : 1f)
+                                 * (PadSizePref == 0 ? 0.84f : PadSizePref == 2 ? 1.16f : 1f);
+        // JOYSTICK: floating (appears under your thumb) or fixed to the corner.
+        // Floating is the default — see TouchJoystick for why.
+        static bool FloatingStick => PlayerPrefs.GetInt("opt_stick_float", 1) == 1;
+        // LEFT-HANDED mirrors the whole layout: movement on the right, actions left.
+        static bool LeftHanded => PlayerPrefs.GetInt("opt_lefty", 0) == 1;
 
         // On-screen buttons for phones (also work with the mouse). Hidden in menus.
         void BuildTouchControls()
@@ -676,31 +685,56 @@ namespace TrustIssues
             rt.offsetMin = rt.offsetMax = Vector2.zero;
 
             float k = TouchScale;
-            // Movement bottom-left: either the two bare arrow glyphs (no circle,
-            // no background — just the glyph) or the virtual joystick, whichever
-            // Settings > MOVE has picked. Both are built; only one is ever shown,
-            // toggled every frame in UpdateTouchLayout() like the ability buttons.
-            _btnLeft  = MakeArrowGlyph("‹", -1, new Vector2(0f, 0f), new Vector2(120, 145) * k, new Vector2(150, 150) * k);
-            _btnRight = MakeArrowGlyph("›", 1, new Vector2(0f, 0f), new Vector2(340, 145) * k, new Vector2(150, 150) * k);
+            // Left-handed flips which bottom corner each cluster lives in. Anchoring
+            // to the opposite corner and negating every x offset mirrors the whole
+            // layout without duplicating a single position.
+            bool lh = LeftHanded;
+            var moveAnchor = new Vector2(lh ? 1f : 0f, 0f);
+            var actAnchor  = new Vector2(lh ? 0f : 1f, 0f);
+            float ms = lh ? -1f : 1f;   // mirror movement offsets
+            float acts = lh ? -1f : 1f; // ...and action offsets
+
+            // Movement: either the two bare arrow glyphs (no circle, no background —
+            // just the glyph) or the virtual joystick, whichever Settings > MOVE has
+            // picked. Both are built; only one is ever shown, toggled every frame in
+            // UpdateTouchLayout() like the ability buttons.
+            _btnLeft  = MakeArrowGlyph("‹", -1, moveAnchor, new Vector2(120 * ms, 145) * k, new Vector2(150, 150) * k);
+            _btnRight = MakeArrowGlyph("›", 1, moveAnchor, new Vector2(340 * ms, 145) * k, new Vector2(150, 150) * k);
             // Base size drives the knob, the travel radius and the grab pad (see
             // TouchJoystick.Setup), so this one number is the whole stick's feel.
-            // Bumped from 170: at that size it was fiddly to steer with a thumb.
-            // A bigger radius also means more finger travel per speed step, which
-            // is half of the precision fix (the other half is TouchJoystick.Shape).
-            _joystick = MakeJoystick(new Vector2(0f, 0f), new Vector2(250, 185) * k, 240f * k);
-            // …action cluster bottom-right. JUMP is always there; the rest are shown
-            // contextually (bat in Blood Moon/Endless, dash if the skin grants it,
-            // SHOOT only while holding a loaded gun) via UpdateTouchLayout(). JUMP
+            // Trimmed 240 -> 205: with the stick now drawn under your thumb rather
+            // than parked in the corner, it no longer needs to be a big target, and
+            // a smaller ring covers less of the floor you're trying to read.
+            _joystick = MakeJoystick(moveAnchor, new Vector2(250 * ms, 185) * k, 205f * k, lh);
+            // …action cluster in the other corner. JUMP is always there; the rest are
+            // shown contextually (bat in Blood Moon/Endless, dash if the skin grants
+            // it, SHOOT only while holding a loaded gun) via UpdateTouchLayout(). JUMP
             // is a bare up-arrow (no circle, no background, no label) per the same
             // "just the arrow" styling as the movement glyphs.
             // Jump is the single most-mashed button in the game — sized up again
             // (170 -> 200) after testers kept fat-fingering past its edge.
-            MakeArrowGlyph("▲", 0, new Vector2(1f, 0f), new Vector2(-150, 145) * k, new Vector2(200, 200) * k);
-            _btnFly   = MakeBatButton(new Vector2(1f, 0f), new Vector2(-360, 120) * k, new Vector2(130, 130) * k);
-            _btnDash  = MakeTouch("DASH",  4, new Vector2(1f, 0f), new Vector2(-140, 350) * k, new Vector2(130, 130) * k, 0.24f);
-            _btnShoot = MakeGunButton(new Vector2(1f, 0f), new Vector2(-360, 310) * k, new Vector2(130, 130) * k);
+            MakeArrowGlyph("▲", 0, actAnchor, new Vector2(-150 * acts, 145) * k, new Vector2(200, 200) * k);
+            _btnFly   = MakeBatButton(actAnchor, new Vector2(-360 * acts, 120) * k, new Vector2(130, 130) * k);
+            _btnDash  = MakeTouch("DASH",  4, actAnchor, new Vector2(-140 * acts, 350) * k, new Vector2(130, 130) * k, 0.24f);
+            _btnShoot = MakeGunButton(actAnchor, new Vector2(-360 * acts, 310) * k, new Vector2(130, 130) * k);
             SyncMoveMode();
             _touchPanel.SetActive(false);
+        }
+
+        /// <summary>
+        /// Tear the pads down and lay them out again — needed when a Settings change
+        /// alters their SIZE or which corner they live in (a live toggle can't just
+        /// flip a flag for those, the rects have to be rebuilt).
+        /// </summary>
+        void RebuildTouchControls()
+        {
+            // Deactivate before destroying: Destroy is deferred to end of frame, and a
+            // still-live TouchButton would keep writing into TouchInput until then.
+            if (_touchPanel != null) { _touchPanel.SetActive(false); Destroy(_touchPanel); }
+            TouchInput.Clear();
+            _btnFly = _btnDash = _btnShoot = _btnLeft = _btnRight = _joystick = null;
+            BuildTouchControls();
+            UpdateTouchLayout();
         }
 
         GameObject _btnFly, _btnDash, _btnShoot, _btnLeft, _btnRight, _joystick;
@@ -983,30 +1017,58 @@ namespace TrustIssues
             return img;
         }
 
-        // A semi-transparent virtual joystick: a hollow ring base plus a solid
-        // knob that snaps to the drag and back to centre on release.
-        GameObject MakeJoystick(Vector2 anchor, Vector2 pos, float baseSize)
+        // A semi-transparent virtual joystick: a hollow ring base plus a solid knob
+        // that snaps to the drag and back to centre on release.
+        //
+        // FLOATING (the default): the root is an invisible catch ZONE covering the
+        // movement half of the screen, and the ring is a child that jumps under your
+        // thumb on touch and disappears on release — so nothing is drawn over the
+        // level until you're actually steering. FIXED parks the ring in the corner
+        // the old way, for players who want a stick that's always in one place.
+        GameObject MakeJoystick(Vector2 anchor, Vector2 pos, float baseSize, bool lefty)
         {
+            bool floating = FloatingStick;
             var go = new GameObject("Touch_JOYSTICK", typeof(RectTransform));
             go.transform.SetParent(_touchPanel.transform, false);
-            var baseImg = go.AddComponent<Image>();
+            var rt = (RectTransform)go.transform;
+            if (floating)
+            {
+                // The movement half, stopping short of the top so the HUD, the pause
+                // button and the mute icons stay tappable.
+                rt.anchorMin = new Vector2(lefty ? 0.52f : 0f, 0f);
+                rt.anchorMax = new Vector2(lefty ? 1f : 0.48f, 0.80f);
+                rt.offsetMin = rt.offsetMax = Vector2.zero;
+            }
+            else
+            {
+                rt.anchorMin = rt.anchorMax = anchor; rt.pivot = new Vector2(0.5f, 0.5f);
+                rt.anchoredPosition = pos; rt.sizeDelta = new Vector2(baseSize, baseSize);
+            }
+
+            // The visible ring. In fixed mode it simply fills the root rect; in
+            // floating mode it's moved to the touch point every press.
+            var baseGo = new GameObject("Base", typeof(RectTransform));
+            baseGo.transform.SetParent(go.transform, false);
+            var baseImg = baseGo.AddComponent<Image>();
             baseImg.sprite = Theme.Ring;
             baseImg.color = new Color(1f, 1f, 1f, 0.18f);
-            var rt = baseImg.rectTransform;
-            rt.anchorMin = rt.anchorMax = anchor; rt.pivot = new Vector2(0.5f, 0.5f);
-            rt.anchoredPosition = pos; rt.sizeDelta = new Vector2(baseSize, baseSize);
+            baseImg.raycastTarget = false;
+            var brt = baseImg.rectTransform;
+            brt.anchorMin = brt.anchorMax = new Vector2(0.5f, 0.5f); brt.pivot = new Vector2(0.5f, 0.5f);
+            brt.anchoredPosition = Vector2.zero; brt.sizeDelta = new Vector2(baseSize, baseSize);
 
             var knobGo = new GameObject("Knob", typeof(RectTransform));
-            knobGo.transform.SetParent(go.transform, false);
+            knobGo.transform.SetParent(baseGo.transform, false);
             var knobImg = knobGo.AddComponent<Image>();
             knobImg.sprite = Theme.Circle;
             knobImg.color = new Color(1f, 1f, 1f, 0.3f);
+            knobImg.raycastTarget = false;
             var knobRt = knobImg.rectTransform;
             knobRt.anchorMin = knobRt.anchorMax = new Vector2(0.5f, 0.5f); knobRt.pivot = new Vector2(0.5f, 0.5f);
             knobRt.anchoredPosition = Vector2.zero; knobRt.sizeDelta = new Vector2(baseSize * 0.45f, baseSize * 0.45f);
 
             var js = go.AddComponent<TouchJoystick>();
-            js.Setup(knobRt, new Graphic[] { baseImg, knobImg });
+            js.Setup(brt, knobRt, new Graphic[] { baseImg, knobImg }, baseSize * 0.5f, floating);
             return go;
         }
 
@@ -1214,6 +1276,16 @@ namespace TrustIssues
             Skin.Zone(root, 0.525f, 0.50f, 0.745f, 0.58f, ShowLevelSelect, "castle");
             Skin.Zone(root, 0.255f, 0.595f, 0.475f, 0.675f, StartEndless,    "endless");
             Skin.Zone(root, 0.525f, 0.595f, 0.745f, 0.675f, ShowVersusLobby, "multiplayer");
+
+            // ---- WARDROBE -------------------------------------------------------
+            // The artwork misspells it as "WARIROBE". Repainting the mockup would mean
+            // regenerating the whole menu image, so the word is chipped out and set
+            // again correctly in the footer bar's own lettering. Measured off the
+            // painted label: x 0.305-0.376 on the 1600x900 mockup.
+            var wardrobeWord = Skin.LiveValue(root, "WARDROBE", 0.298f, 0.757f, 0.384f, 0.789f,
+                27, Gothic.Bone, new Color(0.039f, 0.024f, 0.020f));
+            if (Theme.MenuFont != null) wardrobeWord.font = Theme.MenuFont;
+            Skin.Fit(wardrobeWord, 27, 13);
 
             // ---- BESTIARY n/19 -------------------------------------------------
             // The footer's painted "1/19" was frozen too. Only the count is replaced —
@@ -1459,11 +1531,21 @@ namespace TrustIssues
             const float LcX0 = 0.287f, LcX1 = 0.471f;   // left column, CONTROLS rows
             const float RcX0 = 0.529f, RcX1 = 0.713f;   // right column, CONTROLS rows
 
-            // ---- Ability key rebinds: tap, then press the new key (Esc cancels) ----
-            SkinRebind(root, LcX0, 0.261f, LcX1, 0.303f, "JUMP",      "jump");
-            SkinRebind(root, RcX0, 0.261f, RcX1, 0.303f, "SHOOT",     "shoot");
-            SkinRebind(root, LcX0, 0.328f, LcX1, 0.370f, "DASH",      "dash");
-            SkinRebind(root, RcX0, 0.328f, RcX1, 0.370f, "BAT-GLIDE", "fly");
+            // ---- The CONTROLS block --------------------------------------------
+            // On a PHONE there is no keyboard, so four key-rebind rows (JUMP: SPACE,
+            // DASH: K…) are dead weight — you can never press those keys. The block
+            // keeps its painted frames and becomes the settings a thumb actually
+            // wants: which movement control, whether the stick follows your thumb,
+            // how big the pads are, and which hand they sit under.
+            if (Application.isMobilePlatform) BuildTouchSettings(root, LcX0, LcX1, RcX0, RcX1);
+            else
+            {
+                // ---- Desktop: ability key rebinds (tap, then press the new key) ----
+                SkinRebind(root, LcX0, 0.261f, LcX1, 0.303f, "JUMP",      "jump");
+                SkinRebind(root, RcX0, 0.261f, RcX1, 0.303f, "SHOOT",     "shoot");
+                SkinRebind(root, LcX0, 0.328f, LcX1, 0.370f, "DASH",      "dash");
+                SkinRebind(root, RcX0, 0.328f, RcX1, 0.370f, "BAT-GLIDE", "fly");
+            }
 
             // ---- Volume: real draggable sliders over the painted bars ----
             SkinSlider(root, 0.5211f, "MUSIC", () => Audio.MusicVol, v => Audio.MusicVol = v);
@@ -1493,10 +1575,17 @@ namespace TrustIssues
             SkinChoice(root, TrX0, 0.782f, TrX1, 0.821f, "pads",
                 () => Skin.Caption("ON-SCREEN PADS", PrefOn("opt_touch", 0) ? "ON" : "OFF"),
                 () => FlipPrefQuiet("opt_touch", 0), null);
-            SkinChoice(root, TlX0, 0.842f, TlX1, 0.881f, "move",
-                () => Skin.Caption("MOVE", JoystickMode ? "JOYSTICK" : "ARROWS"),
-                () => { PlayerPrefs.SetInt("opt_joystick", JoystickMode ? 0 : 1); PlayerPrefs.Save(); },
-                SyncMoveMode);
+            // MOVE lives up in the CONTROLS block on a phone, so this slot carries
+            // rumble there instead of repeating itself.
+            if (Application.isMobilePlatform)
+                SkinChoice(root, TlX0, 0.842f, TlX1, 0.881f, "haptics",
+                    () => Skin.Caption("RUMBLE", PrefOn("opt_haptics", 1) ? "ON" : "OFF"),
+                    () => FlipPrefQuiet("opt_haptics", 1), null);
+            else
+                SkinChoice(root, TlX0, 0.842f, TlX1, 0.881f, "move",
+                    () => Skin.Caption("MOVE", JoystickMode ? "JOYSTICK" : "ARROWS"),
+                    () => { PlayerPrefs.SetInt("opt_joystick", JoystickMode ? 0 : 1); PlayerPrefs.Save(); },
+                    SyncMoveMode);
             SkinChoice(root, TrX0, 0.842f, TrX1, 0.881f, "depth",
                 () => Skin.Caption("2.5D DEPTH", PrefOn("opt_25d", 1) ? "ON" : "OFF"),
                 () => FlipPrefQuiet("opt_25d", 1), ApplyDepthMode);
@@ -1513,6 +1602,48 @@ namespace TrustIssues
                 0.13f, 0.906f, 0.38f, 0.952f, 15, new Color(1f, 1f, 1f, 0.42f),
                 false, TextAnchor.MiddleLeft);
             credit.horizontalOverflow = HorizontalWrapMode.Wrap;
+        }
+
+        // The phone version of the CONTROLS block. Same four painted frames, four
+        // touch settings instead of four key rebinds. SIZE and LEFT-HANDED rebuild the
+        // pads on the spot, so the change is visible the moment you resume.
+        //
+        // The painted instruction lines above and below the frames name keys too
+        // ("click an action, then press the new key", "move: A D / ← →  restart: R"),
+        // so both are chipped out and replaced with touch wording — otherwise the
+        // screen would still be telling a phone player to press Esc.
+        void BuildTouchSettings(Transform root, float LcX0, float LcX1, float RcX0, float RcX1)
+        {
+            var band = new Color(0.028f, 0.014f, 0.018f, 1f);   // the near-black castle behind both lines
+
+            Skin.Chip(root, 0.290f, 0.216f, 0.715f, 0.240f, band);
+            var lead = Skin.LiveText(root, "tap a row to change it — tuned for thumbs",
+                0.27f, 0.216f, 0.735f, 0.240f, 24, new Color(0.72f, 0.22f, 0.26f, 1f));
+            if (Theme.MenuFont != null) lead.font = Theme.MenuFont;
+            Skin.Fit(lead, 24, 13);
+
+            SkinChoice(root, LcX0, 0.261f, LcX1, 0.303f, "move",
+                () => Skin.Caption("MOVE", JoystickMode ? "JOYSTICK" : "ARROWS"),
+                () => { PlayerPrefs.SetInt("opt_joystick", JoystickMode ? 0 : 1); PlayerPrefs.Save(); },
+                SyncMoveMode);
+            SkinChoice(root, RcX0, 0.261f, RcX1, 0.303f, "stickmode",
+                () => Skin.Caption("STICK", FloatingStick ? "FOLLOWS THUMB" : "FIXED"),
+                () => { PlayerPrefs.SetInt("opt_stick_float", FloatingStick ? 0 : 1); PlayerPrefs.Save(); },
+                RebuildTouchControls);
+            SkinChoice(root, LcX0, 0.328f, LcX1, 0.370f, "padsize",
+                () => Skin.Caption("PAD SIZE", PadSizePref == 0 ? "SMALL" : PadSizePref == 2 ? "LARGE" : "NORMAL"),
+                () => { PlayerPrefs.SetInt("opt_pad_size", (PadSizePref + 1) % 3); PlayerPrefs.Save(); },
+                RebuildTouchControls);
+            SkinChoice(root, RcX0, 0.328f, RcX1, 0.370f, "lefty",
+                () => Skin.Caption("HAND", LeftHanded ? "LEFT" : "RIGHT"),
+                () => { PlayerPrefs.SetInt("opt_lefty", LeftHanded ? 0 : 1); PlayerPrefs.Save(); },
+                RebuildTouchControls);
+
+            Skin.Chip(root, 0.262f, 0.401f, 0.712f, 0.427f, band);
+            var hint = Skin.LiveText(root, "the stick appears wherever your thumb lands",
+                0.24f, 0.401f, 0.735f, 0.427f, 24, new Color(0.72f, 0.22f, 0.26f, 1f));
+            if (Theme.MenuFont != null) hint.font = Theme.MenuFont;
+            Skin.Fit(hint, 24, 13);
         }
 
         // Matched to the artwork's own lettering: its captions are ~18px tall on a
@@ -5139,6 +5270,10 @@ namespace TrustIssues
 
             _dying = true;
             _deaths++;
+            // A short rumble on death — on a phone the screen shake alone is easy to
+            // miss mid-thumb. Opt-out lives in Settings > RUMBLE.
+            if (Application.isMobilePlatform && PlayerPrefs.GetInt("opt_haptics", 1) == 1)
+                Handheld.Vibrate();
             _floorDeaths++;
             // If the nemesis trap just scored, its kill-streak taunt rides the roast.
             if (msg != null) msg = Memory.DecorateRoast(msg);
@@ -6061,12 +6196,14 @@ namespace TrustIssues
                 { "level_index", _levelIndex },
             });
             Time.timeScale = 0f;
-            // A heavier wash than before so the castle behind reads as a dimmed
-            // backdrop rather than competing with the menu, but still visibly THERE —
-            // pause shouldn't feel like you left the level.
-            _pausePanel = Overlay(new Color(0.02f, 0.008f, 0.025f, 0.80f), out var root);
+            // FULLY OPAQUE. The old pause let the level show through at 20%, and the
+            // level is lit by torches and candle gold — so the "black and red" pause
+            // screen came out washed orange. Nothing behind it shows now; it wears the
+            // same black/red ground, blood moon and castle skyline as the main menu.
+            _pausePanel = Overlay(new Color(0.02f, 0.008f, 0.025f, 1f), out var root);
             // If a pause artwork is dropped in (Resources/ui/pause_bg), wear it.
             bool painted = Skin.Background(root, "pause_bg") != null;
+            if (!painted) Gothic.Backdrop(root);
 
             // Endless never ends on lives, so it needs an explicit "END RUN" to bank
             // your depth and see the score — that's the 4-button layout.
@@ -6078,7 +6215,9 @@ namespace TrustIssues
             float plateH = endless ? 612f : 500f;
             if (!painted)
             {
-                var plate = Gothic.PlateAt(root, Vector2.zero, new Vector2(660, plateH), Gothic.Ground);
+                // Slightly lifted off the backdrop (which is Gothic.Ground) so the
+                // slab still reads as a panel rather than dissolving into the wall.
+                var plate = Gothic.PlateAt(root, Vector2.zero, new Vector2(660, plateH), Gothic.Plate);
                 var grain = new GameObject("Grain", typeof(RectTransform)).AddComponent<Image>();
                 grain.transform.SetParent(plate.transform, false);
                 grain.sprite = Theme.StoneTile; grain.type = Image.Type.Tiled;

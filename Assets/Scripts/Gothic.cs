@@ -148,6 +148,26 @@ namespace TrustIssues
             mrt.pivot = new Vector2(0.5f, 0.5f);
             mrt.sizeDelta = new Vector2(560, 560);
 
+            // The castle in silhouette along the bottom, the way the main-menu
+            // painting frames its screen. Tinted almost to black so it reads as a
+            // skyline behind the content, never as a picture competing with it.
+            var castle = Assets.Sprite("bg_castle");
+            if (castle != null)
+            {
+                for (int s = 0; s < 2; s++)   // one either side, the right one mirrored
+                {
+                    var c = new GameObject("Castle", typeof(RectTransform)).AddComponent<Image>();
+                    c.transform.SetParent(root, false);
+                    c.sprite = castle; c.raycastTarget = false; c.preserveAspect = true;
+                    c.color = new Color(0.30f, 0.06f, 0.10f, 0.5f);
+                    var crt = c.rectTransform;
+                    crt.anchorMin = crt.anchorMax = new Vector2(s == 0 ? 0.16f : 0.86f, 0.20f);
+                    crt.pivot = new Vector2(0.5f, 0.5f);
+                    crt.sizeDelta = new Vector2(900, 508);
+                    if (s == 1) crt.localScale = new Vector3(-1f, 1f, 1f);
+                }
+            }
+
             Border(root, 26);
         }
 
