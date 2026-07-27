@@ -1167,6 +1167,12 @@ namespace TrustIssues
         // The artwork should leave those four dynamic spots' TEXT blank (frame/icon
         // only) so the live text below doesn't double up; every other button keeps its
         // painted label and just gets an invisible tap-zone.
+        // The menu's difficulty line in the artwork's own two-tone lettering: the
+        // label in bone, the value in candle gold — matching the painted pill.
+        static string MenuDifficultyCaption() =>
+            $"<color=#{ColorUtility.ToHtmlStringRGB(Gothic.Bone)}>DIFFICULTY:</color>  " +
+            $"<color=#{ColorUtility.ToHtmlStringRGB(Theme.Coin)}>{Diff.Name.ToUpperInvariant()}</color>";
+
         void BuildSkinnedMenu(Transform root, int tithe)
         {
             // LIVE SHARD BALANCE over where the artwork said "SHOP 65". The baked
@@ -1177,19 +1183,46 @@ namespace TrustIssues
                 36, Theme.Coin, align: TextAnchor.MiddleLeft);
             if (Theme.MenuFont != null) shopNum.font = Theme.MenuFont;
 
+            // ---- CONTINUE — FLOOR N ------------------------------------------
+            // The painting says "CONTINUE — FLOOR 1" forever. Clear 12 floors and the
+            // menu still promised floor 1, and the biggest button on the screen was
+            // the one telling the lie. Chip the painted line and write the real one:
+            // the plate's interior is near-black down its middle (the red glow lives
+            // out at the ornate end-caps), so the chip lands invisibly.
+            Skin.Chip(root, 0.325f, 0.320f, 0.675f, 0.370f, new Color(0.043f, 0.008f, 0.004f));
+            var cont = Skin.LiveText(root, PlayNowCaption(), 0.30f, 0.320f, 0.70f, 0.370f, 46, Gothic.Bone);
+            if (Theme.MenuFont != null) cont.font = Theme.MenuFont;
+            Skin.Fit(cont, 46, 22);
             Skin.Zone(root, 0.30f, 0.29f, 0.70f, 0.40f, PlayNow, "continue");
 
-            // The difficulty pill cycles Casual→Normal→Nightmare on tap.
+            // ---- DIFFICULTY: <live> -------------------------------------------
+            // Same story: the pill cycled the setting but the painted word never
+            // moved, so the tap looked broken. Now the caption follows the setting.
+            Text diffText = null;
+            Skin.Chip(root, 0.340f, 0.428f, 0.660f, 0.464f, new Color(0.024f, 0.016f, 0.012f));
             Skin.Zone(root, 0.40f, 0.405f, 0.60f, 0.47f, () =>
             {
                 Diff.Current = (Difficulty)(((int)Diff.Current + 1) % 3);
                 if (!Audio.Muted) Audio.Play("click", 0.6f);
+                if (diffText != null) diffText.text = MenuDifficultyCaption();
             }, "difficulty");
+            diffText = Skin.LiveText(root, MenuDifficultyCaption(), 0.33f, 0.428f, 0.67f, 0.464f, 30, Color.white);
+            if (Theme.MenuFont != null) diffText.font = Theme.MenuFont;
+            Skin.Fit(diffText, 30, 15);
 
             Skin.Zone(root, 0.255f, 0.50f, 0.475f, 0.58f, StartDaily,      "bloodmoon");
             Skin.Zone(root, 0.525f, 0.50f, 0.745f, 0.58f, ShowLevelSelect, "castle");
             Skin.Zone(root, 0.255f, 0.595f, 0.475f, 0.675f, StartEndless,    "endless");
             Skin.Zone(root, 0.525f, 0.595f, 0.745f, 0.675f, ShowVersusLobby, "multiplayer");
+
+            // ---- BESTIARY n/19 -------------------------------------------------
+            // The footer's painted "1/19" was frozen too. Only the count is replaced —
+            // the word BESTIARY and its icon are left exactly as painted.
+            var codexNum = Skin.LiveValue(root, $"{Codex.KnownCount()}/{Codex.Total}",
+                0.528f, 0.757f, 0.585f, 0.788f, 27, Theme.Coin,
+                new Color(0.039f, 0.024f, 0.020f));
+            if (Theme.MenuFont != null) codexNum.font = Theme.MenuFont;
+            Skin.Fit(codexNum, 27, 14);
 
             // Bottom bar — five cells across the lower frame.
             Skin.Zone(root, 0.055f, 0.70f, 0.225f, 0.795f, ShowShop,     "shop");
@@ -1207,11 +1240,20 @@ namespace TrustIssues
 
         // THE CASTLE — 40 floor seals in an 8x5 grid, numbered in a switchback the
         // same way the artwork paints them (row1 L→R 1-8, row2 L→R 16-9, etc.).
+        //
+        // These fractions are MEASURED off castle_bg.jpg (the bone-white numerals were
+        // located pixel by pixel), not estimated. The previous guesses spread the grid
+        // from 0.135 to 0.865 when the painted seals actually run 0.190 → 0.819, so
+        // every tap landed on the seal to its right — tapping the painted "1" started
+        // floor 2, and the drift grew across the row. Seals sit on a perfectly even
+        // pitch, so one origin + one step reproduces all forty exactly.
+        const float CastleX0 = 0.1900f, CastleStepX = 0.08988f;   // column centres
+        static readonly float[] CastleRowY = { 0.2956f, 0.4244f, 0.5533f, 0.6817f, 0.8106f };
+        const float CastleHalfW = 0.040f, CastleHalfH = 0.056f;   // tap-zone half-size
+
         void BuildSkinnedCastle(Transform root)
         {
             int unlocked = CastleUnlocked;
-            float[] rowY = { 0.30f, 0.43f, 0.55f, 0.675f, 0.795f };
-            float x0 = 0.135f, x7 = 0.865f;
             for (int r = 0; r < 5; r++)
                 for (int col = 0; col < 8; col++)
                 {
@@ -1222,40 +1264,178 @@ namespace TrustIssues
                                         : 33 + col;
                     int idx = number - 1;
                     if (idx < 0 || idx >= Levels.Count) continue;
-                    float cx = Mathf.Lerp(x0, x7, col / 7f), cy = rowY[r];
+                    float cx = CastleX0 + col * CastleStepX, cy = CastleRowY[r];
                     bool locked = idx > unlocked;
-                    Skin.Zone(root, cx - 0.048f, cy - 0.058f, cx + 0.048f, cy + 0.058f,
+                    bool here = idx == unlocked;
+
+                    // The art paints all forty seals identically lit, so progress has
+                    // to be drawn live: a veil over the floors you haven't reached,
+                    // and a candle-gold ring on the one you're actually up to.
+                    if (locked)
+                        CastleSealVeil(root, cx, cy, new Color(0.02f, 0.01f, 0.03f, 0.62f), Theme.Circle);
+                    else if (here)
+                        CastleSealVeil(root, cx, cy, new Color(Theme.Coin.r, Theme.Coin.g, Theme.Coin.b, 0.85f), Theme.Ring);
+
+                    Skin.Zone(root, cx - CastleHalfW, cy - CastleHalfH, cx + CastleHalfW, cy + CastleHalfH,
                         locked ? (System.Action)(() => ShowHint("Sealed — clear the floor before it first."))
                                : (System.Action)(() => StartGame(idx)), "floor" + number);
                 }
-            Skin.Zone(root, 0.42f, 0.87f, 0.58f, 0.965f, ShowMenu, "back");
+            Skin.Zone(root, 0.40f, 0.865f, 0.60f, 0.965f, ShowMenu, "back");
+        }
+
+        // One round marker sat exactly on a painted seal (veil when locked, ring when
+        // it's the floor you're up to). Anchored by the same top-left fractions as the
+        // tap-zones so it tracks the seal however the artwork scales — the painted
+        // seals are ~96px across on the 1600x900 mockup.
+        const float SealHalfW = 0.0300f, SealHalfH = 0.0533f;
+        void CastleSealVeil(Transform root, float cx, float cy, Color color, Sprite sprite)
+        {
+            var rt = Skin.Slot(root, "Seal", cx - SealHalfW, cy - SealHalfH, cx + SealHalfW, cy + SealHalfH);
+            var img = rt.gameObject.AddComponent<Image>();
+            img.sprite = sprite; img.color = color; img.raycastTarget = false;
         }
 
         // WARDROBE — 10 character cards in a 5x2 grid, same order as Skins.All.
+        //
+        // The painting bakes EVERY card's caption into the picture: THE HEIR is drawn
+        // as EQUIPPED and the other nine as LOCKED with their hints, forever. So the
+        // screen used to lie — buy a skin, wear it, come back, and the art still said
+        // locked. Each card's caption block is covered and re-drawn live: real name,
+        // real lock state, the ability you actually get, and a gold ring on whichever
+        // skin you're really wearing. Rects are measured off the 1600x900 mockup.
+        static readonly float[] WardrobeColX = { 0.2025f, 0.3570f, 0.5070f, 0.6580f, 0.8100f };
+        // Per-row: card top, card bottom, then the three caption lines (top,bottom).
+        static readonly float[] WardrobeRowTop = { 0.191f, 0.531f };
+        static readonly float[] WardrobeRowBot = { 0.522f, 0.861f };
+        static readonly float[] WardrobeNameY  = { 0.3930f, 0.7300f };   // caption block starts here
+        // The painted card interiors, sampled off the artwork so a caption chip
+        // disappears into its own card instead of reading as a black bar.
+        static readonly Color[] WardrobeInterior =
+        {
+            new Color(0.052f, 0.010f, 0.010f), new Color(0.039f, 0.028f, 0.022f),
+            new Color(0.035f, 0.029f, 0.026f), new Color(0.073f, 0.052f, 0.039f),
+            new Color(0.071f, 0.047f, 0.035f), new Color(0.030f, 0.023f, 0.021f),
+            new Color(0.072f, 0.058f, 0.053f), new Color(0.028f, 0.021f, 0.017f),
+            new Color(0.048f, 0.032f, 0.024f), new Color(0.075f, 0.039f, 0.028f),
+        };
+
         void BuildSkinnedWardrobe(Transform root, GameObject panel)
         {
-            float[] colX = { 0.205f, 0.3575f, 0.51f, 0.6625f, 0.815f };
-            float[] rowY = { 0.40f, 0.68f };
+            const float HalfW = 0.0700f;    // caption chip half-width, inside the painted border
             for (int i = 0; i < Skins.All.Count && i < 10; i++)
             {
                 var s = Skins.All[i];
                 int r = i / 5, col = i % 5;
                 if (r > 1) break;
-                float cx = colX[col], cy = rowY[r];
+                float cx = WardrobeColX[col];
+                float top = WardrobeRowTop[r], bot = WardrobeRowBot[r], ny = WardrobeNameY[r];
                 bool unlocked = Skins.IsUnlocked(s);
+                bool equipped = Skins.CurrentId == s.id;
                 string sid = s.id; var sdef = s;
-                Skin.Zone(root, cx - 0.07f, cy - 0.135f, cx + 0.07f, cy + 0.135f,
+
+                // Hide the painted caption, then write the true one over it.
+                Skin.Chip(root, cx - HalfW, ny, cx + HalfW, ny + 0.104f, WardrobeInterior[i]);
+
+                var nameT = Skin.LiveText(root, s.name.ToUpperInvariant(), cx - HalfW, ny + 0.002f, cx + HalfW, ny + 0.026f,
+                    26, unlocked ? Gothic.Bone : new Color(0.62f, 0.55f, 0.52f, 0.75f));
+                if (Theme.MenuFont != null) nameT.font = Theme.MenuFont;
+                Skin.Fit(nameT, 26, 13);
+
+                var stateT = Skin.LiveText(root, unlocked ? s.ability : "LOCKED",
+                    cx - HalfW, ny + 0.032f, cx + HalfW, ny + 0.055f,
+                    19, unlocked ? Theme.Coin : new Color(0.78f, 0.24f, 0.26f, 0.95f));
+                if (Theme.MenuFont != null) stateT.font = Theme.MenuFont;
+                Skin.Fit(stateT, 19, 11);
+
+                string third = unlocked ? (equipped ? "EQUIPPED" : "tap to wear") : sdef.unlockHint;
+                var hintT = Skin.LiveText(root, third, cx - HalfW, ny + 0.060f, cx + HalfW, ny + 0.100f,
+                    16, equipped ? Theme.Coin : new Color(0.70f, 0.63f, 0.60f, 0.70f));
+                if (Theme.MenuFont != null) hintT.font = Theme.MenuFont;
+                Skin.Fit(hintT, 16, 10);
+
+                // A candle-gold ring on the skin you're actually wearing (the artwork
+                // paints its glow permanently around the first card).
+                if (equipped)
+                {
+                    var ring = Skin.Slot(root, "EquipRing", cx - 0.0755f, top, cx + 0.0755f, bot)
+                        .gameObject.AddComponent<Image>();
+                    ring.sprite = Gothic.Frame; ring.type = Image.Type.Sliced;
+                    ring.pixelsPerUnitMultiplier = Gothic.RingFrameMul;
+                    ring.color = Theme.Coin; ring.raycastTarget = false;
+                }
+
+                Skin.Zone(root, cx - 0.0755f, top, cx + 0.0755f, bot,
                     unlocked ? (System.Action)(() => { Skins.Equip(sid); Destroy(panel); ShowWardrobe(); })
                     : sdef.price > 0 ? (System.Action)(() => { Destroy(panel); ShowShop(); })
                                      : (System.Action)(() => ShowHint(sdef.unlockHint)), "skin_" + sid);
             }
-            Skin.Zone(root, 0.42f, 0.87f, 0.58f, 0.965f, () => { Destroy(panel); ShowMenu(); }, "back");
+            Skin.Zone(root, 0.40f, 0.875f, 0.60f, 0.965f, () => { Destroy(panel); ShowMenu(); }, "back");
         }
 
-        // LEADERBOARD — the art is a self-contained placeholder; only BACK is live.
-        void BuildSkinnedLeaderboard(Transform root, GameObject panel)
+        // LEADERBOARD — the artwork paints a sample table (DraculaX, NightStalker) and
+        // one fixed heading. Both were pure decoration: whoever actually topped the
+        // board never appeared. The painted rows and heading are covered and the real
+        // ones drawn in their place, keeping the frame, headers and BACK plate.
+        // Rects measured off the 1600x900 mockup.
+        static readonly Color BoardInterior = new Color(0.030f, 0.022f, 0.028f, 1f);
+        void BuildSkinnedLeaderboard(Transform root, GameObject panel, string mode)
         {
-            Skin.Zone(root, 0.40f, 0.85f, 0.60f, 0.955f, () => { Destroy(panel); ShowMenu(); }, "back");
+            string heading = mode == "daily" ? "BLOOD MOON — TONIGHT (FEWEST DEATHS)"
+                           : mode == "endless" ? "ENDLESS NIGHT — DEEPEST FLOOR"
+                                               : "THE CASTLE — FEWEST DEATHS";
+            // Painted heading + blurb out, live ones in.
+            Skin.Chip(root, 0.24f, 0.205f, 0.76f, 0.240f, BoardInterior);
+            var head = Skin.LiveText(root, heading, 0.20f, 0.205f, 0.80f, 0.240f, 27, Theme.Player);
+            if (Theme.MenuFont != null) head.font = Theme.MenuFont;
+            Skin.Fit(head, 27, 15);
+
+            Skin.Chip(root, 0.20f, 0.255f, 0.80f, 0.335f, BoardInterior);
+            var status = Skin.LiveText(root, "summoning the dead…", 0.18f, 0.255f, 0.82f, 0.335f, 26, Gothic.Faint);
+            if (Theme.MenuFont != null) status.font = Theme.MenuFont;
+
+            // Headers: the art paints four columns (RANK/SOUL/FLOOR/DEATHS) but a board
+            // only ever ranks by ONE number, so the last two are replaced by the single
+            // column this mode is actually sorted on.
+            Skin.Chip(root, 0.540f, 0.393f, 0.832f, 0.436f, BoardInterior);
+            BoardCell(root, mode == "endless" ? "FLOOR" : "DEATHS", 0.600f, 0.395f, 0.820f, 0.432f, Gothic.Faint);
+
+            // The painted table holds three sample rows; eight live ones fit the same
+            // band once they're set at the real line height.
+            const float RowsTop = 0.437f, RowsBot = 0.792f;
+            const int MaxRows = 8;
+            Skin.Chip(root, 0.178f, RowsTop, 0.832f, RowsBot, BoardInterior);
+
+            Leaderboard.Fetch(mode, mode == "daily" ? "today" : "all", entries =>
+            {
+                if (status == null) return;
+                if (entries.Count == 0)
+                {
+                    status.text = "No souls ranked yet — be the first.\n(or the leaderboard server isn't live yet)";
+                    return;
+                }
+                status.text = "";
+                float rowH = (RowsBot - RowsTop) / MaxRows;
+                for (int i = 0; i < entries.Count && i < MaxRows; i++)
+                {
+                    float t0 = RowsTop + i * rowH, t1 = t0 + rowH;
+                    // The leader wears candle gold, everyone else bone.
+                    var col = i == 0 ? Theme.Coin : Gothic.Bone;
+                    BoardCell(root, $"{i + 1}", 0.185f, t0, 0.255f, t1, col);
+                    BoardCell(root, entries[i].nick, 0.285f, t0, 0.560f, t1, col, TextAnchor.MiddleLeft);
+                    BoardCell(root, entries[i].value.ToString(), 0.600f, t0, 0.820f, t1, col);
+                }
+            });
+
+            Skin.Zone(root, 0.40f, 0.855f, 0.60f, 0.955f, () => { Destroy(panel); ShowMenu(); }, "back");
+        }
+
+        // One live cell in the painted leaderboard table.
+        void BoardCell(Transform root, string text, float x0, float top0, float x1, float top1,
+            Color col, TextAnchor align = TextAnchor.MiddleCenter)
+        {
+            var t = Skin.LiveText(root, text, x0, top0, x1, top1, 30, col, align: align);
+            if (Theme.MenuFont != null) t.font = Theme.MenuFont;
+            Skin.Fit(t, 30, 14);
         }
 
         // SETTINGS — tap-zones over the painted controls. The picture shows the
@@ -1564,34 +1744,64 @@ namespace TrustIssues
             _menuPanel = Overlay(new Color(Theme.Sky.r, Theme.Sky.g, Theme.Sky.b, 0.96f), out var root);
             _onBack = ShowMenu;
 
-            // HYBRID: wear the bestiary artwork's ornate frame + title, but keep the
-            // REAL, live cards (so progress + the preview toggle still work). A dark
-            // panel covers the art's illustrative card grid so only the outer frame,
-            // gargoyles, candles and painted title show; live cards draw on top.
+            // HYBRID: wear the bestiary artwork's ornate frame, gargoyles, candles and
+            // painted title, but draw the REAL cards on top so progress and the preview
+            // toggle work. The art paints only 15 slots and a frozen "3 / 19"; the book
+            // has 19 traps, so the painted grid is covered and re-laid live as 5 across
+            // by 4 down — each page in its own ornate plate, matching the paintings
+            // instead of the flat grey boxes that used to sit there.
             bool skinned = Skin.Background(root, "bestiary_bg") != null;
             if (skinned)
             {
+                // Castle-stone ground over the painted grid — dark enough to hide the
+                // artwork's own cards, textured enough not to read as a black box.
                 var cover = new GameObject("Cover", typeof(RectTransform));
                 cover.transform.SetParent(root, false);
                 var ci = cover.AddComponent<Image>();
-                ci.color = new Color(0.05f, 0.035f, 0.07f, 0.98f); ci.raycastTarget = false;
+                ci.color = new Color(0.05f, 0.032f, 0.062f, 0.995f); ci.raycastTarget = false;
                 var crt = ci.rectTransform;
-                crt.anchorMin = new Vector2(0.075f, 0.135f); crt.anchorMax = new Vector2(0.925f, 0.88f);
+                // Starts just under the title's blood drips and swallows the painted
+                // "3 / 19" caption, which is frozen art.
+                crt.anchorMin = new Vector2(0.075f, 0.148f); crt.anchorMax = new Vector2(0.925f, 0.885f);
                 crt.offsetMin = crt.offsetMax = Vector2.zero;
+
+                var grain = new GameObject("Grain", typeof(RectTransform)).AddComponent<Image>();
+                grain.transform.SetParent(root, false);
+                grain.sprite = Theme.StoneTile; grain.type = Image.Type.Tiled;
+                grain.pixelsPerUnitMultiplier = 0.14f; grain.raycastTarget = false;
+                grain.color = new Color(0.55f, 0.5f, 0.62f, 0.09f);
+                var grt = grain.rectTransform;
+                grt.anchorMin = crt.anchorMin; grt.anchorMax = crt.anchorMax;
+                grt.offsetMin = grt.offsetMax = Vector2.zero;
             }
             else
             {
-                var title = Theme.Label(root, "VAMPIRE'S BESTIARY", 72, Theme.Player,
-                    new Vector2(0.5f, 0.5f), new Vector2(0, 452), new Vector2(1600, 110));
-                if (Theme.TitleFont != null) title.font = Theme.TitleFont;
+                Gothic.Backdrop(root);
+                Gothic.Heading(root, "VAMPIRE'S BESTIARY", null);
             }
-            Theme.Label(root, $"{Codex.KnownCount()} / {Codex.Total} catalogued — die to a new trap to reveal its page",
-                26, Theme.Coin, new Vector2(0.5f, 0.5f), new Vector2(0, 388), new Vector2(1600, 44));
 
+            // Live tally — the artwork's painted "3 / 19" is under the cover, so this is
+            // the only count on screen and it always tells the truth. On the skinned
+            // screen it's anchored in ARTWORK fractions, not canvas units: the canvas is
+            // shorter than the painting on a tall phone, so a canvas-positioned caption
+            // would slide off the spot the art left for it.
+            string tally = $"{Codex.KnownCount()} / {Codex.Total} CATALOGUED  —  DIE TO A NEW TRAP TO REVEAL ITS PAGE";
+            if (skinned)
+            {
+                var t = Skin.LiveText(root, tally, 0.10f, 0.155f, 0.90f, 0.192f, 25, Gothic.Faint);
+                if (Theme.MenuFont != null) t.font = Theme.MenuFont;
+                Skin.Fit(t, 25, 13);
+            }
+            else Gothic.Line(root, tally, 25, Gothic.Faint, new Vector2(0, 344), new Vector2(1600, 40));
+
+            // 5 across, 4 down: 19 pages fill every cell but the last, which the
+            // PREVIEW toggle takes. The grid is sized so it still lands inside the
+            // artwork's covered area on a tall phone, where the canvas is shorter than
+            // the reference 1080 but the painting still fills the screen.
             var entries = Codex.Entries;
             const int cols = 5;
-            var card = new Vector2(300, 182);
-            float stepX = 320f, stepY = 190f, startX = -((cols - 1) * stepX) / 2f, startY = 272f;
+            var card = new Vector2(300, 156);
+            float stepX = 316f, stepY = 166f, startX = -((cols - 1) * stepX) / 2f, startY = 224f;
             for (int i = 0; i < entries.Length; i++)
                 BuildCodexCard(root, entries[i],
                     new Vector2(startX + (i % cols) * stepX, startY - (i / cols) * stepY), card);
@@ -1600,41 +1810,24 @@ namespace TrustIssues
             // to its real locked/unlocked state (the "UNDISCOVERED" silhouette look).
             // Re-opens the screen so all cards re-draw in the new state.
             bool prev = Codex.PreviewAll;
-            if (skinned)
-            {
-                // BACK rides on the painted button; PREVIEW fills the empty 20th slot
-                // (19 entries in a 5-wide grid leave the bottom-right cell open).
-                Skin.Zone(root, 0.42f, 0.88f, 0.58f, 0.965f, ShowMenu, "back");
-                Theme.Button(root, prev ? "PREVIEW: ON" : "PREVIEW: OFF",
-                    prev ? new Color(0.16f, 0.40f, 0.22f) : new Color(0.14f, 0.10f, 0.16f, 0.98f), Color.white, 26,
-                    new Vector2(0.5f, 0.5f), new Vector2(startX + 4 * stepX, startY - 3 * stepY), card,
-                    () => { Codex.PreviewAll = !Codex.PreviewAll; ShowCodex(); });
-            }
-            else
-            {
-                Theme.Button(root, "‹ BACK", new Color(1, 1, 1, 0.25f), Color.white, 40,
-                    new Vector2(0.5f, 0f), new Vector2(-260, 40), new Vector2(360, 100), ShowMenu);
-                Theme.Button(root, prev ? "PREVIEW: ON" : "PREVIEW: OFF",
-                    prev ? new Color(0.16f, 0.40f, 0.22f) : new Color(1, 1, 1, 0.20f), Color.white, 34,
-                    new Vector2(0.5f, 0f), new Vector2(260, 40), new Vector2(360, 100),
-                    () => { Codex.PreviewAll = !Codex.PreviewAll; ShowCodex(); });
-            }
+            Gothic.Button(root, prev ? "PREVIEW: ON" : "PREVIEW: OFF",
+                new Vector2(startX + 4 * stepX, startY - 3 * stepY), card,
+                () => { Codex.PreviewAll = !Codex.PreviewAll; ShowCodex(); }, prev, 26);
+
+            if (skinned) Skin.Zone(root, 0.40f, 0.875f, 0.60f, 0.965f, ShowMenu, "back");
+            else Gothic.Back(root, ShowMenu);
         }
 
+        // One bestiary page, in the artwork's language: an ornate framed plate with the
+        // trap's icon, its name in the menu serif, and the lore beneath. A revealed page
+        // wears a faint blood tint; an undiscovered one stays cold and near-black.
         void BuildCodexCard(Transform root, TrapType t, Vector2 pos, Vector2 size)
         {
             bool known = Codex.IsKnown(t);
             var c = new Vector2(0.5f, 0.5f);
-            // Card background (UI Image — the menu is screen-space, not world sprites).
-            var cardGo = new GameObject("Card", typeof(RectTransform));
-            cardGo.transform.SetParent(root, false);
-            var bg = cardGo.AddComponent<Image>();
-            bg.color = known ? new Color(0.12f, 0.08f, 0.14f, 0.96f) : new Color(0.06f, 0.05f, 0.08f, 0.96f);
-            bg.raycastTarget = false;
-            var rt = bg.rectTransform;
-            rt.anchorMin = rt.anchorMax = c; rt.pivot = c;
-            rt.anchoredPosition = pos; rt.sizeDelta = size;
-            var ct = cardGo.transform;
+            var plate = Gothic.PlateAt(root, pos, size,
+                known ? new Color(0.105f, 0.055f, 0.075f, 1f) : new Color(0.050f, 0.038f, 0.062f, 1f));
+            var ct = plate.transform;
 
             Sprite sp = known ? Assets.Sprite(Codex.Art(t)) : null;
             if (sp != null)
@@ -1645,23 +1838,25 @@ namespace TrustIssues
                 img.color = t == TrapType.BatSwoop ? new Color(1f, 0.3f, 0.3f) : Color.white;
                 var irt = img.rectTransform;
                 irt.anchorMin = irt.anchorMax = c; irt.pivot = c;
-                irt.anchoredPosition = new Vector2(0, 46); irt.sizeDelta = new Vector2(58, 58);
+                irt.anchoredPosition = new Vector2(0, 44); irt.sizeDelta = new Vector2(48, 48);
             }
             else
             {
-                Theme.Label(ct, known ? "•" : "?", 56,
-                    known ? Theme.Danger : new Color(1, 1, 1, 0.22f), c,
-                    new Vector2(0, 46), new Vector2(80, 80)).raycastTarget = false;
+                Theme.Label(ct, "?", 42, new Color(0.62f, 0.55f, 0.52f, 0.30f), c,
+                    new Vector2(0, 44), new Vector2(80, 64)).raycastTarget = false;
             }
 
-            Theme.Label(ct, known ? Codex.Title(t) : "UNDISCOVERED", 22,
-                known ? Color.white : new Color(1, 1, 1, 0.5f), c,
-                new Vector2(0, 6), new Vector2(size.x - 16, 28)).raycastTarget = false;
-            var lore = Theme.Label(ct, known ? Codex.Lore(t) : "die to this trap to reveal its page", 13,
-                known ? new Color(1, 1, 1, 0.72f) : new Color(1, 1, 1, 0.32f), c,
-                new Vector2(0, -44), new Vector2(size.x - 30, 92));
-            lore.horizontalOverflow = HorizontalWrapMode.Wrap;   // keep text INSIDE the card (no bleed across)
-            lore.raycastTarget = false;
+            Gothic.Line(ct, known ? Codex.Title(t).ToUpperInvariant() : "UNDISCOVERED", 19,
+                known ? Gothic.Bone : new Color(0.62f, 0.55f, 0.52f, 0.55f),
+                new Vector2(0, 10), new Vector2(size.x - 28, 24));
+
+            // Best-fit keeps the longest lore lines inside the plate instead of spilling
+            // over its painted border, however wide the running font turns out to be.
+            var lore = Gothic.Line(ct, known ? Codex.Lore(t) : "die to this trap to reveal its page", 14,
+                known ? new Color(0.80f, 0.72f, 0.68f, 0.82f) : new Color(0.62f, 0.55f, 0.52f, 0.38f),
+                new Vector2(0, -40), new Vector2(size.x - 38, 68));
+            lore.verticalOverflow = VerticalWrapMode.Truncate;
+            Skin.Fit(lore, 14, 9);
         }
 
         // ==================== ANIMATED MENU BACKDROP ====================
@@ -2389,34 +2584,30 @@ namespace TrustIssues
             var c = new Vector2(0.5f, 0.5f);
             var panel = Overlay(new Color(0.04f, 0.02f, 0.06f, 0.9f), out var root);
             _onBack = () => { Destroy(panel); if (_levelRoot != null) Destroy(_levelRoot.gameObject); ShowMenu(); };
-            Theme.Label(root, "CLEARED", 92, Theme.Exit,
-                c, new Vector2(0, 210), new Vector2(1400, 130)).font = Theme.TitleFont;
-            Theme.Label(root, CustomMap.Fmt(secs), 76, Color.white,
-                c, new Vector2(0, 108), new Vector2(1000, 100));
-            Theme.Label(root, newBest ? "NEW BEST ON THIS MAP" : $"your best: {CustomMap.Fmt(CustomMap.BestTime(_customCode))}",
-                30, Theme.Coin, c, new Vector2(0, 36), new Vector2(1200, 44));
-            Theme.Label(root, $"{_floorDeaths} deaths", 26, new Color(1, 1, 1, 0.6f),
-                c, new Vector2(0, -8), new Vector2(1000, 40));
+            Gothic.FrameOnly(root);
+            ResultTitle(root, "CLEARED", 210f, 72).color = Theme.Exit;
+            Gothic.Line(root, CustomMap.Fmt(secs), 66, Gothic.Bone, new Vector2(0, 108), new Vector2(1000, 100));
+            Gothic.Line(root, newBest ? "NEW BEST ON THIS MAP" : $"your best: {CustomMap.Fmt(CustomMap.BestTime(_customCode))}",
+                30, Theme.Coin, new Vector2(0, 36), new Vector2(1200, 44));
+            Gothic.Line(root, $"{_floorDeaths} deaths", 26, Gothic.Faint, new Vector2(0, -8), new Vector2(1000, 40));
 
             string code = _customCode;
-            Theme.Button(root, "CHALLENGE THEM", new Color(0.5f, 0.12f, 0.16f), Color.white, 28,
-                c, new Vector2(-340, -120), new Vector2(400, 96), () =>
+            Gothic.Button(root, "CHALLENGE THEM", new Vector2(-340, -120), new Vector2(400, 96), () =>
                 {
                     NativeShare.ShareText(
                         $"I beat this Trust Issues map in {CustomMap.Fmt(secs)} with {_floorDeaths} deaths. Try it. Code: {code}",
                         GameLink);
                     Analytics.Track("map_challenge", new System.Collections.Generic.Dictionary<string, object>
                     { { "seconds", secs } });
-                });
-            Theme.Button(root, "AGAIN", Theme.Exit, Theme.Ink, 30,
-                c, new Vector2(80, -120), new Vector2(300, 96),
-                () => { Destroy(panel); PlayCustom(_customMap, code); });
-            Theme.Button(root, "EDITOR", new Color(0.32f, 0.08f, 0.4f), Color.white, 28,
-                c, new Vector2(400, -120), new Vector2(300, 96),
-                () => { Destroy(panel); if (_levelRoot != null) Destroy(_levelRoot.gameObject); ShowMapEditor(); });
-            Theme.Button(root, "MAIN MENU", new Color(1, 1, 1, 0.22f), Color.white, 30,
-                c, new Vector2(0, -246), new Vector2(400, 92),
-                () => { Destroy(panel); if (_levelRoot != null) Destroy(_levelRoot.gameObject); ShowMenu(); });
+                }, false, 28);
+            Gothic.Button(root, "AGAIN", new Vector2(80, -120), new Vector2(300, 96),
+                () => { Destroy(panel); PlayCustom(_customMap, code); }, true, 30);
+            Gothic.Button(root, "EDITOR", new Vector2(400, -120), new Vector2(300, 96),
+                () => { Destroy(panel); if (_levelRoot != null) Destroy(_levelRoot.gameObject); ShowMapEditor(); },
+                false, 28);
+            Gothic.Button(root, "MAIN MENU", new Vector2(0, -246), new Vector2(400, 92),
+                () => { Destroy(panel); if (_levelRoot != null) Destroy(_levelRoot.gameObject); ShowMenu(); },
+                false, 30);
         }
 
         void MenuCandy(Transform root, string sprite, Vector2 pos, float size, float rot)
@@ -2730,56 +2921,49 @@ namespace TrustIssues
             TrackModeSelected("Versus", 0);
             _state = State.Menu;
             if (_menuPanel != null) Destroy(_menuPanel);
-            _menuPanel = Overlay(new Color(0.05f, 0.01f, 0.03f, 0.9f), out var root);
+            // Opaque gothic ground + the artwork's frame, moon and stone — this screen
+            // had no painting of its own and used to be plain boxes on a see-through
+            // wash, which read as a different game from the menu you'd just left.
+            _menuPanel = Overlay(new Color(0.05f, 0.01f, 0.03f, 1f), out var root);
+            Gothic.Backdrop(root);
             _onBack = () => { Net.Leave(); ShowMenu(); };   // drop the room on the way out
 
-            Theme.Label(root, "MULTIPLAYER", 90, Theme.Player,
-                new Vector2(0.5f, 0.5f), new Vector2(0, 400), new Vector2(1400, 120));
-            Theme.Label(root, "race a friend to the coffin — same track, live ghosts",
-                34, new Color(0.85f, 0.7f, 0.72f, 0.8f), new Vector2(0.5f, 0.5f),
-                new Vector2(0, 315), new Vector2(1500, 60));
+            Gothic.Heading(root, "MULTIPLAYER", "RACE A FRIEND TO THE COFFIN — SAME TRACK, LIVE GHOSTS");
 
             if (!Net.Available)
             {
-                Theme.Label(root, "Multiplayer needs the Photon PUN 2 package imported.\nImport it in Unity, then this screen goes live.",
-                    36, new Color(1f, 0.7f, 0.7f, 0.9f), new Vector2(0.5f, 0.5f),
-                    new Vector2(0, 80), new Vector2(1500, 200));
-                Theme.Button(root, "‹ BACK", new Color(1, 1, 1, 0.25f), Color.white, 44,
-                    new Vector2(0.5f, 0f), new Vector2(0, 40), new Vector2(360, 100), ShowMenu);
+                Gothic.PlateAt(root, new Vector2(0, 40), new Vector2(1100, 240), Gothic.Plate);
+                Gothic.Line(root, "Multiplayer needs the Photon PUN 2 package imported.\nImport it in Unity, then this screen goes live.",
+                    32, new Color(0.85f, 0.55f, 0.55f, 0.9f), new Vector2(0, 40), new Vector2(1020, 200));
+                Gothic.Back(root, ShowMenu);
                 return;
             }
 
             // YOUR NAME — persisted, and shown to the rival you race. Pre-filled with
             // the stored name; every keystroke saves it.
-            Theme.Label(root, "YOUR NAME", 26, new Color(1, 1, 1, 0.55f), new Vector2(0.5f, 0.5f),
-                new Vector2(-360, 235), new Vector2(300, 40), TextAnchor.MiddleRight);
-            var nameField = MakeInput(root, new Vector2(60, 235), new Vector2(520, 84), "type a name");
+            Gothic.Line(root, "YOUR NAME", 26, Gothic.Faint, new Vector2(-360, 190),
+                new Vector2(300, 40), TextAnchor.MiddleRight);
+            var nameField = MakeInput(root, new Vector2(60, 190), new Vector2(520, 84), "type a name");
             nameField.characterLimit = 14;
             nameField.characterValidation = InputField.CharacterValidation.None;
             nameField.text = Net.PlayerName;
             nameField.onValueChanged.AddListener(v => Net.PlayerName = v);
 
             // HOST
-            Theme.Button(root, "HOST A RACE", new Color(0.6f, 0.08f, 0.12f), Color.white, 48,
-                new Vector2(0.5f, 0.5f), new Vector2(0, 120), new Vector2(560, 100),
-                () => { SetLobbyStatus("Creating room…"); Net.Host(StartVersus, LobbyError); });
+            Gothic.Button(root, "HOST A RACE", new Vector2(0, 76), new Vector2(560, 100),
+                () => { SetLobbyStatus("Creating room…"); Net.Host(StartVersus, LobbyError); }, true, 44);
 
             // JOIN: a code box + button
-            var input = MakeInput(root, new Vector2(-110, 20), new Vector2(360, 96), "CODE");
-            Theme.Button(root, "JOIN", Theme.Trick, Color.white, 44,
-                new Vector2(0.5f, 0.5f), new Vector2(190, 20), new Vector2(300, 96),
-                () => { SetLobbyStatus("Joining…"); Net.Join(input.text, StartVersus, LobbyError); });
+            var input = MakeInput(root, new Vector2(-130, -46), new Vector2(340, 96), "CODE");
+            Gothic.Button(root, "JOIN", new Vector2(180, -46), new Vector2(300, 96),
+                () => { SetLobbyStatus("Joining…"); Net.Join(input.text, StartVersus, LobbyError); }, false, 40);
 
-            _lobbyStatus = Theme.Label(root, "", 32, Theme.Coin,
-                new Vector2(0.5f, 0.5f), new Vector2(0, -110), new Vector2(1500, 60));
+            _lobbyStatus = Gothic.Line(root, "", 30, Theme.Coin, new Vector2(0, -150), new Vector2(1400, 56));
 
-            Theme.Label(root, "Share the 4-letter code with whoever you want to race.\nWorks across phones, laptops — anyone with the link.",
-                26, new Color(1, 1, 1, 0.5f), new Vector2(0.5f, 0.5f),
-                new Vector2(0, -210), new Vector2(1500, 120));
+            Gothic.Line(root, "Share the 4-letter code with whoever you want to race.\nWorks across phones, laptops — anyone with the link.",
+                25, Gothic.Faint, new Vector2(0, -240), new Vector2(1400, 110));
 
-            Theme.Button(root, "‹ BACK", new Color(1, 1, 1, 0.25f), Color.white, 44,
-                new Vector2(0.5f, 0f), new Vector2(0, 40), new Vector2(360, 100),
-                () => { Net.Leave(); ShowMenu(); });
+            Gothic.Back(root, () => { Net.Leave(); ShowMenu(); });
         }
 
         void SetLobbyStatus(string s) { if (_lobbyStatus != null) _lobbyStatus.text = s; }
@@ -2790,15 +2974,18 @@ namespace TrustIssues
         {
             var go = new GameObject("Input", typeof(RectTransform));
             go.transform.SetParent(parent, false);
-            var img = go.AddComponent<Image>(); img.color = new Color(1, 1, 1, 0.12f);
+            // Sunk into the stone with the same ornate border as every other control.
+            var img = go.AddComponent<Image>(); img.color = new Color(0.020f, 0.012f, 0.026f, 1f);
             var rt = img.rectTransform;
             rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f); rt.pivot = new Vector2(0.5f, 0.5f);
             rt.anchoredPosition = pos; rt.sizeDelta = size;
+            Gothic.InnerFrame(go.transform);
 
-            var ph = Theme.Label(go.transform, placeholder, 44, new Color(1, 1, 1, 0.35f),
-                new Vector2(0.5f, 0.5f), Vector2.zero, size);
-            var txt = Theme.Label(go.transform, "", 44, Color.white,
-                new Vector2(0.5f, 0.5f), Vector2.zero, size);
+            var ph = Theme.Label(go.transform, placeholder, 40, new Color(0.62f, 0.55f, 0.52f, 0.45f),
+                new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(size.x - 40, size.y - 16));
+            var txt = Theme.Label(go.transform, "", 40, Gothic.Bone,
+                new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(size.x - 40, size.y - 16));
+            if (Theme.MenuFont != null) { ph.font = Theme.MenuFont; txt.font = Theme.MenuFont; }
 
             var input = go.AddComponent<InputField>();
             input.targetGraphic = img;
@@ -3036,21 +3223,20 @@ namespace TrustIssues
             });
             Audio.Play(youWon ? "win" : "death", 0.7f);
             var panel = Overlay(new Color(0.05f, 0f, 0.02f, 0.85f), out var root);
+            Gothic.FrameOnly(root);
             _onBack = () => { Destroy(panel); LeaveVersus(); };
-            Theme.Label(root, youWon ? "YOU WON THE RACE" : "YOU LOST THE RACE",
-                youWon ? 90 : 84, youWon ? Theme.Exit : Theme.Player,
-                new Vector2(0.5f, 0.5f), new Vector2(0, 160), new Vector2(1600, 150));
-            Theme.Label(root, youWon ? "first to the coffin" : "a faster vampire beat you to it",
-                44, Color.white, new Vector2(0.5f, 0.5f), new Vector2(0, 60), new Vector2(1500, 70));
+            var rt2 = ResultTitle(root, youWon ? "YOU WON THE RACE" : "YOU LOST THE RACE",
+                160f, youWon ? 70 : 64);
+            if (youWon) rt2.color = Theme.Exit;
+            Gothic.Line(root, youWon ? "first to the coffin" : "a faster vampire beat you to it",
+                40, Gothic.Bone, new Vector2(0, 60), new Vector2(1500, 70));
             // Running match score across rounds — the "one more round" hook.
-            Theme.Label(root, $"MATCH:  YOU {_versusWins}  –  {_versusLosses} RIVAL",
-                40, Theme.Coin, new Vector2(0.5f, 0.5f), new Vector2(0, 0), new Vector2(1400, 56));
-            Theme.Button(root, "NEXT ROUND", Theme.Exit, Theme.Ink, 46,
-                new Vector2(0.5f, 0.5f), new Vector2(0, -120), new Vector2(560, 116),
-                () => { Destroy(panel); NextVersusRound(); });
-            Theme.Button(root, "LEAVE RACE", new Color(0.28f, 0.24f, 0.32f), Color.white, 40,
-                new Vector2(0.5f, 0.5f), new Vector2(0, -250), new Vector2(460, 100),
-                () => { Destroy(panel); LeaveVersus(); });
+            Gothic.Line(root, $"MATCH:  YOU {_versusWins}  –  {_versusLosses} RIVAL",
+                38, Theme.Coin, new Vector2(0, 0), new Vector2(1400, 56));
+            Gothic.Button(root, "NEXT ROUND", new Vector2(0, -120), new Vector2(560, 116),
+                () => { Destroy(panel); NextVersusRound(); }, true, 44);
+            Gothic.Button(root, "LEAVE RACE", new Vector2(0, -250), new Vector2(460, 100),
+                () => { Destroy(panel); LeaveVersus(); }, false, 38);
         }
 
         // Somebody hit VersusMatchPoints — the match is decided. Big champion
@@ -3066,21 +3252,19 @@ namespace TrustIssues
             });
             Audio.Play(youWon ? "win" : "death", 0.8f);
             var panel = Overlay(new Color(0.05f, 0f, 0.02f, 0.9f), out var root);
+            Gothic.FrameOnly(root);
             _onBack = () => { Destroy(panel); LeaveVersus(); };
-            Theme.Label(root, youWon ? "MATCH WON" : "MATCH LOST",
-                youWon ? 104 : 92, youWon ? Theme.Exit : Theme.Player,
-                new Vector2(0.5f, 0.5f), new Vector2(0, 170), new Vector2(1600, 170)).font = Theme.TitleFont;
-            Theme.Label(root, youWon ? $"first to {VersusMatchPoints} — you are the true heir"
+            var mt = ResultTitle(root, youWon ? "MATCH WON" : "MATCH LOST", 170f, youWon ? 78 : 70);
+            if (youWon) mt.color = Theme.Exit;
+            Gothic.Line(root, youWon ? $"first to {VersusMatchPoints} — you are the true heir"
                                      : $"your rival reached {VersusMatchPoints} first",
-                44, Color.white, new Vector2(0.5f, 0.5f), new Vector2(0, 70), new Vector2(1500, 70));
-            Theme.Label(root, $"FINAL:  YOU {_versusWins}  –  {_versusLosses} RIVAL",
-                46, Theme.Coin, new Vector2(0.5f, 0.5f), new Vector2(0, 0), new Vector2(1400, 60));
-            Theme.Button(root, "REMATCH", Theme.Exit, Theme.Ink, 46,
-                new Vector2(0.5f, 0.5f), new Vector2(0, -120), new Vector2(560, 116),
-                () => { Destroy(panel); _versusWins = 0; _versusLosses = 0; NextVersusRound(); });
-            Theme.Button(root, "LEAVE RACE", new Color(0.28f, 0.24f, 0.32f), Color.white, 40,
-                new Vector2(0.5f, 0.5f), new Vector2(0, -250), new Vector2(460, 100),
-                () => { Destroy(panel); LeaveVersus(); });
+                40, Gothic.Bone, new Vector2(0, 70), new Vector2(1500, 70));
+            Gothic.Line(root, $"FINAL:  YOU {_versusWins}  –  {_versusLosses} RIVAL",
+                44, Theme.Coin, new Vector2(0, 0), new Vector2(1400, 60));
+            Gothic.Button(root, "REMATCH", new Vector2(0, -120), new Vector2(560, 116),
+                () => { Destroy(panel); _versusWins = 0; _versusLosses = 0; NextVersusRound(); }, true, 44);
+            Gothic.Button(root, "LEAVE RACE", new Vector2(0, -250), new Vector2(460, 100),
+                () => { Destroy(panel); LeaveVersus(); }, false, 38);
         }
 
         void LeaveVersus()
@@ -5207,12 +5391,11 @@ namespace TrustIssues
             Audio.Play("death", 0.7f);
 
             var panel = Overlay(new Color(0.05f, 0f, 0.02f, 0.85f), out var root);
-            Theme.Label(root, "YOU PERISHED", 84, Theme.Player,
-                new Vector2(0.5f, 0.5f), new Vector2(0, 200), new Vector2(1400, 150)).font = Theme.TitleFont;
+            ResultTitle(root, "YOU PERISHED", 200f, 84);
             string reached = _mode == Mode.Endless ? $"reached floor {_levelIndex + 1}"
                                                     : $"fell on night {_levelIndex + 1}/{DailyLen}";
-            Theme.Label(root, reached + $"   •   {_deaths} deaths", 50, Color.white,
-                new Vector2(0.5f, 0.5f), new Vector2(0, 90), new Vector2(1400, 70));
+            Gothic.Line(root, reached + $"   ·   {_deaths} deaths", 46, Gothic.Bone,
+                new Vector2(0, 90), new Vector2(1400, 70));
 
             string lbMode = _mode == Mode.Endless ? "endless" : "daily";
             Leaderboard.Submit(lbMode, _mode == Mode.Endless ? _levelIndex + 1 : _deaths);
@@ -5388,10 +5571,10 @@ namespace TrustIssues
             PlayerPrefs.SetInt("ti_level", 0); PlayerPrefs.Save();
             var panel = Overlay(new Color(0, 0, 0, 0.85f), out var root);
             bool daily = _mode == Mode.Daily;
-            Theme.Label(root, daily ? "YOU SURVIVED THE NIGHT" : "YOU ESCAPED THE CASTLE", daily ? 80 : 90, Theme.Exit,
-                new Vector2(0.5f, 0.5f), new Vector2(0, 200), new Vector2(1600, 160));
-            Theme.Label(root, $"died {_deaths} time" + (_deaths == 1 ? "" : "s"),
-                60, Theme.Player, new Vector2(0.5f, 0.5f), new Vector2(0, 90), new Vector2(1400, 90));
+            ResultTitle(root, daily ? "YOU SURVIVED THE NIGHT" : "YOU ESCAPED THE CASTLE",
+                200f, daily ? 62 : 70).color = Theme.Exit;   // gold for a win, blood for a death
+            Gothic.Line(root, $"died {_deaths} time" + (_deaths == 1 ? "" : "s"),
+                52, Theme.Player, new Vector2(0, 90), new Vector2(1400, 90));
 
             string lbMode = daily ? "daily" : "castle";
             Leaderboard.Submit(lbMode, _deaths);
@@ -5404,6 +5587,20 @@ namespace TrustIssues
             yield break;
         }
 
+        // A result screen's heading in the artwork's voice: the dripping display face
+        // in crimson over a near-black shadow, exactly like every painted screen's
+        // title. Shared so death, win and versus results all read the same.
+        Text ResultTitle(Transform root, string text, float y, int size)
+        {
+            var c = new Vector2(0.5f, 0.5f);
+            var shadow = Theme.Label(root, text, size, new Color(0, 0, 0, 0.85f),
+                c, new Vector2(5, y - 5), new Vector2(1600, 170));
+            shadow.font = Theme.TitleFont; shadow.raycastTarget = false;
+            var t = Theme.Label(root, text, size, Theme.Player, c, new Vector2(0, y), new Vector2(1600, 170));
+            t.font = Theme.TitleFont; t.raycastTarget = false;
+            return t;
+        }
+
         // Shared footer for result screens: a real brag line, the newest badge, and
         // SHARE (captures a PNG card) + LEADERBOARD + MENU buttons.
         void ResultFooter(Transform root, GameObject panel, string brag, string lbMode)
@@ -5411,28 +5608,31 @@ namespace TrustIssues
             // Back on a result screen = the MAIN MENU button (tear the level down too).
             _onBack = () => { Destroy(panel); if (_levelRoot != null) Destroy(_levelRoot.gameObject); ShowMenu(); };
             var c = new Vector2(0.5f, 0.5f);
+            // The ornate border in place of Overlay's plain one, so a result screen
+            // reads as the same castle as the menus — but see-through, because the
+            // floor that just killed you should still be visible behind it.
+            Gothic.FrameOnly(root);
             if (_newBest)
                 Theme.Label(root, "NEW BEST!", 38, Theme.Exit,
                     c, new Vector2(0, 34), new Vector2(800, 52)).font = Theme.TitleFont;
             // Display strips the emoji (the pixel font can't draw it); the SHARE text
             // keeps it (renders fine on social).
             string shown = brag.Replace("\U0001F987", "").Replace("  ", " ").Trim();
-            Theme.Label(root, "“" + shown + "”", 28, Theme.Coin,
-                c, new Vector2(0, -10), new Vector2(1600, 60));
+            Gothic.Line(root, "“" + shown + "”", 28, Theme.Coin, new Vector2(0, -10), new Vector2(1600, 60));
             var nb = Badges.Newest;
             if (nb != null)
-                Theme.Label(root, "NEW BADGE UNLOCKED — " + nb.name, 26, Color.white,
-                    c, new Vector2(0, -54), new Vector2(1200, 44));
+                Gothic.Line(root, "NEW BADGE UNLOCKED — " + nb.name, 26, Gothic.Bone,
+                    new Vector2(0, -54), new Vector2(1200, 44));
             // The "next unlock" teaser: every result screen names the goal your
             // shards are working toward — the research-backed anti-boredom line.
             var nxt = Shop.NextUnlock();
             if (nxt != null)
             {
                 int bal = Currency.Balance, price = Shop.UnlockPrice(nxt);
-                Theme.Label(root, bal >= price
+                Gothic.Line(root, bal >= price
                         ? $"{bal} BLOOD SHARDS — {Shop.UnlockName(nxt)} is affordable NOW"
                         : $"{bal} BLOOD SHARDS — {price - bal} more until {Shop.UnlockName(nxt)}",
-                    20, Theme.Coin, c, new Vector2(0, -89), new Vector2(1400, 26));
+                    20, Theme.Coin, new Vector2(0, -89), new Vector2(1400, 26));
             }
             // Broke a friend's curse this run? The brag carries the receipt.
             if (Curse.LastBroken != null)
@@ -5441,17 +5641,15 @@ namespace TrustIssues
             // out of shared messages, and the link rides along so a share is
             // actually clickable instead of orphan text.
             string bragFinal = NativeShare.Sanitize(brag);
-            Theme.Button(root, "SHARE", new Color(0.5f, 0.12f, 0.16f), Color.white, 34,
-                c, new Vector2(-350, -150), new Vector2(310, 96),
+            Gothic.Button(root, "SHARE", new Vector2(-350, -150), new Vector2(310, 96),
                 () =>
                 {
                     Analytics.Track("share_tapped", new System.Collections.Generic.Dictionary<string, object>
                     { { "mode", ModeName }, { "level_index", _levelIndex } });
                     StartCoroutine(NativeShare.ShareScreenshot("trust-issues", bragFinal, GameLink));
-                });
+                }, true, 34);
             // Haunt a friend: a link that spawns YOUR ghost on this floor in THEIR game.
-            Theme.Button(root, "CURSE A FRIEND", new Color(0.32f, 0.08f, 0.4f), Color.white, 26,
-                c, new Vector2(0, -150), new Vector2(310, 96), () =>
+            Gothic.Button(root, "CURSE A FRIEND", new Vector2(0, -150), new Vector2(310, 96), () =>
                 {
                     var d = new Curse.Data
                     {
@@ -5469,41 +5667,42 @@ namespace TrustIssues
                         { "floor", _levelIndex }, { "mode", ModeName },
                     });
                     BossToast("CURSE READY - SEND IT TO THEM");
-                });
-            Theme.Button(root, "LEADERBOARD", new Color(0.28f, 0.24f, 0.32f), Color.white, 30,
-                c, new Vector2(350, -150), new Vector2(310, 96), () => { Destroy(panel); ShowLeaderboard(lbMode); });
-            Theme.Button(root, "MAIN MENU", new Color(1, 1, 1, 0.22f), Color.white, 34,
-                c, new Vector2(0, -270), new Vector2(420, 100),
-                () => { Destroy(panel); if (_levelRoot != null) Destroy(_levelRoot.gameObject); ShowMenu(); });
+                }, false, 26);
+            Gothic.Button(root, "LEADERBOARD", new Vector2(350, -150), new Vector2(310, 96),
+                () => { Destroy(panel); ShowLeaderboard(lbMode); }, false, 30);
+            Gothic.Button(root, "MAIN MENU", new Vector2(0, -270), new Vector2(420, 100),
+                () => { Destroy(panel); if (_levelRoot != null) Destroy(_levelRoot.gameObject); ShowMenu(); },
+                false, 34);
         }
 
         void ShowLeaderboard(string mode)
         {
             Audio.Play("click");
             var c = new Vector2(0.5f, 0.5f);
-            var panel = Overlay(new Color(0.04f, 0.02f, 0.06f, 0.92f), out var root);
+            var panel = Overlay(new Color(0.04f, 0.02f, 0.06f, 1f), out var root);
             _onBack = () => { Destroy(panel); ShowMenu(); };
-            if (Skin.Background(root, "leaderboard_bg") != null) { BuildSkinnedLeaderboard(root, panel); return; }
-            Theme.Label(root, "LEADERBOARD", 70, Theme.Player, c, new Vector2(0, 400), new Vector2(1400, 120)).font = Theme.TitleFont;
+            if (Skin.Background(root, "leaderboard_bg") != null) { BuildSkinnedLeaderboard(root, panel, mode); return; }
+
+            Gothic.Backdrop(root);
             string scope = mode == "daily" ? "today" : "all";
-            string heading = mode == "daily" ? "Blood Moon — tonight (fewest deaths)"
-                           : mode == "endless" ? "Endless Night — deepest floor"
-                                               : "The Castle — fewest deaths";
-            Theme.Label(root, heading, 32, Theme.Coin, c, new Vector2(0, 310), new Vector2(1400, 50));
-            var list = Theme.Label(root, "summoning the dead…", 34, Color.white,
-                c, new Vector2(0, -30), new Vector2(1000, 540), TextAnchor.UpperCenter);
+            string heading = mode == "daily" ? "BLOOD MOON — TONIGHT (FEWEST DEATHS)"
+                           : mode == "endless" ? "ENDLESS NIGHT — DEEPEST FLOOR"
+                                               : "THE CASTLE — FEWEST DEATHS";
+            Gothic.Heading(root, "LEADERBOARD", heading);
+            Gothic.PlateAt(root, new Vector2(0, -30), new Vector2(1080, 560), Gothic.Plate);
+            var list = Gothic.Line(root, "summoning the dead…", 32, Gothic.Bone,
+                new Vector2(0, -30), new Vector2(1000, 520), TextAnchor.UpperCenter);
             Leaderboard.Fetch(mode, scope, entries =>
             {
                 if (list == null) return;
                 if (entries.Count == 0)
                 { list.text = "No souls ranked yet — be the first.\n(or the leaderboard server isn't live yet)"; return; }
                 var sb = new System.Text.StringBuilder();
-                for (int i = 0; i < entries.Count && i < 15; i++)
+                for (int i = 0; i < entries.Count && i < 12; i++)
                     sb.AppendLine($"{i + 1}.   {entries[i].nick}      {entries[i].value}");
                 list.text = sb.ToString();
             });
-            Theme.Button(root, "‹ BACK", new Color(1, 1, 1, 0.25f), Color.white, 40,
-                new Vector2(0.5f, 0f), new Vector2(0, 40), new Vector2(360, 100), () => { Destroy(panel); ShowMenu(); });
+            Gothic.Back(root, () => { Destroy(panel); ShowMenu(); });
         }
 
         void ShowWardrobe()
@@ -5613,17 +5812,22 @@ namespace TrustIssues
                 { "balance", Currency.Balance },
             });
             var c = new Vector2(0.5f, 0.5f);
-            var panel = Overlay(new Color(0.04f, 0.02f, 0.06f, 0.94f), out var root);
+            // OPAQUE ground. This screen has no painting of its own, and on the old
+            // 94%-transparent wash the main-menu artwork underneath still showed
+            // through it — the painted BLOOD MOON / THE CASTLE buttons were visible
+            // straight through the shop's cards. The gothic backdrop is solid and
+            // wears the same frame, moon and stone as the painted screens.
+            var panel = Overlay(new Color(0.04f, 0.02f, 0.06f, 1f), out var root);
+            Gothic.Backdrop(root);
             _onBack = () => { Destroy(panel); ShowMenu(); };
-            Theme.Label(root, "THE CRYPT SHOP", 62, Theme.Player, c, new Vector2(0, 452), new Vector2(1400, 110)).font = Theme.TitleFont;
 
-            // The header now states the two things that were invisible before: what
-            // you have, and what you have to DO to open the next shelf. A currency
-            // with no stated purpose reads as pointless, which is exactly how this
-            // shop felt when every shelf was cosmetics.
+            // The header states the two things that were invisible before: what you
+            // have, and what you have to DO to open the next shelf. A currency with no
+            // stated purpose reads as pointless, which is exactly how this shop felt
+            // when every shelf was cosmetics. Both numbers are live.
             int floors = Charms.FloorsCleared;
-            Theme.Label(root, $"{Currency.Balance} BLOOD SHARDS     •     {floors} FLOORS CLEARED",
-                30, Theme.Coin, c, new Vector2(0, 392), new Vector2(1500, 46));
+            Gothic.Heading(root, "THE CRYPT SHOP",
+                $"{Currency.Balance} BLOOD SHARDS     ·     {floors} FLOORS CLEARED");
 
             // ---- tabs ---------------------------------------------------------
             string[] tabs = { "CHARMS", "SKINS", "STYLE" };
@@ -5637,13 +5841,11 @@ namespace TrustIssues
             {
                 int tab = t;
                 bool sel = _shopTab == t;
-                Theme.Button(root, tabs[t],
-                    sel ? new Color(0.55f, 0.14f, 0.18f) : new Color(1, 1, 1, 0.12f),
-                    Color.white, 30, c, new Vector2(-380 + t * 380, 320), new Vector2(360, 72),
-                    () => { _shopTab = tab; Destroy(panel); ShowShop(); });
+                Gothic.Button(root, tabs[t], new Vector2(-372 + t * 372, 244), new Vector2(352, 66),
+                    () => { _shopTab = tab; Destroy(panel); ShowShop(); }, sel, 29);
             }
-            Theme.Label(root, blurb[Mathf.Clamp(_shopTab, 0, 2)], 23, new Color(1, 1, 1, 0.5f),
-                c, new Vector2(0, 262), new Vector2(1500, 36));
+            Gothic.Line(root, blurb[Mathf.Clamp(_shopTab, 0, 2)], 23, Gothic.Faint,
+                new Vector2(0, 186), new Vector2(1500, 36));
 
             // Skin preview art (same sources as the Wardrobe previews).
             var vampFrames = Assets.Grid("vamp_idle_sheet", 64, 3);
@@ -5651,11 +5853,17 @@ namespace TrustIssues
             var pmFrames = Assets.Sheet("pinkman_idle", 32);
             Sprite pmSp = (pmFrames != null && pmFrames.Length > 0) ? pmFrames[0] : null;
 
-            // One tab's worth of cards fits on screen without stacking into the
-            // BACK button — the old flat list of every skin AND every cosmetic ran
-            // off the bottom of the panel.
-            int cols = 3; float spX = 430f, spY = 232f;
-            float startX = -((cols - 1) * spX) / 2f, startY = 130f;
+            // One tab's worth of cards fits on screen without stacking into the BACK
+            // button — the old flat list of every skin AND every cosmetic ran off the
+            // bottom of the panel. STYLE holds nine items, so it goes five across;
+            // the other two shelves get wider cards three across. Either way it's at
+            // most two rows, which is what keeps the grid clear of the bottom rail on
+            // a tall phone.
+            bool wide = _shopTab != 2;
+            int cols = wide ? 3 : 5;
+            float spX = wide ? 430f : 316f, spY = 210f;
+            var shopCard = new Vector2(wide ? 390f : 300f, 196f);
+            float startX = -((cols - 1) * spX) / 2f, startY = 40f;
             int slot = 0;
 
             if (_shopTab == 0)
@@ -5671,7 +5879,7 @@ namespace TrustIssues
                     string desc = gated
                         ? $"Locked - clear floor {def.reqFloors}"
                         : def.desc;
-                    ShopCard(root, panel, slot++, cols, spX, spY, startX, startY,
+                    ShopCard(root, panel, slot++, cols, spX, spY, startX, startY, shopCard,
                         def.name, desc, def.price, owned, worn, null,
                         gated ? new Color(def.tint.r * 0.3f, def.tint.g * 0.3f, def.tint.b * 0.3f) : def.tint,
                         buy: gated ? (System.Action)(() => BossToast($"SEALED - clear floor {def.reqFloors} first"))
@@ -5687,7 +5895,7 @@ namespace TrustIssues
                     var sd = s;
                     bool owned = Skins.IsUnlocked(sd);
                     bool equipped = owned && Skins.CurrentId == sd.id;
-                    ShopCard(root, panel, slot++, cols, spX, spY, startX, startY,
+                    ShopCard(root, panel, slot++, cols, spX, spY, startX, startY, shopCard,
                         sd.name, "a different face for the fall", sd.price, owned, equipped,
                         sd.pinkman ? pmSp : vampSp, Skins.Shade(sd),
                         buy: () => { if (Shop.BuySkin(sd)) Skins.Equip(sd.id); },
@@ -5701,7 +5909,7 @@ namespace TrustIssues
                     var item = it;
                     bool owned = Shop.Owns(item.id);
                     bool equipped = owned && Shop.Equipped(item.kind) == item.id;
-                    ShopCard(root, panel, slot++, cols, spX, spY, startX, startY,
+                    ShopCard(root, panel, slot++, cols, spX, spY, startX, startY, shopCard,
                         item.name, item.desc, item.price, owned, equipped,
                         null, item.tint,
                         buy: () => { if (Shop.Buy(item)) Shop.Equip(item.kind, item.id); },
@@ -5716,14 +5924,13 @@ namespace TrustIssues
             {
                 int need = goal.price - Currency.Balance;
                 string line = !Charms.Unlocked(goal)
-                    ? $"NEXT: {goal.name} - opens when you clear floor {goal.reqFloors}"
-                    : need > 0 ? $"NEXT: {goal.name} - {need} more shards"
-                               : $"NEXT: {goal.name} - you can afford it NOW";
-                Theme.Label(root, line, 24, Theme.Coin, c, new Vector2(0, -300), new Vector2(1500, 38));
+                    ? $"NEXT: {goal.name} — opens when you clear floor {goal.reqFloors}"
+                    : need > 0 ? $"NEXT: {goal.name} — {need} more shards"
+                               : $"NEXT: {goal.name} — you can afford it NOW";
+                Gothic.Line(root, line, 24, Theme.Coin, new Vector2(0, -300), new Vector2(1500, 38));
             }
 
-            Theme.Button(root, "‹ BACK", new Color(1, 1, 1, 0.25f), Color.white, 40,
-                new Vector2(0.5f, 0f), new Vector2(0, 40), new Vector2(360, 100), () => { Destroy(panel); ShowMenu(); });
+            Gothic.Back(root, () => { Destroy(panel); ShowMenu(); });
         }
         int _shopTab;   // which shelf the Crypt Shop is showing
 
@@ -5731,7 +5938,7 @@ namespace TrustIssues
         // and a state footer — BUY (gold, affordable) / NEED N MORE (dim) /
         // EQUIPPED / tap to wear. Any successful action rebuilds the screen.
         void ShopCard(Transform root, GameObject panel, int slot, int cols,
-            float spX, float spY, float startX, float startY,
+            float spX, float spY, float startX, float startY, Vector2 size,
             string name, string desc, int price, bool owned, bool equipped,
             Sprite preview, Color tint, System.Action buy, System.Action equip)
         {
@@ -5739,11 +5946,13 @@ namespace TrustIssues
             int r = slot / cols, col = slot % cols;
             var pos = new Vector2(startX + col * spX, startY - r * spY);
             bool affordable = Currency.Balance >= price;
-            var bg = equipped ? new Color(0.42f, 0.11f, 0.15f, 0.96f)
-                   : owned ? new Color(0.16f, 0.13f, 0.2f, 0.95f)
-                   : affordable ? new Color(0.22f, 0.18f, 0.1f, 0.95f) : new Color(0.1f, 0.1f, 0.13f, 0.95f);
+            // Fills sampled off the artwork: worn items glow blood, owned ones sit in
+            // cold stone, affordable ones catch a little candle warmth.
+            var bg = equipped ? new Color(0.30f, 0.045f, 0.075f, 1f)
+                   : owned ? new Color(0.085f, 0.062f, 0.105f, 1f)
+                   : affordable ? new Color(0.125f, 0.088f, 0.055f, 1f) : new Color(0.052f, 0.040f, 0.065f, 1f);
 
-            var card = Theme.Button(root, "", bg, Color.white, 1, c, pos, new Vector2(320, 224), () =>
+            var card = Gothic.Button(root, "", pos, size, () =>
             {
                 if (owned) { equip(); Audio.Play("click", 0.7f); }
                 else if (affordable)
@@ -5754,18 +5963,18 @@ namespace TrustIssues
                 }
                 else { ShowHint($"{price - Currency.Balance} more shards — the castle pays for blood"); return; }
                 Destroy(panel); ShowShop();   // rebuild so every card reflects the new state
-            });
+            }, fill: bg);
             var ct = card.transform;
 
-            if (equipped)   // same gold ring the Wardrobe uses for the current pick
+            if (equipped)   // a candle-gold ring marks the current pick
             {
                 var ring = new GameObject("EquipRing", typeof(RectTransform)).AddComponent<Image>();
                 ring.transform.SetParent(ct, false); ring.raycastTarget = false;
-                var frame = Theme.NineSlice("panel_frame", 16);
-                if (frame != null) { ring.sprite = frame; ring.type = Image.Type.Sliced; ring.pixelsPerUnitMultiplier = 0.12f; }
+                ring.sprite = Gothic.Frame; ring.type = Image.Type.Sliced;
+                ring.pixelsPerUnitMultiplier = Gothic.RingFrameMul;
                 ring.color = Theme.Coin;
                 var rrt = ring.rectTransform; rrt.anchorMin = Vector2.zero; rrt.anchorMax = Vector2.one;
-                rrt.offsetMin = new Vector2(-4, -4); rrt.offsetMax = new Vector2(4, 4);
+                rrt.offsetMin = new Vector2(-5, -5); rrt.offsetMax = new Vector2(5, 5);
             }
 
             // Preview: the skin sprite when there is one, else a tinted diamond
@@ -5778,33 +5987,35 @@ namespace TrustIssues
                 pv.color = owned ? tint : new Color(0.05f, 0.04f, 0.06f, 0.95f);   // mystery silhouette until bought
                 var prt = pv.rectTransform;
                 prt.anchorMin = prt.anchorMax = new Vector2(0.5f, 0.5f); prt.pivot = new Vector2(0.5f, 0.5f);
-                prt.anchoredPosition = new Vector2(0, 52); prt.sizeDelta = new Vector2(96, 96);
+                prt.anchoredPosition = new Vector2(0, 44); prt.sizeDelta = new Vector2(84, 84);
             }
             else
             {
                 var sw = new GameObject("Swatch", typeof(RectTransform)).AddComponent<Image>();
                 sw.transform.SetParent(ct, false); sw.raycastTarget = false;
+                sw.sprite = Gothic.Diamond;   // the artwork's own ornament, tinted per item
                 sw.color = tint;
                 var srt2 = sw.rectTransform;
                 srt2.anchorMin = srt2.anchorMax = new Vector2(0.5f, 0.5f); srt2.pivot = new Vector2(0.5f, 0.5f);
-                srt2.anchoredPosition = new Vector2(0, 52); srt2.sizeDelta = new Vector2(52, 52);
-                srt2.localRotation = Quaternion.Euler(0, 0, 45f);
+                srt2.anchoredPosition = new Vector2(0, 44); srt2.sizeDelta = new Vector2(62, 62);
             }
 
-            Theme.Label(ct, name, 27, owned || affordable ? Color.white : new Color(1, 1, 1, 0.55f),
-                c, new Vector2(0, -20), new Vector2(304, 34)).raycastTarget = false;
-            var descL = Theme.Label(ct, desc, 16, new Color(1, 1, 1, 0.55f),
-                c, new Vector2(0, -50), new Vector2(290, 40));
-            descL.horizontalOverflow = HorizontalWrapMode.Wrap;
-            descL.raycastTarget = false;
+            // Everything below the preview is laid out from the card's own height, so
+            // the wide 3-across shelves and the narrow 5-across one both stay tidy.
+            float w = size.x - 30f;
+            Gothic.Line(ct, name.ToUpperInvariant(), 25,
+                owned || affordable ? Gothic.Bone : new Color(0.62f, 0.55f, 0.52f, 0.55f),
+                new Vector2(0, -18), new Vector2(w, 32));
+            Skin.Fit(Gothic.Line(ct, desc, 16, new Color(0.72f, 0.65f, 0.62f, 0.70f),
+                new Vector2(0, -48), new Vector2(w - 12, 40)), 16, 11);
 
             string footer = equipped ? "EQUIPPED — tap to remove"
                           : owned ? "tap to wear"
                           : affordable ? $"BUY — {price}" : $"NEED {price - Currency.Balance} MORE";
-            Theme.Label(ct, footer, 19,
-                equipped ? Theme.Exit : owned ? new Color(1, 1, 1, 0.5f)
-                         : affordable ? Theme.Coin : new Color(1, 0.5f, 0.5f, 0.7f),
-                c, new Vector2(0, -86), new Vector2(300, 28)).raycastTarget = false;
+            Gothic.Line(ct, footer, 19,
+                equipped ? Theme.Coin : owned ? new Color(0.72f, 0.65f, 0.62f, 0.6f)
+                         : affordable ? Theme.Coin : new Color(0.78f, 0.28f, 0.30f, 0.9f),
+                new Vector2(0, -80), new Vector2(w, 28));
         }
 
         // ==================== pause ====================
@@ -5850,25 +6061,56 @@ namespace TrustIssues
                 { "level_index", _levelIndex },
             });
             Time.timeScale = 0f;
-            _pausePanel = Overlay(new Color(0, 0, 0, 0.6f), out var root);
-            // If a pause artwork is dropped in (Resources/ui/pause_bg), wear it; the
-            // ornate frame from Overlay themes it either way.
-            Skin.Background(root, "pause_bg");
-            var pausedTitle = Theme.Label(root, "PAUSED", 96, Theme.Player,
-                new Vector2(0.5f, 0.5f), new Vector2(0, 250), new Vector2(1000, 130));
-            pausedTitle.font = Theme.TitleFont;   // the dripping-blood heading, like every other screen
+            // A heavier wash than before so the castle behind reads as a dimmed
+            // backdrop rather than competing with the menu, but still visibly THERE —
+            // pause shouldn't feel like you left the level.
+            _pausePanel = Overlay(new Color(0.02f, 0.008f, 0.025f, 0.80f), out var root);
+            // If a pause artwork is dropped in (Resources/ui/pause_bg), wear it.
+            bool painted = Skin.Background(root, "pause_bg") != null;
+
             // Endless never ends on lives, so it needs an explicit "END RUN" to bank
             // your depth and see the score — that's the 4-button layout.
             bool endless = _mode == Mode.Endless;
-            Theme.Button(root, "RESUME", Theme.Exit, Theme.Ink, 52,
-                new Vector2(0.5f, 0.5f), new Vector2(0, endless ? 130 : 70), new Vector2(460, 116), Resume);
-            Theme.Button(root, "RESTART LEVEL", Theme.Trick, Theme.Ink, 44,
-                new Vector2(0.5f, 0.5f), new Vector2(0, endless ? 6 : -70), new Vector2(560, 116), RestartLevel);
+
+            // The pause menu now wears the same gothic plate as the painted screens:
+            // a framed slab of castle stone rather than four loose coloured bars
+            // floating over the level.
+            float plateH = endless ? 612f : 500f;
+            if (!painted)
+            {
+                var plate = Gothic.PlateAt(root, Vector2.zero, new Vector2(660, plateH), Gothic.Ground);
+                var grain = new GameObject("Grain", typeof(RectTransform)).AddComponent<Image>();
+                grain.transform.SetParent(plate.transform, false);
+                grain.sprite = Theme.StoneTile; grain.type = Image.Type.Tiled;
+                grain.pixelsPerUnitMultiplier = 0.14f; grain.raycastTarget = false;
+                grain.color = new Color(0.55f, 0.5f, 0.62f, 0.10f);
+                var grt = grain.rectTransform;
+                grt.anchorMin = Vector2.zero; grt.anchorMax = Vector2.one;
+                grt.offsetMin = new Vector2(8, 8); grt.offsetMax = new Vector2(-8, -8);
+                grain.transform.SetAsFirstSibling();   // under the frame, over the fill
+            }
+
+            float titleY = plateH / 2f - 90f;
+            var shadow = Theme.Label(root, "PAUSED", 72, new Color(0, 0, 0, 0.85f),
+                new Vector2(0.5f, 0.5f), new Vector2(5, titleY - 5), new Vector2(1000, 130));
+            shadow.font = Theme.TitleFont; shadow.raycastTarget = false;
+            var pausedTitle = Theme.Label(root, "PAUSED", 72, Theme.Player,
+                new Vector2(0.5f, 0.5f), new Vector2(0, titleY), new Vector2(1000, 130));
+            pausedTitle.font = Theme.TitleFont;   // the dripping-blood heading, like every other screen
+            pausedTitle.raycastTarget = false;
+
+            float y = titleY - 120f;
+            var btnSize = new Vector2(540, 94);
+            Gothic.Button(root, "RESUME", new Vector2(0, y), btnSize, Resume, true, 40);
+            y -= 110f;
+            Gothic.Button(root, "RESTART LEVEL", new Vector2(0, y), btnSize, RestartLevel, false, 34);
+            y -= 110f;
             if (endless)
-                Theme.Button(root, "END RUN — bank score", new Color(0.55f, 0.1f, 0.13f), Color.white, 42,
-                    new Vector2(0.5f, 0.5f), new Vector2(0, -118), new Vector2(560, 116), EndRun);
-            Theme.Button(root, "MAIN MENU", new Color(1, 1, 1, 0.25f), Color.white, 44,
-                new Vector2(0.5f, 0.5f), new Vector2(0, endless ? -242 : -210), new Vector2(560, 116), QuitToMenu);
+            {
+                Gothic.Button(root, "END RUN — BANK SCORE", new Vector2(0, y), btnSize, EndRun, false, 30);
+                y -= 110f;
+            }
+            Gothic.Button(root, "MAIN MENU", new Vector2(0, y), btnSize, QuitToMenu, false, 34);
         }
 
         // End an Endless run on purpose: unpause and show the result/leaderboard screen.
