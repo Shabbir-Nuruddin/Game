@@ -174,6 +174,12 @@ namespace TrustIssues
             ApplyDepthMode();   // place parallax/moon for flat or 2.5D per opt_25d
             BuildHUD();
             ShowMenu();
+            // The launch video plays OVER a fully-built menu rather than delaying
+            // it, so the game is already live the instant the intro clears — no
+            // second load, and nothing can strand the player if the clip fails.
+            // Menu music is held back so it doesn't fight the video's own audio.
+            Audio.StopMusic();
+            Intro.Play(() => Audio.Music("music", 0.3f));
         }
 
         // Re-place everything whose position depends on the camera projection.
@@ -985,7 +991,7 @@ namespace TrustIssues
             go.transform.SetParent(_touchPanel.transform, false);
             var baseImg = go.AddComponent<Image>();
             baseImg.sprite = Theme.Ring;
-            baseImg.color = new Color(1f, 1f, 1f, 0.3f);
+            baseImg.color = new Color(1f, 1f, 1f, 0.18f);
             var rt = baseImg.rectTransform;
             rt.anchorMin = rt.anchorMax = anchor; rt.pivot = new Vector2(0.5f, 0.5f);
             rt.anchoredPosition = pos; rt.sizeDelta = new Vector2(baseSize, baseSize);
@@ -994,7 +1000,7 @@ namespace TrustIssues
             knobGo.transform.SetParent(go.transform, false);
             var knobImg = knobGo.AddComponent<Image>();
             knobImg.sprite = Theme.Circle;
-            knobImg.color = new Color(1f, 1f, 1f, 0.5f);
+            knobImg.color = new Color(1f, 1f, 1f, 0.3f);
             var knobRt = knobImg.rectTransform;
             knobRt.anchorMin = knobRt.anchorMax = new Vector2(0.5f, 0.5f); knobRt.pivot = new Vector2(0.5f, 0.5f);
             knobRt.anchoredPosition = Vector2.zero; knobRt.sizeDelta = new Vector2(baseSize * 0.45f, baseSize * 0.45f);

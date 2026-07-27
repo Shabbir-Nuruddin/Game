@@ -256,11 +256,15 @@ namespace TrustIssues
             {
                 _held = held;
                 if (held) Audio.PlayOr("tap", "click", 0.35f);
+                // Capped low (not the ~0.9 the buttons use) — this feedback fires
+                // the instant a finger grabs the stick, i.e. right when the player
+                // is moving and needs to actually SEE their character, not a
+                // near-opaque disc sitting on top of it.
                 for (int i = 0; i < _graphics.Length; i++)
                 {
                     if (_graphics[i] == null) continue;
                     var c = _graphics[i].color;
-                    c.a = held ? Mathf.Min(0.9f, _idleAlpha[i] * 2.2f) : _idleAlpha[i];
+                    c.a = held ? Mathf.Min(0.45f, _idleAlpha[i] * 1.8f) : _idleAlpha[i];
                     _graphics[i].color = c;
                 }
             }
