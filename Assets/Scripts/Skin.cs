@@ -96,6 +96,77 @@ namespace TrustIssues
         }
 
         /// <summary>
+        /// The colour of a painted button's interior. Measured off the artwork: the
+        /// insides of every framed control are effectively pure black, so a chip in
+        /// this colour hides the baked-in text without leaving a visible patch.
+        /// </summary>
+        public static readonly Color Interior = new Color(0.012f, 0.006f, 0.008f, 1f);
+        /// <summary>The crimson the artwork uses for a control's LABEL ("JUMP:").</summary>
+        public static readonly Color LabelRed = new Color(0.76f, 0.22f, 0.27f, 1f);
+        /// <summary>The warm bone-white the artwork uses for a control's VALUE ("SPACE").</summary>
+        public static readonly Color ValueBone = new Color(0.82f, 0.75f, 0.67f, 1f);
+        /// <summary>The blood red of the painted volume bars.</summary>
+        public static readonly Color BarRed = new Color(0.53f, 0.045f, 0.05f, 1f);
+
+        /// <summary>
+        /// An opaque patch that hides a baked-in value in the artwork, so a live one
+        /// can be drawn over the top. Never raycasts — taps belong to the Zone below.
+        /// </summary>
+        public static Image Chip(Transform root, float x0, float top0, float x1, float top1, Color color)
+        {
+            var go = new GameObject("Chip", typeof(RectTransform));
+            go.transform.SetParent(root, false);
+            var img = go.AddComponent<Image>();
+            img.color = color; img.raycastTarget = false;
+            Anchors(x0, top0, x1, top1, out var min, out var max);
+            var rt = img.rectTransform;
+            rt.anchorMin = min; rt.anchorMax = max; rt.offsetMin = rt.offsetMax = Vector2.zero;
+            return img;
+        }
+
+        /// <summary>
+        /// An empty rect positioned by the same top-left fractions as everything else,
+        /// for callers that need to build a real widget (a Slider, say) in artwork space.
+        /// </summary>
+        public static RectTransform Slot(Transform root, string name,
+            float x0, float top0, float x1, float top1)
+        {
+            var go = new GameObject(name, typeof(RectTransform));
+            go.transform.SetParent(root, false);
+            var rt = (RectTransform)go.transform;
+            Anchors(x0, top0, x1, top1, out var min, out var max);
+            rt.anchorMin = min; rt.anchorMax = max; rt.offsetMin = rt.offsetMax = Vector2.zero;
+            return rt;
+        }
+
+        /// <summary>
+        /// Let a caption shrink to stay inside its painted frame. The game's font is
+        /// wider than the one in the mockup, and bound key names vary enormously
+        /// ("K" vs "BACKSPACE"), so any fixed size would eventually spill out over
+        /// the ornate border. Best-fit caps at the artwork's own size and only ever
+        /// scales down, so short captions still match the painting exactly.
+        /// </summary>
+        public static Text Fit(Text t, int maxSize, int minSize = 10)
+        {
+            t.resizeTextForBestFit = true;
+            t.resizeTextMaxSize = maxSize;
+            t.resizeTextMinSize = minSize;
+            // Best-fit measures against the rect, so overflow must not be allowed to
+            // "solve" the overflow for it.
+            t.horizontalOverflow = HorizontalWrapMode.Wrap;
+            t.verticalOverflow = VerticalWrapMode.Truncate;
+            return t;
+        }
+
+        /// <summary>
+        /// The caption for a painted control, in the artwork's own two-tone style:
+        /// crimson label, bone-white value. Uses rich text so both live in one Text.
+        /// </summary>
+        public static string Caption(string label, string value) =>
+            $"<color=#{ColorUtility.ToHtmlStringRGB(LabelRed)}>{label}:</color>" +
+            $"  <color=#{ColorUtility.ToHtmlStringRGB(ValueBone)}>{value}</color>";
+
+        /// <summary>
         /// A live value painted OVER a spot where the artwork baked in a sample number
         /// (SHOP 65, FLOOR 1…). Lays an opaque chip to hide the painted text, then the
         /// real value on top — so the menu shows your actual balance/floor/difficulty

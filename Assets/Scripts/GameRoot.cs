@@ -1262,57 +1262,236 @@ namespace TrustIssues
         // DEFAULT bindings/values (which is what a fresh install has); the zones make
         // every control work — rebinds capture a key, sliders step the volume,
         // toggles flip, difficulty cycles. Painted labels stay put (art as-is).
+        // The artwork bakes EVERY value into the picture (JUMP: SPACE, 100%,
+        // DIFFICULTY: NORMAL…), so the old tap-zone-only version looked broken:
+        // taps changed the setting but the frozen picture never moved, and the
+        // volume "bars" were paintings you couldn't drag. Each painted control now
+        // gets a real widget laid exactly over it — the interiors of those frames
+        // are pure black in the art, so a black chip hides the baked value and the
+        // live one is drawn in the artwork's own crimson/bone lettering. The look
+        // is untouched; everything under it is now genuinely live.
+        //
+        // Rects below are fractions of the screen measured off the 1600x900 mockup.
         void BuildSkinnedSettings(Transform root)
         {
-            // Ability key rebinds — tap, then press the new key (Esc cancels).
-            Skin.Zone(root, 0.28f, 0.245f, 0.485f, 0.315f, () => StartCoroutine(CaptureKeySilent("jump")),  "jump");
-            Skin.Zone(root, 0.515f, 0.245f, 0.72f, 0.315f, () => StartCoroutine(CaptureKeySilent("shoot")), "shoot");
-            Skin.Zone(root, 0.28f, 0.315f, 0.485f, 0.385f, () => StartCoroutine(CaptureKeySilent("dash")),  "dash");
-            Skin.Zone(root, 0.515f, 0.315f, 0.72f, 0.385f, () => StartCoroutine(CaptureKeySilent("fly")),   "fly");
+            // Column interiors for the two-across rows (inset to stay inside the
+            // ornate end-caps of each painted frame).
+            const float LcX0 = 0.287f, LcX1 = 0.471f;   // left column, CONTROLS rows
+            const float RcX0 = 0.529f, RcX1 = 0.713f;   // right column, CONTROLS rows
 
-            // Volume tracks — tap to step 100→75→50→25→0→100 (you'll hear it change).
-            Skin.Zone(root, 0.37f, 0.485f, 0.635f, 0.535f, () => VolStep(() => Audio.MusicVol, v => Audio.MusicVol = v), "music");
-            Skin.Zone(root, 0.37f, 0.54f, 0.635f, 0.59f, () => VolStep(() => Audio.SfxVol, v => Audio.SfxVol = v),   "sfx");
-            Skin.Zone(root, 0.37f, 0.595f, 0.635f, 0.645f, () => VolStep(() => Voice.Volume, v => Voice.Volume = v),  "voice");
+            // ---- Ability key rebinds: tap, then press the new key (Esc cancels) ----
+            SkinRebind(root, LcX0, 0.261f, LcX1, 0.303f, "JUMP",      "jump");
+            SkinRebind(root, RcX0, 0.261f, RcX1, 0.303f, "SHOOT",     "shoot");
+            SkinRebind(root, LcX0, 0.328f, LcX1, 0.370f, "DASH",      "dash");
+            SkinRebind(root, RcX0, 0.328f, RcX1, 0.370f, "BAT-GLIDE", "fly");
 
-            // Difficulty + gameplay toggles.
-            Skin.Zone(root, 0.33f, 0.67f, 0.67f, 0.725f, () =>
-            {
-                Diff.Current = (Difficulty)(((int)Diff.Current + 1) % 3);
-                if (!Audio.Muted) Audio.Play("click", 0.6f);
-            }, "difficulty");
-            Skin.Zone(root, 0.235f, 0.755f, 0.475f, 0.815f, () => FlipPref("opt_replay_ghost", 0), "replayghost");
-            Skin.Zone(root, 0.525f, 0.755f, 0.765f, 0.815f, () => FlipPref("opt_touch", 0),        "pads");
-            Skin.Zone(root, 0.235f, 0.815f, 0.475f, 0.875f, () =>
-            {
-                PlayerPrefs.SetInt("opt_joystick", JoystickMode ? 0 : 1); PlayerPrefs.Save();
-                if (!Audio.Muted) Audio.Play("click", 0.6f); SyncMoveMode();
-            }, "move");
-            Skin.Zone(root, 0.525f, 0.815f, 0.765f, 0.875f, () => FlipPref("opt_25d", 1, ApplyDepthMode), "depth");
+            // ---- Volume: real draggable sliders over the painted bars ----
+            SkinSlider(root, 0.5211f, "MUSIC", () => Audio.MusicVol, v => Audio.MusicVol = v);
+            SkinSlider(root, 0.5800f, "SFX",   () => Audio.SfxVol,   v => Audio.SfxVol = v);
+            SkinSlider(root, 0.6383f, "VOICE", () => Voice.Volume,   v => Voice.Volume = v);
 
-            Skin.Zone(root, 0.42f, 0.895f, 0.58f, 0.975f, ShowMenu, "back");
+            // ---- Difficulty: cycles, and the blurb under it follows along ----
+            Text blurb = null;
+            SkinChoice(root, 0.350f, 0.685f, 0.650f, 0.723f, "difficulty",
+                () => Skin.Caption("DIFFICULTY", Diff.Name),
+                () => Diff.Current = (Difficulty)(((int)Diff.Current + 1) % 3),
+                () => { if (blurb != null) blurb.text = Diff.Blurb; });
+            // Chip first, live line on top. Kept tight to the painted text: the art
+            // either side of it is castle detail, so a chip that overran the line
+            // would read as a black bar drawn across the scenery.
+            Skin.Chip(root, 0.325f, 0.741f, 0.675f, 0.769f, Skin.Interior);
+            // Also best-fit: the Casual blurb is much longer than the painted one.
+            blurb = Skin.Fit(Skin.LiveText(root, Diff.Blurb, 0.30f, 0.741f, 0.70f, 0.769f,
+                23, new Color(0.72f, 0.22f, 0.26f, 1f)), 23);
+
+            // ---- Gameplay toggles ----
+            const float TlX0 = 0.245f, TlX1 = 0.455f;   // left toggle column
+            const float TrX0 = 0.545f, TrX1 = 0.755f;   // right toggle column
+            SkinChoice(root, TlX0, 0.782f, TlX1, 0.821f, "replayghost",
+                () => Skin.Caption("REPLAY GHOST", PrefOn("opt_replay_ghost", 0) ? "ON" : "OFF"),
+                () => FlipPrefQuiet("opt_replay_ghost", 0), null);
+            SkinChoice(root, TrX0, 0.782f, TrX1, 0.821f, "pads",
+                () => Skin.Caption("ON-SCREEN PADS", PrefOn("opt_touch", 0) ? "ON" : "OFF"),
+                () => FlipPrefQuiet("opt_touch", 0), null);
+            SkinChoice(root, TlX0, 0.842f, TlX1, 0.881f, "move",
+                () => Skin.Caption("MOVE", JoystickMode ? "JOYSTICK" : "ARROWS"),
+                () => { PlayerPrefs.SetInt("opt_joystick", JoystickMode ? 0 : 1); PlayerPrefs.Save(); },
+                SyncMoveMode);
+            SkinChoice(root, TrX0, 0.842f, TrX1, 0.881f, "depth",
+                () => Skin.Caption("2.5D DEPTH", PrefOn("opt_25d", 1) ? "ON" : "OFF"),
+                () => FlipPrefQuiet("opt_25d", 1), ApplyDepthMode);
+
+            Skin.Zone(root, 0.39f, 0.905f, 0.61f, 0.975f, ShowMenu, "back");
+
+            // REQUIRED ATTRIBUTION — same licence obligation as the code-built
+            // screen below. The artwork doesn't paint it, so the skinned Settings
+            // has to supply it or shipping the music becomes unlicensed. Tucked
+            // into the dark, empty panel to the left of BACK as fine print, where
+            // it's legible without touching the composition.
+            var credit = Skin.LiveText(root,
+                "Music by Kevin MacLeod (incompetech.com)\nlicensed under Creative Commons BY 4.0",
+                0.13f, 0.906f, 0.38f, 0.952f, 15, new Color(1f, 1f, 1f, 0.42f),
+                false, TextAnchor.MiddleLeft);
+            credit.horizontalOverflow = HorizontalWrapMode.Wrap;
         }
 
-        // Flip a 0/1 PlayerPrefs setting (used by the skinned Settings toggles).
-        void FlipPref(string key, int def, System.Action after = null)
+        // Matched to the artwork's own lettering: its captions are ~18px tall on a
+        // 900px-tall mockup, and the canvas measures in 1080-tall reference units,
+        // so the painted size scales up by 1080/900 before becoming a font size.
+        const int CaptionSize = 30;
+        // Side margin between a caption and the painted frame around it, in screen fractions.
+        const float CapPad = 0.008f;
+
+        static bool PrefOn(string key, int def) => PlayerPrefs.GetInt(key, def) == 1;
+
+        // Flip a 0/1 pref without the click sound — SkinChoice plays it already.
+        static void FlipPrefQuiet(string key, int def)
         {
             PlayerPrefs.SetInt(key, PlayerPrefs.GetInt(key, def) == 1 ? 0 : 1);
             PlayerPrefs.Save();
-            if (!Audio.Muted) Audio.Play("click", 0.6f);
-            after?.Invoke();
         }
 
-        // Step a volume to the next preset (loops back to full after mute).
-        void VolStep(System.Func<float> get, System.Action<float> set)
+        /// <summary>
+        /// A painted control whose caption cycles when tapped: chip to hide the baked
+        /// value, invisible tap-zone for the press flash, live caption on top.
+        /// </summary>
+        Text SkinChoice(Transform root, float x0, float top0, float x1, float top1, string name,
+            System.Func<string> caption, System.Action advance, System.Action after)
         {
-            float[] steps = { 1f, 0.75f, 0.5f, 0.25f, 0f };
-            float cur = get(); int idx = 0; float best = 999f;
-            for (int i = 0; i < steps.Length; i++) { float d = Mathf.Abs(steps[i] - cur); if (d < best) { best = d; idx = i; } }
-            set(steps[(idx + 1) % steps.Length]);
-            if (!Audio.Muted) Audio.Play("click", 0.6f);
+            Skin.Chip(root, x0, top0, x1, top1, Skin.Interior);
+            Text live = null;
+            Skin.Zone(root, x0, top0, x1, top1, () =>
+            {
+                advance();
+                if (!Audio.Muted) Audio.Play("click", 0.6f);
+                after?.Invoke();
+                if (live != null) live.text = caption();
+            }, name);
+            // The chip spans the full interior (it must hide every painted pixel),
+            // but the caption is inset a little so a long value stops short of the
+            // ornate border instead of kissing it.
+            live = Skin.Fit(Skin.LiveText(root, caption(), x0 + CapPad, top0, x1 - CapPad, top1,
+                CaptionSize, Color.white), CaptionSize);
+            return live;
         }
 
-        // Like CaptureKey but with no label to update (the skinned art shows the key).
+        /// <summary>
+        /// A rebindable key row over the painted frame. Tapping it shows a prompt in
+        /// place of the key name, then the caption updates the instant a key is
+        /// pressed — so the screen finally reflects what you actually bound.
+        /// </summary>
+        void SkinRebind(Transform root, float x0, float top0, float x1, float top1,
+            string label, string action)
+        {
+            Skin.Chip(root, x0, top0, x1, top1, Skin.Interior);
+            Text live = null;
+            System.Func<string> caption = () => Skin.Caption(label, Controls.Name(Controls.Get(action)));
+            Skin.Zone(root, x0, top0, x1, top1,
+                () => StartCoroutine(CaptureKeyLive(action, live, label, caption)), action);
+            // The chip spans the full interior (it must hide every painted pixel),
+            // but the caption is inset a little so a long value stops short of the
+            // ornate border instead of kissing it.
+            live = Skin.Fit(Skin.LiveText(root, caption(), x0 + CapPad, top0, x1 - CapPad, top1,
+                CaptionSize, Color.white), CaptionSize);
+        }
+
+        // Skinned-screen key capture: same as CaptureKey but drives a Skin LiveText
+        // caption instead of a code-built button label.
+        System.Collections.IEnumerator CaptureKeyLive(string action, Text live, string label,
+            System.Func<string> caption)
+        {
+            if (live != null) live.text = Skin.Caption(label, "press a key…");
+            yield return CaptureKeySilent(action);
+            if (live != null) live.text = caption();
+        }
+
+        /// <summary>
+        /// A real, draggable volume slider laid over one of the painted bars, rebuilt
+        /// in the artwork's own style: blood-red fill on a black track with the same
+        /// diamond handle. Also replaces the frozen "100%" to its right.
+        /// </summary>
+        void SkinSlider(Transform root, float centerY, string name,
+            System.Func<float> get, System.Action<float> set)
+        {
+            // Bar geometry measured off the mockup (all three bars share it).
+            const float BarX0 = 0.378f, BarX1 = 0.628f;   // painted bar incl. end caps
+            const float Half = 0.0148f;                    // half the bar's height
+            float top = centerY - Half, bot = centerY + Half;
+
+            // Hide the painted bar and its baked percentage.
+            Skin.Chip(root, BarX0, top, BarX1, bot, Skin.Interior);
+            Skin.Chip(root, 0.638f, centerY - 0.018f, 0.70f, centerY + 0.018f, Skin.Interior);
+
+            // The slot is deliberately TALLER than the painted bar: its height is the
+            // grab area (a 13px-tall bar is nearly impossible to hit with a thumb),
+            // while the visible groove stays bar-thin via StretchBand below. Height
+            // doesn't affect the slider's horizontal travel, so the feel is unchanged.
+            var slot = Skin.Slot(root, "Slider_" + name, BarX0, centerY - 0.026f, BarX1, centerY + 0.026f);
+            // An invisible full-slot graphic on the SAME object as the Slider, so a
+            // press anywhere along the bar reaches it — not just one on the handle.
+            var grab = slot.gameObject.AddComponent<Image>();
+            grab.color = new Color(1f, 1f, 1f, 0f);
+            var slider = slot.gameObject.AddComponent<Slider>();
+
+            const float BarFrac = 0.28f;   // visible groove height as a fraction of the grab area
+
+            // Track: a thin dark groove the full width of the painted bar.
+            var track = new GameObject("Track", typeof(RectTransform)).AddComponent<Image>();
+            track.transform.SetParent(slot, false);
+            track.color = new Color(0.10f, 0.03f, 0.04f, 1f);
+            track.raycastTarget = false;
+            StretchBand(track.rectTransform, BarFrac);
+
+            // Fill: the blood red of the artwork, growing left to right.
+            var fillArea = new GameObject("FillArea", typeof(RectTransform)).GetComponent<RectTransform>();
+            fillArea.SetParent(slot, false);
+            StretchBand(fillArea, BarFrac);
+            var fill = new GameObject("Fill", typeof(RectTransform)).AddComponent<Image>();
+            fill.transform.SetParent(fillArea, false);
+            fill.color = Skin.BarRed;
+            fill.raycastTarget = false;
+            var fr = fill.rectTransform;
+            fr.anchorMin = Vector2.zero; fr.anchorMax = Vector2.one;
+            fr.offsetMin = fr.offsetMax = Vector2.zero;
+
+            // Handle: the artwork's diamond, i.e. a square turned 45 degrees. The
+            // rotation lives on a CHILD so the Slider can size the handle freely.
+            var handleArea = new GameObject("HandleArea", typeof(RectTransform)).GetComponent<RectTransform>();
+            handleArea.SetParent(slot, false);
+            handleArea.anchorMin = Vector2.zero; handleArea.anchorMax = Vector2.one;
+            handleArea.offsetMin = new Vector2(11, 0); handleArea.offsetMax = new Vector2(-11, 0);
+            var handle = new GameObject("Handle", typeof(RectTransform)).GetComponent<RectTransform>();
+            handle.SetParent(handleArea, false);
+            handle.sizeDelta = new Vector2(22, 0);
+            var diamond = new GameObject("Diamond", typeof(RectTransform)).AddComponent<Image>();
+            diamond.transform.SetParent(handle, false);
+            diamond.sprite = Theme.Square;
+            diamond.color = new Color(0.86f, 0.30f, 0.31f, 1f);
+            var dr = diamond.rectTransform;
+            dr.anchorMin = dr.anchorMax = new Vector2(0.5f, 0.5f);
+            dr.pivot = new Vector2(0.5f, 0.5f);
+            dr.anchoredPosition = Vector2.zero;
+            dr.sizeDelta = new Vector2(17, 17);
+            dr.localRotation = Quaternion.Euler(0, 0, 45f);
+
+            slider.targetGraphic = diamond;
+            slider.fillRect = fr;
+            slider.handleRect = handle;
+            slider.direction = Slider.Direction.LeftToRight;
+            slider.minValue = 0f; slider.maxValue = 1f;
+            slider.SetValueWithoutNotify(get());
+
+            var pct = Skin.LiveText(root, Mathf.RoundToInt(get() * 100f) + "%",
+                0.638f, centerY - 0.018f, 0.70f, centerY + 0.018f, 28, Skin.ValueBone);
+
+            slider.onValueChanged.AddListener(v =>
+            {
+                set(v);
+                pct.text = Mathf.RoundToInt(v * 100f) + "%";
+            });
+        }
+
+        // Like CaptureKey but with no label to update (the caller drives the caption).
         System.Collections.IEnumerator CaptureKeySilent(string action)
         {
             _capturingKey = true;
