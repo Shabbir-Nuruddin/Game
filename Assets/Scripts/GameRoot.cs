@@ -252,7 +252,10 @@ namespace TrustIssues
 
             // A big themed moon in the upper sky (in FRONT of the wash so it stays bold),
             // camera-parented so it's always visible. Its colour changes per theme.
-            if (Theme.Moon != null)
+            // The painted backdrop plate has the moon in it already, sitting against
+            // the castle skyline exactly as painted. Building the separate
+            // camera-parented one on top of that would put TWO moons in the sky.
+            if (Theme.Moon != null && Assets.Sprite("bgc_plate") == null)
             {
                 // Sized and placed off the gameplay artwork: the moon's disc is about a
                 // quarter of the screen height, sitting high on the right where the
@@ -296,6 +299,27 @@ namespace TrustIssues
                 // the ridge in front of you is almost a silhouette. Going in at full
                 // white made every layer equally bright, so the whole hall behind the
                 // player was one flat mauve field with no depth in it at all.
+                // THE PLATE. Built by tools/build_backdrop.py out of the gameplay
+                // painting itself — sky, moon, gothic skyline and mountain valley
+                // composited from the painting's clean regions. It replaces the sky,
+                // far and castle layers wholesale, because the old art simply did not
+                // contain what the painting contains: its castle is one blobby spire
+                // cluster where the painting has a skyline, and no amount of colour
+                // tuning grows spires. The near/mid ridges stay in front of it, so
+                // there's still real parallax movement rather than a static mural.
+                if (Assets.Sprite("bgc_plate") != null)
+                {
+                    // yCenter 0.35 = the camera's own centre height. The plate is
+                    // composited against that assumption (see to_plate in the tool),
+                    // so anything else slides the whole skyline off its painted spot.
+                    AddParallax("bgc_plate", Color.white, 0.35f, -26, 0.955f);
+                    // Only ONE layer rides in front of it. bgv_mid used to as well and
+                    // its tower silhouette landed as a big black blob right where the
+                    // castle should be, hiding the spires the plate exists to show.
+                    AddParallax("bgv_near", new Color(0.17f, 0.15f, 0.17f, 1f), -0.8f, -14, 0.66f);
+                    return;
+                }
+
                 Color Dim(float k) => new Color(k, k * 0.94f, k * 1.02f, 1f);
                 // Levels re-measured against the painting: its sky sits at (25,13,21)
                 // while this was rendering (44,18,28), so the whole stack came down.
