@@ -312,7 +312,10 @@ namespace TrustIssues
                     // yCenter 0.35 = the camera's own centre height. The plate is
                     // composited against that assumption (see to_plate in the tool),
                     // so anything else slides the whole skyline off its painted spot.
-                    AddParallax("bgc_plate", Color.white, 0.35f, -26, 0.955f);
+                    // yCenter is printed by tools/build_backdrop.py — it's derived
+                    // from where the painted window sits on screen, so the skyline
+                    // lands exactly where it was painted. Don't eyeball it.
+                    AddParallax("bgc_plate", Color.white, -1.41f, -26, 0.955f);
                     // Only ONE layer rides in front of it. bgv_mid used to as well and
                     // its tower silhouette landed as a big black blob right where the
                     // castle should be, hiding the spires the plate exists to show.
@@ -1376,8 +1379,15 @@ namespace TrustIssues
             var baseGo = new GameObject("Base", typeof(RectTransform));
             baseGo.transform.SetParent(go.transform, false);
             var baseImg = baseGo.AddComponent<Image>();
-            baseImg.sprite = Theme.Ring;
-            baseImg.color = new Color(1f, 1f, 1f, 0.18f);
+            // The painting's own gold ring with its middle punched out, so the stick
+            // matches the arrows and the bat sitting next to it. It used to be a
+            // plain procedural circle at 18% alpha — the one control you stare at
+            // most was the only one that didn't look like the game. Carries more
+            // alpha than the old ring because it's artwork now, not a hint line,
+            // but the centre is clear so it never hides the vampire.
+            var ringArt = Assets.Sprite("ui/ring_art");
+            baseImg.sprite = ringArt != null ? ringArt : Theme.Ring;
+            baseImg.color = new Color(1f, 1f, 1f, ringArt != null ? 0.5f : 0.18f);
             baseImg.raycastTarget = false;
             var brt = baseImg.rectTransform;
             brt.anchorMin = brt.anchorMax = new Vector2(0.5f, 0.5f); brt.pivot = new Vector2(0.5f, 0.5f);

@@ -1,176 +1,154 @@
 """
-Build the CASTLE BACKDROP PLATE out of the gameplay reference painting.
+Build the CASTLE BACKDROP PLATE from the gameplay reference painting.
 
-Why this exists: the shipped backdrop layers are low-detail — their castle is
-one blobby spire cluster where the painting has a full gothic skyline. No amount
-of colour tuning grows spires, so the art itself is rebuilt from the painting.
+APPROACH. Earlier versions rebuilt the backdrop by compositing pieces — a
+synthesised sky ramp, a tiled mountain band, the moon and castle pasted on as
+rectangular patches. Every version showed its seams, because each patch carries
+its own sky and no two skies matched. Worse, rebuilding the sky threw away the
+relationships the painting already has: the glow around the moon, the way the
+spires darken against it, the haze on the far ridges.
 
-The painting can't just be cropped: lanterns, chains, a chandelier, the player,
-the saw, the platform and the on-screen buttons all sit in front of the
-background. So the plate is COMPOSITED out of the painting's clean regions, the
-way a matte painter would:
+So nothing is rebuilt now. The plate IS the painting's background, with the
+foreground furniture ERASED from it:
 
-  1. Sky      — a per-row MEDIAN across the full width. Whatever hangs in front
-                is a minority of pixels on any row, so the median rejects it and
-                what survives is the true sky gradient.
-  2. Clouds   — a clean sky patch, mirror-tiled and heavily blurred over the
-                gradient, so the sky has grain without a visible repeat.
-  3. Mountains— the one clean band of valley, mirror-tiled across the width with
-                a TOP-ONLY feather so the near valley isn't erased.
-  4. Moon     — the pre-cleaned sphere from cut_moon.py (the painting's own disc
-                has a lantern chain across it).
-  5. Castle   — cropped WITH its own sky and feathered in. Keying was tried and
-                is unreliable: the spires sit against the bright moon on one side
-                and near-black sky on the other, so no threshold holds. Since the
-                patch's sky came from the same painting as the plate's, a
-                feathered composite is invisible.
-
-SCALE IS THE THING THAT MATTERS HERE. The first version pasted patches at
-W/1350, on the assumption that the painting's "window" filled the plate. It
-doesn't — the plate is 32 world units wide against a camera that sees 18.4, so
-the plate's pixels-per-world-unit is LOWER than the painting's, and every patch
-came out about twice its proper size (a moon 70% of screen height). Everything
-below goes through to_plate(), which converts a painting pixel to a plate pixel
-through world units, so sizes and positions are correct by construction.
+  1. Crop the painting's background window (inside the walls, below the vault).
+  2. Mask every foreground object — the three lanterns and their chains and
+     glows, the chandelier, the player, the saw, the spikes, the platforms, and
+     the mockup's own on-screen buttons, which are UI and not scenery.
+  3. Fill those holes by DIFFUSION: blur the whole image, paste the known
+     pixels back over it, repeat. Each pass pulls colour a little further into
+     each hole from its rim, so holes close smoothly from their surroundings
+     while every unmasked pixel stays bit-for-bit original. Sky and hillside are
+     smooth, so this is invisible on them; and the moon, the castle and the
+     ridges are never masked at all, so they keep every bit of painted detail.
+  4. Widen to the plate's 32 world units by mirroring the clean left end
+     outward, so the level can scroll without running off the art.
 
 Writes Assets/Resources/art/bgc_plate.png.
 """
 import os
-from PIL import Image, ImageDraw, ImageFilter, ImageChops
+from PIL import Image, ImageDraw, ImageFilter
 
 SRC = "Assets/Resources/ui/gameplay_ref.jpg"
-MOON_ART = "Assets/Resources/art/moon_blood.png"
 OUT = "Assets/Resources/art/bgc_plate.png"
 
 # --- geometry ---------------------------------------------------------------
-REF_W, REF_H = 1568, 1003     # the painting, which frames exactly one screen
+REF_W = 1568                  # the painting frames exactly one screen
 VIEW_W = 18.4                 # world units the camera sees across (ShotBot probe)
 PLATE_UNITS = 32.0            # world width of the plate (what AddParallax scales to)
-W, H = 2350, 1240
 
-PPU_REF = REF_W / VIEW_W          # painting pixels per world unit
-PPU_PLATE = W / PLATE_UNITS       # plate pixels per world unit
-SCALE = PPU_PLATE / PPU_REF       # ~0.86
+# The background window: inside the side walls, below the vault, down past the
+# platforms into the lower valley.
+WIN = (152, 196, 1472, 944)
+
+# Every foreground object in that window, generously boxed. These are the
+# painting's furniture and the mockup's UI — neither belongs in a backdrop.
+FURNITURE = [
+    (382, 196, 522, 545),      # left lantern: chain, cage, glow
+    (818, 196, 868, 390),      # the chandelier's chain
+    (686, 362, 1008, 498),     # the chandelier itself
+    (1188, 196, 1308, 548),    # right lantern: chain, cage, glow
+    (252, 600, 368, 728),      # the vampire
+    (402, 600, 532, 728),      # the saw blade
+    (940, 676, 1058, 722),     # floor spikes
+    (136, 694, 664, 790),      # left platform
+    (832, 694, 1478, 790),     # right platform
+    (72, 730, 484, 944),       # the two arrow buttons
+    (1272, 716, 1512, 944),    # the jump button
+    (1366, 526, 1548, 714),    # the bat button
+    (496, 900, 1074, 944),     # the footer ornament
+]
 
 
-def to_plate(xp, yp):
-    """A painting pixel -> the plate pixel showing the same world point.
-    The plate is centred on the camera, so screen centre maps to plate centre."""
-    return (W / 2.0 + (xp - REF_W / 2.0) * SCALE,
-            H / 2.0 + (yp - REF_H / 2.0) * SCALE)
+def diffuse_inpaint(img, mask, passes=70, radius=7):
+    """Close the masked holes by repeated blur-and-restore.
 
+    The masked area is WIPED FIRST with a very heavy blur of the whole image.
+    Without that wipe the holes never actually clear: blur-and-restore converges
+    on the right answer eventually, but a platform or a button survives dozens of
+    passes as a soft grey ghost of itself, which is exactly what the first
+    attempt produced. Wiping destroys the object immediately and leaves the
+    passes doing what they're good at — smoothing the fill into its rim.
 
-# --- source regions, each stopping short of a piece of furniture -------------
-SKY_TOP, SKY_BOT = 200, 520          # rows to take the sky gradient from
-VALLEY = (560, 490, 950, 688)        # above the platform (700), left of the spikes (960)
-CLOUD = (205, 230, 380, 350)         # clean sky: clear of the left wall and the first chain
-CASTLE = (1302, 245, 1478, 545)      # spires: right of the lantern (1290), above the bat button (545)
-MOON_C = (1200, 300)                 # the painted moon's centre
-MOON_D = 245                         # ...and its diameter, in painting pixels
+    Unmasked pixels are pasted back every pass, so the moon, the spires and the
+    ridges come through completely untouched.
+    """
+    keep = mask.point(lambda v: 255 - v)
+    work = img.copy()
+    work.paste(img.filter(ImageFilter.GaussianBlur(70)), (0, 0), mask)
+    work.paste(img, (0, 0), keep)
+    for _ in range(passes):
+        work = work.filter(ImageFilter.GaussianBlur(radius))
+        work.paste(img, (0, 0), keep)
+    return work
+
 
 im = Image.open(SRC).convert("RGB")
-px = im.load()
+win = im.crop(WIN)
 
+# ------------------------------------------------------------------- mask
+mask = Image.new("L", win.size, 0)
+d = ImageDraw.Draw(mask)
+for x0, y0, x1, y1 in FURNITURE:
+    d.rectangle([x0 - WIN[0], y0 - WIN[1], x1 - WIN[0], y1 - WIN[1]], fill=255)
+# Soften the mask edges so the fill blends into the kept pixels instead of
+# meeting them on a hard line.
+mask = mask.filter(ImageFilter.GaussianBlur(3))
+mask = mask.point(lambda v: 255 if v > 40 else v * 3)
 
-def median_row(y, x0=135, x1=1478):
-    """The sky colour on row y, immune to whatever is hanging in front of it."""
-    vals = sorted((px[x, y] for x in range(x0, x1)), key=lambda p: sum(p))
-    return vals[len(vals) // 2]
+clean = diffuse_inpaint(win, mask)
 
+# --------------------------------------------------------------- the plate
+# Plate pixels-per-world-unit is lower than the painting's (32 units of plate vs
+# 18.4 of view), so the window is scaled DOWN into plate space. Getting this
+# wrong is what once produced a moon filling 70% of the screen.
+DENSITY = 0.862                   # plate px per painting px (see header)
+W = int(PLATE_UNITS * (REF_W / VIEW_W) * DENSITY)
+PPU = W / PLATE_UNITS             # plate pixels per world unit
+body_w = int(clean.width * DENSITY)
+body_h = int(clean.height * DENSITY)
+body = clean.resize((body_w, body_h), Image.LANCZOS)
 
-# ------------------------------------------------------------- 1. sky ramp
-ramp = [median_row(y) for y in range(SKY_TOP, SKY_BOT)]
+# The painted window is shorter than the camera's view, so the plate is padded
+# above and below by repeating its edge rows. Without this the backdrop simply
+# stops partway up the screen and the clear colour shows through underneath the
+# level — the window covers only about three quarters of the view's height.
+PAD_TOP, PAD_BOT = 80, 220
+H = body_h + PAD_TOP + PAD_BOT
+padded = Image.new("RGB", (body_w, H))
+padded.paste(body, (0, PAD_TOP))
+padded.paste(body.crop((0, 0, body_w, 1)).resize((body_w, PAD_TOP)), (0, 0))
+padded.paste(body.crop((0, body_h - 1, body_w, body_h)).resize((body_w, PAD_BOT)),
+             (0, PAD_TOP + body_h))
+body = padded
+
+# Where the plate has to sit so its painted content lands where it was painted.
+# Painting row 0 is the top of the screen, which is world y +6.23; the view is
+# 11.76 units tall over 1003 rows.
+win_top_world = 6.23 - WIN[1] * (11.76 / 1003.0)
+plate_top_world = win_top_world + PAD_TOP / PPU
+y_centre = plate_top_world - (H / PPU) / 2.0
+
 plate = Image.new("RGB", (W, H))
-draw = ImageDraw.Draw(plate)
-_, ramp_y0 = to_plate(0, SKY_TOP)
-_, ramp_y1 = to_plate(0, SKY_BOT)
-for y in range(H):
-    t = (y - ramp_y0) / max(1.0, ramp_y1 - ramp_y0)
-    draw.line([(0, y), (W, y)], fill=ramp[min(len(ramp) - 1, max(0, int(t * (len(ramp) - 1))))])
+left = (W - body_w) // 2
 
-# ---------------------------------------------------------- 2. cloud grain
-patch = im.crop(CLOUD)
-pw, ph = patch.size
-tile = Image.new("RGB", (pw * 2, ph * 2))
-tile.paste(patch, (0, 0))
-tile.paste(patch.transpose(Image.FLIP_LEFT_RIGHT), (pw, 0))
-tile.paste(tile.crop((0, 0, pw * 2, ph)).transpose(Image.FLIP_TOP_BOTTOM), (0, ph))
-clouds = Image.new("RGB", (W, H))
-for oy in range(0, H, ph * 2):
-    for ox in range(0, W, pw * 2):
-        clouds.paste(tile, (ox, oy))
-# Heavy blur, light blend: any sharper and the tile seams read as vertical
-# banding across the whole sky, which is worse than having no grain at all.
-clouds = clouds.filter(ImageFilter.GaussianBlur(9.0))
-plate = Image.blend(plate, ImageChops.add(plate, clouds, scale=2.4, offset=-6), 0.30)
-
-
-def edge_mask(size, frac):
-    """Fade the outer `frac` of a patch to nothing on all four sides."""
-    w, h = size
-    m = Image.new("L", size, 255)
-    d = ImageDraw.Draw(m)
-    b = max(2, int(min(w, h) * frac))
-    for i in range(b):
-        d.rectangle([i, i, w - 1 - i, h - 1 - i], outline=int(255 * i / b))
-    return m.filter(ImageFilter.GaussianBlur(b * 0.35))
-
-
-# ----------------------------------------------------------- 3. mountains
-band = im.crop(VALLEY)
-strip = Image.new("RGB", (band.width * 2, band.height))
-strip.paste(band, (0, 0))
-strip.paste(band.transpose(Image.FLIP_LEFT_RIGHT), (band.width, 0))
-strip = strip.resize((int(strip.width * SCALE), int(strip.height * SCALE)), Image.LANCZOS)
-
-# TOP-ONLY feather: an all-round one also faded the band's BOTTOM out, which
-# erased the near valley and left the ridges floating in a dark field.
-mtn = Image.new("L", strip.size, 255)
-md_ = ImageDraw.Draw(mtn)
-fade = int(strip.height * 0.22)
-for i in range(fade):
-    md_.line([(0, i), (strip.width, i)], fill=int(255 * i / fade))
-mtn = mtn.filter(ImageFilter.GaussianBlur(7))
-
-_, horizon = to_plate(0, VALLEY[1])
-for ox in range(0, W, strip.width):
-    plate.paste(strip, (ox, int(horizon)), mtn)
-
-# ---------------------------------------------------------------- 4. moon
-moon = Image.open(MOON_ART).convert("RGBA")
-# The PNG is 256 wide but its DISC is ~196 of that; the rest is halo. Size it so
-# the disc lands at the painted diameter, not the whole sprite.
-full = int(MOON_D * SCALE * 256.0 / 196.0)
-moon = moon.resize((full, full), Image.LANCZOS)
-mx, my = to_plate(*MOON_C)
-plate.paste(moon, (int(mx - full / 2), int(my - full / 2)), moon)
-
-# -------------------------------------------------------------- 5. castle
-# Pasted after the moon so the spires bite into it exactly as painted — that
-# overlap is most of what makes the skyline read as distance.
-cas = im.crop(CASTLE)
-cas = cas.resize((int(cas.width * SCALE), int(cas.height * SCALE)), Image.LANCZOS)
-cx, cy = to_plate(CASTLE[0], CASTLE[1])
-
-# The patch carries its own sky, and that sky is brighter than the plate's here
-# (it's sitting in the moon's glow), so a plain feathered paste left a faint
-# lighter RECTANGLE around the spires. Fix: multiply the feather by a darkness
-# key, so only the dark stone of the spires is opaque and the patch's sky drops
-# out entirely. Lit windows are kept by their redness — a pure luma key would
-# punch holes straight through them.
-key = Image.new("L", cas.size, 0)
-kp, cp = key.load(), cas.load()
-for y in range(cas.height):
-    for x in range(cas.width):
-        r, g, b = cp[x, y]
-        luma = 0.299 * r + 0.587 * g + 0.114 * b
-        a = 1.0 - min(1.0, max(0.0, (luma - 26.0) / 34.0))     # dark -> opaque
-        if r - g > 45 and r > 70:                              # a lit window
-            a = 1.0
-        kp[x, y] = int(255 * a)
-key = key.filter(ImageFilter.GaussianBlur(1.2))
-plate.paste(cas, (int(cx), int(cy)), ImageChops.multiply(key, edge_mask(cas.size, 0.10)))
+# The plate is wider than the painted window, so the remainder is filled by
+# repeating only the window's LEFT PORTION — plain sky, hillside and haze, with
+# no landmark in it. Mirroring the whole window (the obvious approach) puts a
+# second blood moon and a second castle on the plate, and on a wide level you
+# scroll far enough to see both at once.
+filler = body.crop((0, 0, int(body_w * 0.42), H))
+fw = filler.width
+fflip = filler.transpose(Image.FLIP_LEFT_RIGHT)
+x, i = left - fw, 0
+while x > -fw:
+    plate.paste(fflip if i % 2 else filler, (x, 0)); x -= fw; i += 1
+x, i = left + body_w, 0
+while x < W:
+    plate.paste(filler if i % 2 else fflip, (x, 0)); x += fw; i += 1
+plate.paste(body, (left, 0))      # the painted window itself always wins
 
 os.makedirs(os.path.dirname(OUT), exist_ok=True)
 plate.save(OUT)
-print(f"wrote {OUT} at {W}x{H} (patch scale {SCALE:.3f}, moon {full}px)")
+print(f"wrote {OUT} at {W}x{H} (window {body_w}x{body_h})")
+print(f"PLATE_Y_CENTRE = {y_centre:.2f}   <- pass this as AddParallax's yCenter")
