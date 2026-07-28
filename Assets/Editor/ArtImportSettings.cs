@@ -27,7 +27,8 @@ namespace TrustIssues
             // the portrait). Those are smooth, gradient-heavy and always drawn at a
             // reduced size, so Point makes their rims crawl and alias — they want
             // bilinear.
-            bool painted = assetPath.Replace('\\', '/').Contains("/Resources/art/ui/");
+            string ap = assetPath.Replace('\\', '/');
+            bool painted = ap.Contains("/Resources/art/ui/") || ap.Contains("/moon_");
             ti.filterMode = painted ? FilterMode.Bilinear : FilterMode.Point;
             ti.mipmapEnabled = false;
             ti.alphaIsTransparency = true;

@@ -297,12 +297,20 @@ namespace TrustIssues
                 // white made every layer equally bright, so the whole hall behind the
                 // player was one flat mauve field with no depth in it at all.
                 Color Dim(float k) => new Color(k, k * 0.94f, k * 1.02f, 1f);
+                // Levels re-measured against the painting: its sky sits at (25,13,21)
+                // while this was rendering (44,18,28), so the whole stack came down.
+                // The SPREAD between layers widened at the same time — the far ridge
+                // is now nearly twice the value of the near one. That gap is what
+                // atmospheric perspective actually is, and it's what makes the valley
+                // read as receding distance instead of one flat mauve field. Bringing
+                // everything down by a flat factor would have kept it just as flat,
+                // only darker.
                 //          sprite                        tint                          yCenter order follow alpha
-                AddParallax(v ? "bgv_sky" : "bg_sky",       v ? Dim(0.62f) : Theme.Hex("16101F"), 1.2f,  -28, 0.97f);
-                AddParallax(v ? "bgv_far" : "bg_far",       v ? Dim(0.66f) : Theme.Hex("2A2038"), 0.9f,  -24, 0.90f);
-                AddParallax(v ? "bgv_castle" : "bg_castle", v ? Dim(0.80f) : Theme.Hex("531B26"), 0.6f,  -20, 0.82f);
-                AddParallax(v ? "bgv_mid" : "bg_mid",       v ? Dim(0.44f) : Theme.Hex("241A30"), 0.2f,  -17, 0.72f);
-                AddParallax(v ? "bgv_near" : "bg_near",     v ? Dim(0.28f) : Theme.Hex("140E1C"), -0.4f, -14, 0.60f);
+                AddParallax(v ? "bgv_sky" : "bg_sky",       v ? Dim(0.34f) : Theme.Hex("16101F"), 1.2f,  -28, 0.97f);
+                AddParallax(v ? "bgv_far" : "bg_far",       v ? Dim(0.52f) : Theme.Hex("2A2038"), 0.9f,  -24, 0.90f);
+                AddParallax(v ? "bgv_castle" : "bg_castle", v ? Dim(0.62f) : Theme.Hex("531B26"), 0.6f,  -20, 0.82f);
+                AddParallax(v ? "bgv_mid" : "bg_mid",       v ? Dim(0.30f) : Theme.Hex("241A30"), 0.2f,  -17, 0.72f);
+                AddParallax(v ? "bgv_near" : "bg_near",     v ? Dim(0.15f) : Theme.Hex("140E1C"), -0.4f, -14, 0.60f);
                 // The fog used to be a full-bleed haze at 30% over all of it, and that
                 // is what turned the hall into one flat mauve field with no ridges and
                 // no castle in it. In the painting the air is CLEAR: the depth comes
@@ -565,8 +573,16 @@ namespace TrustIssues
             if (_washSr != null) _washSr.color = wash;             // the actually-visible colour shift
             if (_moonSr != null && Theme.Moon != null)             // bold per-theme anchor (colour + size)
             {
-                _moonSr.color = moonC;
-                float mb = Theme.Moon.bounds.size.y;
+                // Red themes (castle 0, blood moon 4) wear the PAINTED moon cut from
+                // the reference artwork, and it goes on essentially untinted — the
+                // crimson and the maria are already in the paint, and multiplying the
+                // theme colour over it would only mud it. Every other theme keeps the
+                // procedural disc, which has to stay tintable to be a pale blue crypt
+                // moon or a sickly green swamp one.
+                bool painted = (idx == 0 || idx == 4) && Theme.MoonArt != null;
+                _moonSr.sprite = painted ? Theme.MoonArt : Theme.Moon;
+                _moonSr.color = painted ? new Color(1f, 1f, 1f, 0.95f) : moonC;
+                float mb = _moonSr.sprite.bounds.size.y;
                 // Breathe the moon's size per floor too — the silhouette changes,
                 // not just the palette, so the skyline itself looks like a new place.
                 float sizeMul = 1f + 0.18f * Mathf.Sin(shadeFloor * 1.61803f);
@@ -4489,10 +4505,14 @@ namespace TrustIssues
             sr.drawMode = SpriteDrawMode.Tiled;
             sr.size = new Vector2(p.size.x, p.size.y + Overhead);
             sr.sortingOrder = 1;
-            // In the artwork the vault is the BRIGHTEST surface in the hall — big
-            // legible brickwork catching every lantern from below — so it wears the
-            // stone tile at full value while the ledges are stepped down.
-            sr.color = new Color(0.98f, 0.90f, 0.84f, 1f);   // warm: it's lit by fire, not moonlight
+            // Measured against the painting rather than argued about. Sampling the
+            // reference's ceiling beam gives (26,19,22); this was rendering (68,55,65)
+            // — nearly three times too bright — which turned the top quarter of the
+            // screen into a pale grey slab and was the single biggest reason the hall
+            // read as washed out. The vault is lit by lantern-fire from below, but in
+            // the artwork that light only catches the ribs and the lower courses; the
+            // mass of it is dark stone against a dark sky.
+            sr.color = new Color(0.38f, 0.33f, 0.34f, 1f);
 
             // A soft underline along the underside so the surface still reads as
             // solid ground when the Chapel flips gravity and you walk on it.

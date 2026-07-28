@@ -279,6 +279,18 @@ namespace TrustIssues
             }
         }
 
+        /// <summary>
+        /// The PAINTED blood moon, cut out of the gameplay reference artwork —
+        /// maria, a soft limb, the lot. Null if the art isn't present.
+        ///
+        /// The procedural <see cref="Moon"/> below is a flat disc with a halo, and
+        /// against a painted backdrop it read as exactly that: a red circle stuck
+        /// on the sky. This is only used for the RED themes (castle, blood moon);
+        /// the pale-blue crypt moon and the green swamp one still want the tintable
+        /// procedural disc, because tinting a crimson painting blue doesn't work.
+        /// </summary>
+        public static Sprite MoonArt => Assets.Sprite("moon_blood");
+
         // A filled "blood moon": a warm red-orange orb that fades to a soft glow
         // at the rim. Used purely as a menu-backdrop element. White at the core so
         // an Image tint controls the exact hue.
