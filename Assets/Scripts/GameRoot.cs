@@ -6089,9 +6089,38 @@ namespace TrustIssues
         }
 
         // ==================== the Crypt Shop ====================
-        // Where blood shards go: purchasable skins + death effects + trails +
-        // gravestone taunts. Cosmetics ONLY — the shop sells looks and trash talk,
-        // never power. Cards follow the Wardrobe pattern (whole card = one button).
+        // Where blood shards go: charms, purchasable skins, death effects, trails and
+        // gravestone taunts. Laid out to the shop artwork — a heading carrying the two
+        // live numbers, three tabs, a 3-across grid of framed cards whose last row is
+        // CENTRED (a lone pair hanging off the left edge was the giveaway that this was
+        // a plain loop and not a designed shelf), then the next-goal line and the BACK
+        // rail. Every card wears its own emblem instead of the same tinted diamond.
+        //
+        // Everything under the title hangs off the TOP edge and the rail off the BOTTOM,
+        // and the grid measures the canvas and shrinks its rows to fit — a tall phone
+        // gets far less than the reference 1080 of height, and centre-anchored shelves
+        // walked straight off the bottom there.
+        //
+        // If the shop painting is dropped in as Resources/ui/shop_bg, the art supplies
+        // the frame, gargoyles, drapes, candles and title, and everything it baked
+        // INSIDE the panel (a sample shard count, a frozen grid, "NEED 129 MORE") is
+        // covered and rebuilt live — otherwise the picture would lie about your money.
+        static readonly Color ShopInterior = new Color(0.032f, 0.020f, 0.028f, 1f);
+
+        /// <summary>One assembled shop card. Built before layout so the grid knows how
+        /// many it must fit before it picks its row height.</summary>
+        class ShopEntry
+        {
+            public string name, desc;
+            public int price;
+            public bool owned, worn;
+            public int sealedFloor;          // > 0 => locked until that castle floor
+            public Sprite icon;              // emblem; null => a tinted diamond
+            public bool artIcon;             // painted art: show as-is, never tinted
+            public Color tint = Color.white;
+            public System.Action buy, equip;
+        }
+
         void ShowShop()
         {
             Audio.Play("click");
@@ -6099,23 +6128,37 @@ namespace TrustIssues
             {
                 { "balance", Currency.Balance },
             });
-            var c = new Vector2(0.5f, 0.5f);
-            // OPAQUE ground. This screen has no painting of its own, and on the old
-            // 94%-transparent wash the main-menu artwork underneath still showed
-            // through it — the painted BLOOD MOON / THE CASTLE buttons were visible
-            // straight through the shop's cards. The gothic backdrop is solid and
-            // wears the same frame, moon and stone as the painted screens.
+            // OPAQUE ground. On the old 94%-transparent wash the main-menu artwork
+            // underneath still showed through — the painted BLOOD MOON / THE CASTLE
+            // buttons were visible straight through the shop's cards.
             var panel = Overlay(new Color(0.04f, 0.02f, 0.06f, 1f), out var root);
-            Gothic.Backdrop(root);
             _onBack = () => { Destroy(panel); ShowMenu(); };
 
+            // Wear the painting when it's there; otherwise the code-built twin, which
+            // uses the same stone, moon, frame and lettering.
+            bool painted = Skin.Background(root, "shop_bg") != null;
+            if (painted) Skin.Chip(root, 0.148f, 0.110f, 0.852f, 0.884f, ShopInterior);
+            else Gothic.Backdrop(root);
+
             // The header states the two things that were invisible before: what you
-            // have, and what you have to DO to open the next shelf. A currency with no
-            // stated purpose reads as pointless, which is exactly how this shop felt
-            // when every shelf was cosmetics. Both numbers are live.
+            // have, and what you have to DO to open the next shelf. Both numbers are
+            // live — the artwork bakes in a sample balance, which is why it's covered.
             int floors = Charms.FloorsCleared;
-            Gothic.Heading(root, "THE CRYPT SHOP",
-                $"{Currency.Balance} BLOOD SHARDS     ·     {floors} FLOORS CLEARED");
+            string sub = $"{Currency.Balance} BLOOD SHARDS     ·     {floors} FLOORS CLEARED";
+            if (painted)
+            {
+                var subT = Skin.LiveText(root, sub, 0.18f, 0.116f, 0.82f, 0.158f, 26, Gothic.Faint);
+                if (Theme.MenuFont != null) subT.font = Theme.MenuFont;
+                Skin.Fit(subT, 26, 14);
+            }
+            else Gothic.Heading(root, "THE CRYPT SHOP", sub);
+
+            // Laid out from the top edge down (see the note above the method).
+            var top = new Vector2(0.5f, 1f);
+            const float TabsY = 226f;        // tab row centre, below the heading
+            const float BlurbY = 292f;       // the "what this shelf is" line
+            const float GridTop = 328f;      // top edge of the first card row
+            const float BottomBand = 210f;   // room kept for the goal line + BACK rail
 
             // ---- tabs ---------------------------------------------------------
             string[] tabs = { "CHARMS", "SKINS", "STYLE" };
@@ -6129,65 +6172,59 @@ namespace TrustIssues
             {
                 int tab = t;
                 bool sel = _shopTab == t;
-                Gothic.Button(root, tabs[t], new Vector2(-372 + t * 372, 244), new Vector2(352, 66),
-                    () => { _shopTab = tab; Destroy(panel); ShowShop(); }, sel, 29);
+                Gothic.Button(root, tabs[t], new Vector2(-424 + t * 424, -TabsY), new Vector2(404, 72),
+                    () => { _shopTab = tab; Destroy(panel); ShowShop(); }, sel, 30, top);
             }
-            Gothic.Line(root, blurb[Mathf.Clamp(_shopTab, 0, 2)], 23, Gothic.Faint,
-                new Vector2(0, 186), new Vector2(1500, 36));
+            Gothic.Line(root, blurb[Mathf.Clamp(_shopTab, 0, 2)], 24, Gothic.Faint,
+                new Vector2(0, -BlurbY), new Vector2(1500, 38), TextAnchor.MiddleCenter, top);
 
-            // Skin preview art (same sources as the Wardrobe previews).
-            var vampFrames = Assets.Grid("vamp_idle_sheet", 64, 3);
-            Sprite vampSp = (vampFrames != null && vampFrames.Length > 0) ? vampFrames[0] : null;
-            var pmFrames = Assets.Sheet("pinkman_idle", 32);
-            Sprite pmSp = (pmFrames != null && pmFrames.Length > 0) ? pmFrames[0] : null;
-
-            // One tab's worth of cards fits on screen without stacking into the BACK
-            // button — the old flat list of every skin AND every cosmetic ran off the
-            // bottom of the panel. STYLE holds nine items, so it goes five across;
-            // the other two shelves get wider cards three across. Either way it's at
-            // most two rows, which is what keeps the grid clear of the bottom rail on
-            // a tall phone.
-            bool wide = _shopTab != 2;
-            int cols = wide ? 3 : 5;
-            float spX = wide ? 430f : 316f, spY = 210f;
-            var shopCard = new Vector2(wide ? 390f : 300f, 196f);
-            float startX = -((cols - 1) * spX) / 2f, startY = 40f;
-            int slot = 0;
-
+            // ---- assemble this shelf ------------------------------------------
+            var entries = new System.Collections.Generic.List<ShopEntry>();
             if (_shopTab == 0)
             {
                 foreach (var d in Charms.All)
                 {
                     var def = d;
-                    bool owned = Charms.Owns(def.id);
-                    bool worn = Charms.IsWorn(def.id);
                     bool gated = !Charms.Unlocked(def);
-                    // A gated charm shows the FLOOR it opens at, not a dead button:
-                    // the requirement is the point, so it has to be readable.
-                    string desc = gated
-                        ? $"Locked - clear floor {def.reqFloors}"
-                        : def.desc;
-                    ShopCard(root, panel, slot++, cols, spX, spY, startX, startY, shopCard,
-                        def.name, desc, def.price, owned, worn, null,
-                        gated ? new Color(def.tint.r * 0.3f, def.tint.g * 0.3f, def.tint.b * 0.3f) : def.tint,
-                        buy: gated ? (System.Action)(() => BossToast($"SEALED - clear floor {def.reqFloors} first"))
-                                   : () => { if (Charms.Buy(def)) Charms.Equip(def.id); },
-                        equip: () => Charms.Equip(def.id));
+                    entries.Add(new ShopEntry
+                    {
+                        name = def.name,
+                        // A gated charm shows the FLOOR it opens at, not a dead button:
+                        // the requirement is the point, so it has to be readable.
+                        desc = gated ? $"Locked - clear floor {def.reqFloors}" : def.desc,
+                        price = def.price,
+                        owned = Charms.Owns(def.id),
+                        worn = Charms.IsWorn(def.id),
+                        sealedFloor = gated ? def.reqFloors : 0,
+                        icon = CharmIcon(def.id),
+                        artIcon = true,                       // emblems carry their own colour
+                        tint = def.tint,
+                        buy = () => { if (Charms.Buy(def)) Charms.Equip(def.id); },
+                        equip = () => Charms.Equip(def.id),
+                    });
                 }
             }
             else if (_shopTab == 1)
             {
+                // Skin preview art (same sources as the Wardrobe previews).
+                var vampFrames = Assets.Grid("vamp_idle_sheet", 64, 3);
+                Sprite vampSp = (vampFrames != null && vampFrames.Length > 0) ? vampFrames[0] : null;
+                var pmFrames = Assets.Sheet("pinkman_idle", 32);
+                Sprite pmSp = (pmFrames != null && pmFrames.Length > 0) ? pmFrames[0] : null;
                 foreach (var s in Skins.All)
                 {
-                    if (s.price <= 0) continue;
+                    if (s.price <= 0) continue;              // achievement skins live in the Wardrobe
                     var sd = s;
                     bool owned = Skins.IsUnlocked(sd);
-                    bool equipped = owned && Skins.CurrentId == sd.id;
-                    ShopCard(root, panel, slot++, cols, spX, spY, startX, startY, shopCard,
-                        sd.name, "a different face for the fall", sd.price, owned, equipped,
-                        sd.pinkman ? pmSp : vampSp, Skins.Shade(sd),
-                        buy: () => { if (Shop.BuySkin(sd)) Skins.Equip(sd.id); },
-                        equip: () => Skins.Equip(sd.id));
+                    entries.Add(new ShopEntry
+                    {
+                        name = sd.name, desc = "a different face for the fall", price = sd.price,
+                        owned = owned, worn = owned && Skins.CurrentId == sd.id,
+                        icon = sd.pinkman ? pmSp : vampSp,
+                        tint = Skins.Shade(sd),
+                        buy = () => { if (Shop.BuySkin(sd)) Skins.Equip(sd.id); },
+                        equip = () => Skins.Equip(sd.id),
+                    });
                 }
             }
             else
@@ -6197,13 +6234,41 @@ namespace TrustIssues
                     var item = it;
                     bool owned = Shop.Owns(item.id);
                     bool equipped = owned && Shop.Equipped(item.kind) == item.id;
-                    ShopCard(root, panel, slot++, cols, spX, spY, startX, startY, shopCard,
-                        item.name, item.desc, item.price, owned, equipped,
-                        null, item.tint,
-                        buy: () => { if (Shop.Buy(item)) Shop.Equip(item.kind, item.id); },
+                    entries.Add(new ShopEntry
+                    {
+                        name = item.name, desc = item.desc, price = item.price,
+                        owned = owned, worn = equipped,
+                        icon = TauntIcon(item.id),           // null for fx/trails → tinted diamond
+                        artIcon = item.kind == "taunt",      // bone glyphs, shown as drawn
+                        tint = item.tint,
+                        buy = () => { if (Shop.Buy(item)) Shop.Equip(item.kind, item.id); },
                         // Owned items TOGGLE: tap to wear, tap again to take off.
-                        equip: () => Shop.Equip(item.kind, equipped ? "" : item.id));
+                        equip = () => Shop.Equip(item.kind, equipped ? "" : item.id),
+                    });
                 }
+            }
+
+            // ---- the grid ------------------------------------------------------
+            // Three across on every shelf, so the tabs, the cards and the artwork's
+            // painted columns all line up. Rows are then whatever height is left.
+            const int Cols = 3;
+            const float ColPitch = 428f, CardW = 400f;
+            float canvasH = ((RectTransform)root).rect.height;
+            if (canvasH < 400f) canvasH = 1080f;             // before the first layout pass
+            int rows = Mathf.Max(1, (entries.Count + Cols - 1) / Cols);
+            float band = Mathf.Max(200f, canvasH - GridTop - BottomBand);
+            float pitch = band / rows;
+            float cardH = Mathf.Clamp(pitch - 24f, 120f, 268f);
+
+            for (int i = 0; i < entries.Count; i++)
+            {
+                int r = i / Cols, col = i % Cols;
+                // How many sit in THIS row — the last, short row is centred rather
+                // than left-packed, which is what the artwork does.
+                int inRow = Mathf.Min(Cols, entries.Count - r * Cols);
+                float x = (col - (inRow - 1) / 2f) * ColPitch;
+                float y = -(GridTop + r * pitch + cardH / 2f);
+                ShopCard(root, panel, entries[i], new Vector2(x, y), new Vector2(CardW, cardH), top);
             }
 
             // Always name the next goal, so leaving the shop still leaves a target.
@@ -6215,46 +6280,74 @@ namespace TrustIssues
                     ? $"NEXT: {goal.name} — opens when you clear floor {goal.reqFloors}"
                     : need > 0 ? $"NEXT: {goal.name} — {need} more shards"
                                : $"NEXT: {goal.name} — you can afford it NOW";
-                Gothic.Line(root, line, 24, Theme.Coin, new Vector2(0, -300), new Vector2(1500, 38));
+                Gothic.Line(root, line, 24, Theme.Coin, new Vector2(0, 148), new Vector2(1500, 38),
+                    TextAnchor.MiddleCenter, new Vector2(0.5f, 0f));
             }
 
-            Gothic.Back(root, () => { Destroy(panel); ShowMenu(); });
+            // The painting draws its own BACK plate, so there it only needs a tap-zone.
+            if (painted) Skin.Zone(root, 0.40f, 0.888f, 0.60f, 0.962f, () => { Destroy(panel); ShowMenu(); }, "back");
+            else Gothic.Back(root, () => { Destroy(panel); ShowMenu(); });
         }
         int _shopTab;   // which shelf the Crypt Shop is showing
 
-        // One shop card: preview (sprite or a tinted diamond), name, flavor line,
-        // and a state footer — BUY (gold, affordable) / NEED N MORE (dim) /
-        // EQUIPPED / tap to wear. Any successful action rebuilds the screen.
-        void ShopCard(Transform root, GameObject panel, int slot, int cols,
-            float spX, float spY, float startX, float startY, Vector2 size,
-            string name, string desc, int price, bool owned, bool equipped,
-            Sprite preview, Color tint, System.Action buy, System.Action equip)
+        // The emblem on a charm card. Reuses art the game already ships wherever the
+        // meaning matches (a coin for double pay, the bat for a longer glide, a torch
+        // for seeing in the dark, the reverse rune for shaking off reversed controls)
+        // and falls back to the procedural gravestone for the ward.
+        static Sprite CharmIcon(string id) => id switch
         {
-            var c = new Vector2(0.5f, 0.5f);
-            int r = slot / cols, col = slot % cols;
-            var pos = new Vector2(startX + col * spX, startY - r * spY);
-            bool affordable = Currency.Balance >= price;
+            "charm_gravedigger" => Assets.Sprite("coin"),
+            "charm_wings"       => Assets.TrapArt("bat"),
+            "charm_candle"      => Assets.Sprite("torch"),
+            "charm_steady"      => Assets.TrapArt("reverse"),
+            _                   => Gothic.Tomb,
+        };
+
+        // Taunts are three different jokes, so they get three different emblems —
+        // as identical white diamonds they read as one item printed three times.
+        // Death effects and trails keep the tinted diamond (their colour IS the item).
+        static Sprite TauntIcon(string id) => id switch
+        {
+            "taunt_skill" => Gothic.Skull,
+            "taunt_easy"  => Gothic.Tomb,
+            "taunt_meant" => Gothic.Bones,
+            _             => null,
+        };
+
+        // One shop card: emblem, name, flavour line, and a state footer — EQUIPPED /
+        // tap to wear / BUY — N / SEALED — CLEAR FLOOR N / NEED N MORE. Every row of
+        // the card is placed as a fraction of the card's own height, so the tall
+        // two-row shelves and the short three-row STYLE shelf both stay tidy. Any
+        // successful action rebuilds the screen so every card reflects the new state.
+        void ShopCard(Transform root, GameObject panel, ShopEntry e, Vector2 pos, Vector2 size, Vector2 anchor)
+        {
+            bool affordable = Currency.Balance >= e.price;
+            bool sealed_ = e.sealedFloor > 0 && !e.owned;
             // Fills sampled off the artwork: worn items glow blood, owned ones sit in
-            // cold stone, affordable ones catch a little candle warmth.
-            var bg = equipped ? new Color(0.30f, 0.045f, 0.075f, 1f)
-                   : owned ? new Color(0.085f, 0.062f, 0.105f, 1f)
+            // cold stone, buyable ones catch a little candle warmth, sealed ones stay dead.
+            var bg = e.worn ? new Color(0.30f, 0.045f, 0.075f, 1f)
+                   : e.owned ? new Color(0.085f, 0.062f, 0.105f, 1f)
+                   : sealed_ ? new Color(0.052f, 0.040f, 0.065f, 1f)
                    : affordable ? new Color(0.125f, 0.088f, 0.055f, 1f) : new Color(0.052f, 0.040f, 0.065f, 1f);
 
             var card = Gothic.Button(root, "", pos, size, () =>
             {
-                if (owned) { equip(); Audio.Play("click", 0.7f); }
+                // A sealed charm can't be bought at any price — say what opens it
+                // rather than silently doing nothing.
+                if (sealed_) { BossToast($"SEALED - clear floor {e.sealedFloor} first"); return; }
+                if (e.owned) { e.equip(); Audio.Play("click", 0.7f); }
                 else if (affordable)
                 {
-                    buy();
+                    e.buy();
                     Audio.PlayOr("levelup", "win", 0.7f);
                     if (_shardText != null) _shardText.text = Currency.Balance.ToString();
                 }
-                else { ShowHint($"{price - Currency.Balance} more shards — the castle pays for blood"); return; }
-                Destroy(panel); ShowShop();   // rebuild so every card reflects the new state
-            }, fill: bg);
+                else { ShowHint($"{e.price - Currency.Balance} more shards — the castle pays for blood"); return; }
+                Destroy(panel); ShowShop();
+            }, false, 30, anchor, bg);
             var ct = card.transform;
 
-            if (equipped)   // a candle-gold ring marks the current pick
+            if (e.worn)   // a candle-gold ring marks the current pick
             {
                 var ring = new GameObject("EquipRing", typeof(RectTransform)).AddComponent<Image>();
                 ring.transform.SetParent(ct, false); ring.raycastTarget = false;
@@ -6265,45 +6358,48 @@ namespace TrustIssues
                 rrt.offsetMin = new Vector2(-5, -5); rrt.offsetMax = new Vector2(5, 5);
             }
 
-            // Preview: the skin sprite when there is one, else a tinted diamond
-            // swatch (death effects / trails / taunts have no sprite of their own).
-            if (preview != null)
+            float h = size.y;
+            var em = new GameObject("Emblem", typeof(RectTransform)).AddComponent<Image>();
+            em.transform.SetParent(ct, false); em.raycastTarget = false;
+            em.preserveAspect = true;
+            if (e.icon != null)
             {
-                var pv = new GameObject("Preview", typeof(RectTransform)).AddComponent<Image>();
-                pv.transform.SetParent(ct, false);
-                pv.sprite = preview; pv.preserveAspect = true; pv.raycastTarget = false;
-                pv.color = owned ? tint : new Color(0.05f, 0.04f, 0.06f, 0.95f);   // mystery silhouette until bought
-                var prt = pv.rectTransform;
-                prt.anchorMin = prt.anchorMax = new Vector2(0.5f, 0.5f); prt.pivot = new Vector2(0.5f, 0.5f);
-                prt.anchoredPosition = new Vector2(0, 44); prt.sizeDelta = new Vector2(84, 84);
+                em.sprite = e.icon;
+                // Painted art is never tinted (a colour multiply only muddies it); a
+                // skin preview wears its costume colour, and anything not yet owned
+                // stays a mystery silhouette.
+                em.color = e.artIcon ? (sealed_ ? new Color(0.62f, 0.58f, 0.58f, 1f) : Color.white)
+                         : e.owned ? e.tint
+                                   : new Color(0.05f, 0.04f, 0.06f, 0.95f);
             }
             else
             {
-                var sw = new GameObject("Swatch", typeof(RectTransform)).AddComponent<Image>();
-                sw.transform.SetParent(ct, false); sw.raycastTarget = false;
-                sw.sprite = Gothic.Diamond;   // the artwork's own ornament, tinted per item
-                sw.color = tint;
-                var srt2 = sw.rectTransform;
-                srt2.anchorMin = srt2.anchorMax = new Vector2(0.5f, 0.5f); srt2.pivot = new Vector2(0.5f, 0.5f);
-                srt2.anchoredPosition = new Vector2(0, 44); srt2.sizeDelta = new Vector2(62, 62);
+                em.sprite = Gothic.Diamond;    // the artwork's own ornament, tinted per item
+                em.color = e.tint;
             }
+            float emSize = Mathf.Clamp(h * 0.32f, 46f, 92f);
+            var ert = em.rectTransform;
+            ert.anchorMin = ert.anchorMax = new Vector2(0.5f, 0.5f); ert.pivot = new Vector2(0.5f, 0.5f);
+            ert.anchoredPosition = new Vector2(0, h * 0.21f);
+            ert.sizeDelta = new Vector2(emSize, emSize);
 
-            // Everything below the preview is laid out from the card's own height, so
-            // the wide 3-across shelves and the narrow 5-across one both stay tidy.
             float w = size.x - 30f;
-            Gothic.Line(ct, name.ToUpperInvariant(), 25,
-                owned || affordable ? Gothic.Bone : new Color(0.62f, 0.55f, 0.52f, 0.55f),
-                new Vector2(0, -18), new Vector2(w, 32));
-            Skin.Fit(Gothic.Line(ct, desc, 16, new Color(0.72f, 0.65f, 0.62f, 0.70f),
-                new Vector2(0, -48), new Vector2(w - 12, 40)), 16, 11);
+            Skin.Fit(Gothic.Line(ct, e.name.ToUpperInvariant(), 27,
+                e.owned || affordable ? Gothic.Bone : new Color(0.62f, 0.55f, 0.52f, 0.55f),
+                new Vector2(0, -h * 0.12f), new Vector2(w, 34)), 27, 14);
+            Skin.Fit(Gothic.Line(ct, e.desc, 17, new Color(0.72f, 0.65f, 0.62f, 0.70f),
+                new Vector2(0, -h * 0.26f), new Vector2(w - 12, h * 0.22f)), 17, 11);
 
-            string footer = equipped ? "EQUIPPED — tap to remove"
-                          : owned ? "tap to wear"
-                          : affordable ? $"BUY — {price}" : $"NEED {price - Currency.Balance} MORE";
-            Gothic.Line(ct, footer, 19,
-                equipped ? Theme.Coin : owned ? new Color(0.72f, 0.65f, 0.62f, 0.6f)
-                         : affordable ? Theme.Coin : new Color(0.78f, 0.28f, 0.30f, 0.9f),
-                new Vector2(0, -80), new Vector2(w, 28));
+            string footer = e.worn ? "EQUIPPED — tap to remove"
+                          : e.owned ? "tap to wear"
+                          : sealed_ && affordable ? $"SEALED — CLEAR FLOOR {e.sealedFloor}"
+                          : affordable ? $"BUY — {e.price}"
+                          : $"NEED {e.price - Currency.Balance} MORE";
+            Skin.Fit(Gothic.Line(ct, footer, 20,
+                e.worn ? Theme.Coin : e.owned ? new Color(0.72f, 0.65f, 0.62f, 0.6f)
+                       : sealed_ ? new Color(0.72f, 0.62f, 0.40f, 0.85f)
+                       : affordable ? Theme.Coin : new Color(0.78f, 0.28f, 0.30f, 0.9f),
+                new Vector2(0, -h * 0.40f), new Vector2(w, 28)), 20, 12);
         }
 
         // ==================== pause ====================

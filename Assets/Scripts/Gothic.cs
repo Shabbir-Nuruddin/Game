@@ -102,6 +102,102 @@ namespace TrustIssues
             }
         }
 
+        // ---- item glyphs -----------------------------------------------------
+        // The shop artwork draws a distinct little emblem on every card. Three of
+        // them have no sprite anywhere in the project (a gravestone, a skull, a pair
+        // of crossed bones), and three identical white diamonds is exactly why the
+        // taunt shelf used to read as one item printed three times. These are baked
+        // procedurally like Frame/Diamond, so they cost no art files.
+
+        static readonly Color BoneFill = new Color(0.86f, 0.83f, 0.76f, 1f);
+        static readonly Color StoneFill = new Color(0.55f, 0.53f, 0.58f, 1f);
+        static readonly Color Ink = new Color(0.05f, 0.03f, 0.06f, 1f);
+
+        // Bake a small square sprite from a per-pixel shader function. Texture space
+        // is y-UP, so shapes below are written the way they're seen on screen.
+        static Sprite Bake(int S, System.Func<int, int, Color> shade)
+        {
+            var tex = new Texture2D(S, S, TextureFormat.RGBA32, false)
+                { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
+            for (int y = 0; y < S; y++)
+                for (int x = 0; x < S; x++)
+                    tex.SetPixel(x, y, shade(x, y));
+            tex.Apply();
+            return Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), S);
+        }
+
+        // Distance from a point to a line segment — the crossed bones are two of these.
+        static float SegDist(float px, float py, float ax, float ay, float bx, float by)
+        {
+            float dx = bx - ax, dy = by - ay;
+            float t = Mathf.Clamp01(((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy));
+            float cx = ax + dx * t - px, cy = ay + dy * t - py;
+            return Mathf.Sqrt(cx * cx + cy * cy);
+        }
+
+        /// <summary>A round-topped gravestone — the Grave Ward charm, and the "RIP" taunt.</summary>
+        static Sprite _tomb;
+        public static Sprite Tomb => _tomb != null ? _tomb : (_tomb = Bake(32, (x, y) =>
+        {
+            // The slab: a rectangle with a semicircular head.
+            bool In(float inset)
+            {
+                bool body = x >= 7 + inset && x <= 24 - inset && y >= 3 + inset && y <= 19;
+                float ddx = x - 15.5f, ddy = y - 19f;
+                bool head = y > 19 && ddx * ddx + ddy * ddy <= (8.5f - inset) * (8.5f - inset);
+                return body || head;
+            }
+            if (!In(0)) return new Color(0, 0, 0, 0);
+            if (!In(2)) return Ink;                                  // carved outline
+            // A cross cut into the face, so it reads as a grave and not a brick.
+            bool cross = (x >= 15 && x <= 16 && y >= 8 && y <= 20) ||
+                         (y >= 15 && y <= 16 && x >= 12 && x <= 19);
+            return cross ? new Color(0.30f, 0.28f, 0.32f, 1f) : StoneFill;
+        }));
+
+        /// <summary>A bone skull — the "skill issue" taunt.</summary>
+        static Sprite _skull;
+        public static Sprite Skull => _skull != null ? _skull : (_skull = Bake(32, (x, y) =>
+        {
+            bool In(float inset)
+            {
+                float ddx = x - 15.5f, ddy = y - 18f;
+                bool cranium = ddx * ddx + ddy * ddy <= (10f - inset) * (10f - inset);
+                bool jaw = x >= 10 + inset && x <= 21 - inset && y >= 5 + inset && y <= 18;
+                return cranium || jaw;
+            }
+            if (!In(0)) return new Color(0, 0, 0, 0);
+            if (!In(1.6f)) return Ink;                               // outline
+            // Eye sockets.
+            for (int e = 0; e < 2; e++)
+            {
+                float ex = e == 0 ? 11.8f : 19.2f, ddx = x - ex, ddy = y - 19f;
+                if (ddx * ddx + ddy * ddy <= 3.2f * 3.2f) return Ink;
+            }
+            // Nose, then the tooth gaps in the jaw.
+            if (y >= 12 && y <= 15 && Mathf.Abs(x - 15.5f) <= (y - 11) * 0.55f) return Ink;
+            if (y <= 10 && (x == 12 || x == 15 || x == 18)) return Ink;
+            return BoneFill;
+        }));
+
+        /// <summary>Crossed bones — the "all part of the plan" taunt.</summary>
+        static Sprite _bones;
+        public static Sprite Bones => _bones != null ? _bones : (_bones = Bake(32, (x, y) =>
+        {
+            float shaft = Mathf.Min(SegDist(x, y, 7, 7, 24, 24), SegDist(x, y, 7, 24, 24, 7));
+            // A knob on each of the four ends, the way a bone is drawn.
+            float knob = 99f;
+            float[] ex = { 7, 24, 7, 24 }, ey = { 7, 24, 24, 7 };
+            for (int i = 0; i < 4; i++)
+            {
+                float ddx = x - ex[i], ddy = y - ey[i];
+                knob = Mathf.Min(knob, Mathf.Sqrt(ddx * ddx + ddy * ddy));
+            }
+            float d = Mathf.Min(shaft - 2.4f, knob - 3.2f);
+            if (d <= 0f) return BoneFill;
+            return d <= 1.3f ? Ink : new Color(0, 0, 0, 0);
+        }));
+
         // ==================== screen furniture ====================
 
         /// <summary>
@@ -308,11 +404,18 @@ namespace TrustIssues
             => Button(parent, "‹  BACK", new Vector2(0, lift), new Vector2(420, 88), onClick, true, 38,
                       new Vector2(0.5f, 0f));
 
-        /// <summary>A body line in the menu serif, so code-built copy matches the paintings.</summary>
+        /// <summary>
+        /// A body line in the menu serif, so code-built copy matches the paintings.
+        /// Pass `anchor` to pin it to the top or bottom edge instead of the centre —
+        /// a screen that lays itself out from the edges keeps its spacing on a tall
+        /// phone, where the canvas is far shorter than the reference 1080.
+        /// </summary>
         public static Text Line(Transform parent, string text, int size, Color color,
-            Vector2 pos, Vector2 dim, TextAnchor align = TextAnchor.MiddleCenter)
+            Vector2 pos, Vector2 dim, TextAnchor align = TextAnchor.MiddleCenter,
+            Vector2 anchor = default)
         {
-            var t = Theme.Label(parent, text, size, color, new Vector2(0.5f, 0.5f), pos, dim, align);
+            if (anchor == default) anchor = new Vector2(0.5f, 0.5f);
+            var t = Theme.Label(parent, text, size, color, anchor, pos, dim, align);
             if (Theme.MenuFont != null) t.font = Theme.MenuFont;
             t.horizontalOverflow = HorizontalWrapMode.Wrap;
             t.raycastTarget = false;
