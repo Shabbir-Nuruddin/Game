@@ -9,6 +9,15 @@ namespace TrustIssues
     /// killed you, then the game picks a taunt that gets meaner the more you die.
     /// It also maps each death cause to a punchy SFX so dying to spikes SOUNDS
     /// different from being crushed or burned by daylight.
+    ///
+    /// ROAST STYLE RULE (2026 rewrite): every line is ONE TO THREE WORDS.
+    /// The retry is instant and the toast only lives ~1.2s, so a full sentence
+    /// never gets read — the player is already moving. Short lines land, get
+    /// quoted back, and read cleanly out loud through the TTS voice. The register
+    /// is current internet trash-talk (skill issue / womp womp / cooked / aura /
+    /// caught in 4K / bro thought), because the reaction being farmed is
+    /// "nah I'M him, watch this" — dismissive, never explanatory. Nothing here
+    /// ever blames the trap or apologises for it; the castle is smug, not sorry.
     /// </summary>
     public static class Juice
     {
@@ -54,129 +63,271 @@ namespace TrustIssues
             }
         }
 
-        // ---- cause-flavoured taunts (cheeky, used mostly early) ----
+        // ------------------------------------------------------------------
+        //  WHICH TRAP just killed you
+        // ------------------------------------------------------------------
+        // A death only carries a free-text cause string, which is too coarse to
+        // tell a Crusher from a Chandelier. KillZone stamps the exact TrapType
+        // here on its way out, so the roast can be bespoke to the thing that got
+        // you — that specificity ("It was spinning.") is what makes the castle
+        // feel like it was WATCHING rather than reading from a list. Consumed
+        // once, so a later non-trap death (the sun, the void) can never inherit
+        // a stale trap line.
+        static int _lastTrap = -1;
+        public static void ReportTrap(int trapType) { _lastTrap = trapType; }
+        static int TakeTrap() { int t = _lastTrap; _lastTrap = -1; return t; }
+
+        // ------------------------------------------------------------------
+        //  PER-TRAP lines — the trap that killed you gets its own voice
+        // ------------------------------------------------------------------
+        // Indexed by (int)TrapType. Every lethal trap has its own shelf so the
+        // same death never sounds the same twice, and so the line can reference
+        // the trap's actual TELL ("It flared first.") — a roast that names the
+        // tell teaches the counter while still being an insult.
+        static readonly System.Collections.Generic.Dictionary<TrapType, string[]> TrapLines = new()
+        {
+            [TrapType.FakeFloor] = new[]
+            {
+                "Floor said nah.", "You trusted it.", "Trust issues.", "The floor lied.",
+                "Womp womp.", "Not solid, bestie.", "Gravity claims you.", "Bro thought.",
+            },
+            [TrapType.LateSpike] = new[]
+            {
+                "Spikes. Obviously.", "You saw nothing.", "Late. Like you.", "Called it.",
+                "Zero aura.", "Skill issue.", "Every time.", "Predictable.",
+            },
+            [TrapType.Crusher] = new[]
+            {
+                "Greed. Classic.", "Stay low.", "The bait won.", "Flattened.",
+                "You reached. Cute.", "Shiny thing bad.", "Pancaked.", "Mid.",
+            },
+            [TrapType.FakeExit] = new[]
+            {
+                "Not the door.", "Wrong door, king.", "Delulu.", "That was bait.",
+                "The BRIGHT one? Really.", "Too obvious.", "Cooked.", "Womp womp.",
+            },
+            [TrapType.Surprise] = new[]
+            {
+                "Skill issue.", "Unlucky.", "Diabolical.", "Nothing was there. Ok.",
+                "My bad. Not really.", "Sue me.", "Nah he tweakin.", "Sorry not sorry.",
+            },
+            [TrapType.Dart] = new[]
+            {
+                "Dodge? Never heard.", "Caught in 4K.", "Shot. Ratio.", "NPC behaviour.",
+                "Stood still. Bold.", "It fired. You didn't.", "Sniped.", "L.",
+            },
+            [TrapType.Faller] = new[]
+            {
+                "Look UP.", "Bonk.", "From above, genius.", "Ceiling won.",
+                "Never looked up.", "Squish.", "Skill issue.", "Two dimensions. TWO.",
+            },
+            [TrapType.Spring] = new[]
+            {
+                "Boing. Bye.", "Free flight, free L.", "You LIKED that spring.", "Up. Then over.",
+                "Yeeted.", "That was a launch pad.", "Airborne. Briefly.", "Womp.",
+            },
+            [TrapType.Saw] = new[]
+            {
+                "Saw won.", "It was spinning.", "Blender.", "Shredded.",
+                "You walked in.", "Loud AND visible.", "Confetti.", "Mid.",
+            },
+            [TrapType.WarpBack] = new[]
+            {
+                "Back to start.", "Spite. Pure spite.", "Run it back.", "Say sike.",
+                "Shortcut? Sike.", "Do it again.", "From the top.", "Diabolical.",
+            },
+            [TrapType.Reverse] = new[]
+            {
+                "Left is right. Cope.", "Controls: delulu.", "Brain AFK.", "You flipped.",
+                "Skill issue, inverted.", "Adapt. Or don't.", "Confused?", "Same buttons.",
+            },
+            [TrapType.SpikeStatic] = new[]
+            {
+                "It never moved.", "One job.", "Jump. That's it.", "Stationary.",
+                "Didn't even hide.", "Zero aura.", "Skill issue.", "It's been there.",
+            },
+            [TrapType.ArrowRain] = new[]
+            {
+                "Rain check.", "Timing? Zero.", "From the ceiling. Again.", "Sky issue.",
+                "It's on a timer.", "Count. Please.", "Riddled.", "Womp womp.",
+            },
+            [TrapType.GrowSpike] = new[]
+            {
+                "It GROWS.", "Pattern? What pattern.", "Grew. You didn't.", "Timed that awfully.",
+                "Watch it breathe.", "Impatient.", "Wait two seconds.", "Cooked.",
+            },
+            [TrapType.Pendulum] = new[]
+            {
+                "Swing and a miss.", "It has rhythm.", "Tick. Tock. Dead.", "Read the room.",
+                "No beat.", "Off tempo.", "Sliced.", "Mid.",
+            },
+            [TrapType.FlameJet] = new[]
+            {
+                "Toasted.", "Well done.", "Fire has a schedule.", "Crispy.",
+                "It was OFF. Then on.", "Extra crispy.", "Cooked. Literally.", "Sizzle.",
+            },
+            [TrapType.Chandelier] = new[]
+            {
+                "Big ceiling. Big L.", "You WATCHED it fall.", "Telegraphed. Ignored.", "Chandelier: 1.",
+                "It creaked first.", "Decor got you.", "Squish.", "Bonk.",
+            },
+            [TrapType.HolyWater] = new[]
+            {
+                "Holy. Water. Vampire.", "It was glowing.", "Sizzle.", "Read the puddle.",
+                "You're a VAMPIRE.", "Blessed. Unfortunately.", "Steamed.", "Skill issue.",
+            },
+            [TrapType.BatSwoop] = new[]
+            {
+                "You ARE a bat.", "Out-batted.", "It flared first.", "Mogged by a bat.",
+                "Your own kind.", "Embarrassing.", "The red glow. Hello.", "Womp womp.",
+            },
+            [TrapType.BreakBlock] = new[]
+            {
+                "Shoot it.", "You have a GUN.", "Walls don't move.", "Try shooting.",
+                "Brain AFK.", "Skill issue.",
+            },
+        };
+
+        // ---- cause-flavoured lines (used when the exact trap isn't known) ----
         static readonly System.Collections.Generic.Dictionary<string, string[]> Flavour = new()
         {
             [Spike] = new[]
             {
-                "Impaled. The spikes were RIGHT THERE.",
-                "A vampire, undone by pointy sticks.",
-                "You walked into that. On purpose, apparently.",
-                "The spikes said hi. You said goodbye.",
+                "Impaled. Ok.", "Pointy sticks. Wow.", "You walked in.", "Skill issue.",
+                "Zero aura.", "Cooked.", "Sharp. Obviously.", "Womp womp.",
             },
             [Crush] = new[]
             {
-                "Flattened. Stay LOW next time, genius.",
-                "Crushed. You jumped right into it.",
-                "Thwomp'd. That's a technical term.",
-                "Pancaked. Add syrup.",
+                "Flattened.", "Stay low.", "Squish.", "Pancaked.",
+                "Bonk.", "Two dimensions now.", "Mid.", "L.",
             },
             [Burn] = new[]
             {
-                "Sunburn. Classic rookie vampire.",
-                "Daylight: 1. You: 0.",
-                "You burned. You ABSOLUTELY had time.",
-                "Ash. Just ash now.",
+                "Sunburn. Rookie.", "Crispy.", "Ash.", "Toasted.",
+                "You had TIME.", "Well done.", "Cooked. Literally.", "Sizzle.",
             },
             [Bat] = new[]
             {
-                "Killed by a bat. You ARE a bat.",
-                "Out-flapped by your own kind.",
-                "The bat saw you coming. You didn't.",
-                "Screeched into the afterlife.",
+                "Out-batted.", "You ARE a bat.", "Mogged.", "Embarrassing.",
+                "By a BAT.", "Womp womp.", "Screeched.", "Cooked.",
             },
             [Saw] = new[]
             {
-                "Shredded. Beautifully, even.",
-                "The blade was spinning the WHOLE time.",
-                "Cut to ribbons. Tidy.",
-                "You and the saw. Saw won.",
+                "Shredded.", "Blender.", "It was spinning.", "Confetti.",
+                "Saw won.", "Sliced.", "Mid.", "L.",
             },
             [Fall] = new[]
             {
-                "Gravity wins again.",
-                "You found the one hole. Of course you did.",
-                "Down you go. Bye.",
-                "That wasn't a shortcut.",
+                "Down bad.", "You found the hole.", "Bye.", "Gravity: 1.",
+                "Not a shortcut.", "Yeeted.", "Womp womp.", "Skill issue.",
             },
             [Generic] = new[]
             {
-                "Trust issues confirmed.",
-                "Skill issue (it was a trap).",
-                "Bonk.",
-                "Maybe... jump next time?",
+                "Skill issue.", "Womp womp.", "Cooked.", "Bonk.",
+                "Mid.", "L.", "Zero aura.", "Trust issues.",
+                "Delulu.", "Nah he tweakin.", "Bro thought.", "Caught in 4K.",
             },
         };
 
         // ---- escalation tiers: it gets PERSONAL the more you die ----
-        // Written to be said OUT LOUD (the TTS voice reads them) and quotable —
-        // the reaction being farmed is the out-loud "oh you BASTARD", so every
-        // line blames the PLAYER, never the trap. Short enough to read before
-        // the respawn — the retry is instant and the roast must never delay it.
+        // Written to be said OUT LOUD (the TTS voice reads them) and quotable.
+        // Every line blames the PLAYER, never the trap — the reaction being farmed
+        // is "wait and watch, I'll show you", and pity does that better than anger.
         static readonly string[] TierMocking =   // ~4–9 deaths
         {
-            "Again? Bold strategy.",
-            "That was the same trap. The SAME one.",
-            "The castle didn't even move that one.",
-            "You walked into that like it owed you money.",
-            "Centuries undead, foiled by a hallway.",
-            "The spikes are starting to recognize you.",
+            "Again?", "Same trap.", "Bold strategy.", "Predictable.",
+            "You're not him.", "Womp womp.", "Skill issue. Again.", "Mid run.",
+            "Chat, he's cooked.", "Bro thought.", "Zero progress.", "Try harder.",
         };
         static readonly string[] TierBrutal =    // ~10–24 deaths
         {
-            "This floor has a body count and it's all you.",
-            "The bats are taking bets on you now.",
-            "I'd offer a tutorial but you'd die in it.",
-            "Your ghost just asked for a transfer.",
-            "The coffin isn't a goal anymore. It's a mercy.",
-            "At this point the trap feels bad for you.",
-            "You've died here so often the floor filed a complaint.",
+            "Down horrendous.", "It's over.", "Pack watch.", "Aura: gone.",
+            "Crash out incoming.", "You're NOT him.", "Cooked. Thoroughly.", "L + ratio.",
+            "Touch grass.", "Genuinely mid.", "Brain AFK.", "Not cooking.",
+            "Diabolical.", "Get ripped, bozo.",
         };
         static readonly string[] TierPity =      // 25+ deaths
         {
-            "Hey. It's okay. (It's not.)",
-            "We can stop whenever you want. Please.",
-            "You've earned a participation coffin.",
-            "The castle isn't angry. Just disappointed.",
-            "Blink twice if you need help.",
-            "Your deaths have their own leaderboard now.",
+            "It's okay. (It's not.)", "We can stop.", "Please stop.", "For me?",
+            "This is sad.", "I'm not angry.", "Just disappointed.", "Take a break.",
+            "Hydrate, king.", "Try easy mode.", "You good?", "Blink twice.",
+            "Sending me.", "Unemployed behaviour.",
         };
 
         // Twisting the knife when you die RIGHT before the exit (the viral moment).
         static readonly string[] NearMiss =
         {
-            "SO close. That was hope leaving your body.",
-            "Right at the end. Almost. ALMOST.",
-            "The exit waved at you. Then you died.",
-            "One more step. That's all it was. One.",
-            "You could taste the win. Now taste the floor.",
-            "The coffin was RIGHT THERE.",
-            "It watched you die from a metre away.",
+            "SO close.", "Almost. ALMOST.", "One step.", "Right at the end.",
+            "Choked.", "Clutch? No.", "Hope: deleted.", "It was RIGHT there.",
+            "Sending me.", "That's crazy.", "Nooo way.", "Womp womp womp.",
         };
 
-        static string Pick(string[] a) => a[Random.Range(0, a.Length)];
+        // ------------------------------------------------------------------
+        //  NO-REPEAT: the whole point is unpredictability
+        // ------------------------------------------------------------------
+        // With one-word lines a repeat inside a 10-death streak is instantly
+        // obvious and kills the illusion that the castle is reacting to YOU.
+        // Remember the last few spoken lines and re-roll past them.
+        static readonly System.Collections.Generic.Queue<string> _recent = new();
+        const int RecentMemory = 8;
+
+        static bool WasRecent(string s)
+        {
+            foreach (var r in _recent) if (r == s) return true;
+            return false;
+        }
+
+        static string Remember(string s)
+        {
+            _recent.Enqueue(s);
+            while (_recent.Count > RecentMemory) _recent.Dequeue();
+            return s;
+        }
+
+        /// <summary>Pick from a pool, avoiding anything said in the last few deaths.</summary>
+        static string Pick(string[] a)
+        {
+            if (a == null || a.Length == 0) return "Womp womp.";
+            // Try a handful of times, then take whatever comes — a small pool
+            // shouldn't be able to starve the picker into a stall.
+            for (int i = 0; i < 6; i++)
+            {
+                string s = a[Random.Range(0, a.Length)];
+                if (!WasRecent(s)) return Remember(s);
+            }
+            return Remember(a[Random.Range(0, a.Length)]);
+        }
 
         /// <summary>
-        /// The roast shown on death. Early deaths get cause-flavoured cheek; as the
-        /// toll climbs it shifts to harsher tiers, with milestone barbs — and a
-        /// special twist when you die right before the exit (nearMiss).
+        /// The roast shown on death. If the exact trap is known it usually speaks
+        /// with that trap's own voice; otherwise it falls back to cause flavour,
+        /// shifting to harsher tiers as the toll climbs — with milestone barbs and
+        /// a special twist when you die right at the exit (nearMiss).
         /// </summary>
         public static string Roast(string category, int deaths, int floor, bool nearMiss = false)
         {
-            // Milestone humiliations.
+            int trap = TakeTrap();   // consumed either way, so it can never go stale
+
+            // Milestone humiliations. Still short — a milestone that takes four
+            // seconds to read is a milestone nobody reads.
             switch (deaths)
             {
-                case 10:  return "TEN deaths. A perfect, round, embarrassing number.";
-                case 25:  return "25 deaths on floor " + floor + ". Framed and hung in the castle.";
-                case 50:  return "FIFTY. The castle has adopted you as a permanent ghost.";
-                case 75:  return "75. The other ghosts held a meeting about you.";
-                case 100: return "100 deaths. Genuinely impressive. Genuinely.";
-                case 150: return "150. The castle renamed this floor after you.";
-                case 200: return "200 deaths. You ARE the trap now.";
+                case 10:  return Remember("Ten. Nice.");
+                case 25:  return Remember("Twenty-five. On floor " + floor + ".");
+                case 50:  return Remember("FIFTY. Genuinely.");
+                case 75:  return Remember("Seventy-five. Wow.");
+                case 100: return Remember("One hundred. Respect. Kind of.");
+                case 150: return Remember("One fifty. This floor is yours now.");
+                case 200: return Remember("Two hundred. You ARE the trap.");
             }
 
             // Dying at the doorstep is the funniest death — call it out.
             if (nearMiss && deaths > 1 && Random.value < 0.75f) return Pick(NearMiss);
+
+            // The bespoke trap line is the good stuff, so it gets first refusal —
+            // but not every time, or the trap starts to feel like a vending machine.
+            if (trap >= 0 && TrapLines.TryGetValue((TrapType)trap, out var tl) && Random.value < 0.6f)
+                return Pick(tl);
 
             var pool = Flavour.TryGetValue(category, out var f) ? f : Flavour[Generic];
 

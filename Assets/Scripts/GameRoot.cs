@@ -5835,7 +5835,12 @@ namespace TrustIssues
             // always loud, layered feedback. The game also ROASTS you, meaner each death.
             string cause = Juice.Categorize(msg);
             Audio.PlayOr(Juice.DeathSfx(cause), "death", 1f);
-            Audio.PlayVoice("death_voice", 0.85f);     // the vampire perishes — scaled by the VOICE slider
+            // The comedic punctuation under the roast. This used to be a long human
+            // groan, which made every death feel SAD — wrong emotion entirely for a
+            // game whose whole loop is "nah, watch this". A short synthesised hit
+            // (boom / bonk / sad-trombone once the pity tier kicks in) reads as the
+            // castle laughing instead. Pitch-jittered per death so it never wears out.
+            Stinger.Death(_deaths);
             FlashRed();
             StartCoroutine(HitStop(0.08f));        // a punchy freeze-frame on impact
             UpdateHud();
@@ -5849,6 +5854,11 @@ namespace TrustIssues
             // clipping and sending to someone.
             if (_ghostTrapX.Exists(g => Mathf.Abs(g - deathPos.x) < 2.2f))
                 roast = CastleRemembersLines[Random.Range(0, CastleRemembersLines.Length)];
+            // Losing to the SAME trap three times running is the most personal thing
+            // that can happen in this game, so when it does, the scoreline outranks
+            // every other roast — the castle reads the running total back to you.
+            string streakLine = Memory.StreakRoast();
+            if (streakLine != null) roast = streakLine;
             Voice.Speak(roast);                    // the game mocks you OUT LOUD
             // Every 10th death, dangle the next unlock — the moment a bored player
             // quits is exactly when the shop should whisper. Rides the hint bar so
@@ -5951,12 +5961,16 @@ namespace TrustIssues
         // hesitation is the thing that kills you. Written to be said out loud.
         static readonly string[] CastleRemembersLines =
         {
-            "You stood right there last time.",
-            "I built that one just for you.",
-            "I watched you pause there. So I waited.",
-            "You keep going back to the same spot.",
-            "That was your safe place. Was.",
-            "I remembered. You didn't.",
+            // Short, like every other roast — these fire mid-retry and a sentence
+            // never gets read. Still the ONE place the castle admits it's watching.
+            "Built that for you.",
+            "You paused there. I waited.",
+            "Same spot. Again.",
+            "That was your safe place.",
+            "I remembered.",
+            "Caught in 4K.",
+            "Knew it.",
+            "Predictable.",
         };
 
         void RecordReactiveTrap()

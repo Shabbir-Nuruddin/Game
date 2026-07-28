@@ -92,8 +92,14 @@ namespace TrustIssues
             try
             {
                 if (_tts == null) return;
-                _tts.Call<int>("setSpeechRate", 0.95f); // a touch slow = more menacing
-                _tts.Call<int>("setPitch", 0.75f);      // drop it: the castle, not a phone
+                // Fast and bright, not slow and demonic. The roasts are now one to
+                // three words; a deep, drawn-out delivery on "Cooked." sounds like a
+                // bored robot, while a quick smug read sounds like someone in the
+                // room laughing at you — which is the reaction the writing wants.
+                // Both values are jittered a little so repeat deaths never land on
+                // the exact same reading.
+                _tts.Call<int>("setSpeechRate", Random.Range(1.25f, 1.45f));
+                _tts.Call<int>("setPitch", Random.Range(1.05f, 1.35f));
                 // speak(CharSequence, int queueMode, Bundle params, String utteranceId)
                 // queueMode 0 = QUEUE_FLUSH, so a new roast cuts off the last one.
                 // The Bundle must be a TYPED null or the JNI bridge can't pick the

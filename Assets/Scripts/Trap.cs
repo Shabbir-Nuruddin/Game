@@ -314,6 +314,7 @@ namespace TrustIssues
                     break;
                 case TrapType.FakeExit:
                     Codex.Unlock(TrapType.FakeExit);
+                    Juice.ReportTrap((int)TrapType.FakeExit);   // so the roast is bespoke to this trap
                     GameRoot.I?.Die("That door? Pure evil.");
                     break;
                 case TrapType.RealExit:
@@ -321,6 +322,7 @@ namespace TrustIssues
                     break;
                 case TrapType.Surprise:
                     Codex.Unlock(TrapType.Surprise);
+                    Juice.ReportTrap((int)TrapType.Surprise);
                     GameRoot.I?.Die("Caught in a sunbeam. Vampires burn.");
                     break;
                 case TrapType.Dart:
@@ -483,6 +485,7 @@ namespace TrustIssues
                 go.transform.position = Vector3.Lerp(from, to, e / 0.12f);
                 yield return null;
             }
+            Juice.ReportTrap((int)TrapType.Crusher);
             GameRoot.I?.Die("Should've stayed low.");
         }
     }
@@ -527,6 +530,10 @@ namespace TrustIssues
             if (tag < 0) { var tr = GetComponentInParent<Trap>(); if (tr != null) tag = (int)tr.type; }
             if (tag >= 0) Codex.Unlock((TrapType)tag);
             Memory.RecordKill(tag);   // lifetime tally + streak → the nemesis system
+            // Tell the roast system EXACTLY what killed you. The cause text can't
+            // tell a Crusher from a Chandelier, and the bespoke line ("It creaked
+            // first.") is the one that reads as the castle watching you.
+            Juice.ReportTrap(tag);
             GameRoot.I?.Die(msg);
         }
         void OnTriggerEnter2D(Collider2D o)

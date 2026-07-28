@@ -128,6 +128,28 @@ namespace TrustIssues
             return msg;
         }
 
+        /// <summary>
+        /// The SPOKEN version of the nemesis scoreline — short enough to survive
+        /// the instant retry. DecorateRoast writes the long form into the death
+        /// cause (which analytics and the tombstones read); this is the one the
+        /// castle actually says out loud. Nothing stings like being told the
+        /// running score by the thing that's winning it. Null = nothing to say.
+        /// </summary>
+        public static string StreakRoast()
+        {
+            if (Time.frameCount != _lastKillFrame) return null;
+            int tag = PlayerPrefs.GetInt(NemLastKey, -1);
+            int streak = PlayerPrefs.GetInt(NemStreakKey, 0);
+            if (tag < 0 || tag != Nemesis || streak < 3) return null;
+            switch (streak % 4)
+            {
+                case 0:  return $"{streak} in a row.";
+                case 1:  return "It owns you.";
+                case 2:  return $"{streak}-nil.";
+                default: return "Again. Same thing.";
+            }
+        }
+
         /// <summary>One line for the menu: absence / rage-quit / nemesis flavour. Null = say nothing.</summary>
         public static string MenuGreeting()
         {
