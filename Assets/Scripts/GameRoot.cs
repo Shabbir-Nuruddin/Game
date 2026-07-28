@@ -750,21 +750,43 @@ namespace TrustIssues
             prt.anchorMin = prt.anchorMax = topLeft; prt.pivot = new Vector2(0f, 1f);
             prt.anchoredPosition = new Vector2(22, -10); prt.sizeDelta = new Vector2(150, 140);
 
-            // The Heir himself — his own idle sprite, so the face on the plate is
-            // literally the skin you're wearing (change skin, change portrait).
-            var frames = Assets.Grid("vamp_idle_sheet", 64, 3);
-            Sprite face = (frames != null && frames.Length > 0) ? frames[0] : Assets.Sprite("vamp_idle");
-            if (face != null)
+            // THE PORTRAIT. This used to blow the player's own 64px idle sprite up
+            // to 132px and sit it in a plain box — so the top-left corner of the
+            // screen was just a second, blurrier copy of the character you were
+            // already looking at, which is exactly how it read to players. The
+            // artwork puts a PAINTED portrait in a gold filigree frame there, so
+            // that painted plate (cut from the reference) is what goes in now.
+            var portrait = Assets.Sprite("ui/hud_portrait");
+            if (portrait != null)
             {
+                // The cut already includes its own frame, so the plate behind it
+                // becomes invisible rather than drawing a second border around it.
+                plate.color = new Color(0f, 0f, 0f, 0f);
                 var img = new GameObject("Face", typeof(RectTransform)).AddComponent<Image>();
                 img.transform.SetParent(plate.transform, false);
-                img.sprite = face; img.preserveAspect = true; img.raycastTarget = false;
-                img.color = Skins.Shade(Skins.Current);
+                img.sprite = portrait; img.preserveAspect = true; img.raycastTarget = false;
                 var irt = img.rectTransform;
-                irt.anchorMin = irt.anchorMax = new Vector2(0.5f, 0.5f); irt.pivot = new Vector2(0.5f, 0.5f);
-                irt.anchoredPosition = Vector2.zero; irt.sizeDelta = new Vector2(132, 132);
+                irt.anchorMin = Vector2.zero; irt.anchorMax = Vector2.one;
+                irt.offsetMin = irt.offsetMax = Vector2.zero;
             }
-            Gothic.InnerFrame(plate.transform);
+            else
+            {
+                // Fallback: the old sprite-in-a-box, so a missing cut still leaves
+                // a readable HUD rather than an empty corner.
+                var frames = Assets.Grid("vamp_idle_sheet", 64, 3);
+                Sprite face = (frames != null && frames.Length > 0) ? frames[0] : Assets.Sprite("vamp_idle");
+                if (face != null)
+                {
+                    var img = new GameObject("Face", typeof(RectTransform)).AddComponent<Image>();
+                    img.transform.SetParent(plate.transform, false);
+                    img.sprite = face; img.preserveAspect = true; img.raycastTarget = false;
+                    img.color = Skins.Shade(Skins.Current);
+                    var irt = img.rectTransform;
+                    irt.anchorMin = irt.anchorMax = new Vector2(0.5f, 0.5f); irt.pivot = new Vector2(0.5f, 0.5f);
+                    irt.anchoredPosition = Vector2.zero; irt.sizeDelta = new Vector2(132, 132);
+                }
+                Gothic.InnerFrame(plate.transform);
+            }
 
             // The lives row. It only appears in the modes that HAVE lives — the
             // Castle lets you retry forever, and a row of hearts that never empties
@@ -911,8 +933,14 @@ namespace TrustIssues
             // just the glyph) or the virtual joystick, whichever Settings > MOVE has
             // picked. Both are built; only one is ever shown, toggled every frame in
             // UpdateTouchLayout() like the ability buttons.
-            _btnLeft  = MakeArrowGlyph("‹", -1, moveAnchor, new Vector2(120 * ms, 145) * k, new Vector2(150, 150) * k);
-            _btnRight = MakeArrowGlyph("›", 1, moveAnchor, new Vector2(340 * ms, 145) * k, new Vector2(150, 150) * k);
+            // These are the RINGS CUT OUT OF THE REFERENCE PAINTING (art/ui/btn_*),
+            // not glyphs approximating it — position and diameter below are the
+            // painting's own measurements scaled from its 1568x1003 frame onto the
+            // 1080-high UI canvas, so the finished screen matches the artwork
+            // rather than resembling it. MakeArtButton falls back to the old bare
+            // glyph automatically if a PNG is ever missing.
+            _btnLeft  = MakeArtButton("btn_left",  "‹", -1, moveAnchor, new Vector2(213 * ms, 232) * k, 207f * k);
+            _btnRight = MakeArtButton("btn_right", "›",  1, moveAnchor, new Vector2(398 * ms, 237) * k, 194f * k);
             // Base size drives the knob, the travel radius and the grab pad (see
             // TouchJoystick.Setup), so this one number is the whole stick's feel.
             // Trimmed 240 -> 205: with the stick now drawn under your thumb rather
@@ -926,8 +954,12 @@ namespace TrustIssues
             // "just the arrow" styling as the movement glyphs.
             // Jump is the single most-mashed button in the game — sized up again
             // (170 -> 200) after testers kept fat-fingering past its edge.
-            MakeArrowGlyph("▲", 0, actAnchor, new Vector2(-150 * acts, 145) * k, new Vector2(200, 200) * k);
-            _btnFly   = MakeBatButton(actAnchor, new Vector2(-360 * acts, 120) * k, new Vector2(130, 130) * k);
+            // Pulled in and up from the painting's own (187, 178). The shipped
+            // screen draws an ornate border frame around the play area that the
+            // reference mockup doesn't have, and at the painting's exact numbers
+            // all three rings sat underneath it with their bottoms cut off.
+            MakeArtButton("btn_jump", "▲", 0, actAnchor, new Vector2(-215 * acts, 240) * k, 232f * k);
+            _btnFly   = MakeArtButton("btn_bat", "", 3, actAnchor, new Vector2(-121 * acts, 415) * k, 160f * k);
             _btnDash  = MakeTouch("DASH",  4, actAnchor, new Vector2(-140 * acts, 350) * k, new Vector2(130, 130) * k, 0.24f);
             _btnShoot = MakeGunButton(actAnchor, new Vector2(-360 * acts, 310) * k, new Vector2(130, 130) * k);
             SyncMoveMode();
@@ -1142,9 +1174,50 @@ namespace TrustIssues
             return go;
         }
 
+        /// <summary>
+        /// A control button drawn with a piece of the reference painting — the
+        /// ornate gold ring with its arrow (or bat) already inside it.
+        ///
+        /// The whole button is ONE sprite, which is the point: the rings in the
+        /// artwork have hand-painted highlights, corner studs and an inner shadow
+        /// that no amount of code-drawn circle-plus-glyph was ever going to match.
+        /// The root rect stays square at the full diameter because that square is
+        /// the finger hit zone TouchButton tests against.
+        ///
+        /// `size` is a DIAMETER, not a Vector2 — these are circles, and letting
+        /// them be non-square was how the old pads ended up subtly oval.
+        /// Falls back to the bare text glyph if the PNG isn't present, so a
+        /// missing cut can never leave the player with an invisible control.
+        /// </summary>
+        GameObject MakeArtButton(string art, string fallbackGlyph, int dir,
+                                 Vector2 anchor, Vector2 pos, float size)
+        {
+            var sprite = Assets.Sprite("ui/" + art);
+            if (sprite == null)
+                return MakeArrowGlyph(string.IsNullOrEmpty(fallbackGlyph) ? "▲" : fallbackGlyph,
+                                      dir, anchor, pos, new Vector2(size, size));
+
+            var go = new GameObject("Touch_" + art, typeof(RectTransform));
+            go.transform.SetParent(_touchPanel.transform, false);
+            var img = go.AddComponent<Image>();
+            img.sprite = sprite;
+            img.preserveAspect = true;
+            // Idles a little under full so the button never competes with the
+            // vampire for attention; TouchButton lifts it on press.
+            img.color = new Color(1f, 1f, 1f, 0.82f);
+            var rt = img.rectTransform;
+            rt.anchorMin = rt.anchorMax = anchor; rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.anchoredPosition = pos; rt.sizeDelta = new Vector2(size, size);
+
+            var tb = go.AddComponent<TouchButton>();
+            tb.dir = dir;
+            tb.SetFeedback(new Graphic[] { img });
+            return go;
+        }
+
         // A bare arrow/chevron glyph — no Image, no circle, no background — just
-        // the character itself sitting over an invisible hit box. Used for the
-        // JUMP button and (in Arrow move-mode) the left/right pads.
+        // the character itself sitting over an invisible hit box. Kept as the
+        // fallback for MakeArtButton when a painted cut is missing.
         GameObject MakeArrowGlyph(string glyph, int dir, Vector2 anchor, Vector2 pos, Vector2 size)
         {
             var go = new GameObject("Touch_" + glyph, typeof(RectTransform));
@@ -5883,7 +5956,11 @@ namespace TrustIssues
             if (_recP.Count > 1) { _lastT = _recT.ToArray(); _lastP = _recP.ToArray(); }
             // Show the roast but DON'T block on it — it lingers on the canvas while
             // you're already retrying (the toast survives the level rebuild).
-            if (_toast != null) { _toast.text = msg; StartCoroutine(ClearToastAfter(msg, 1.2f)); }
+            // 1.2s was tuned for two-word roasts. The lines are full sentences again
+            // (a bare "Mid." is annoying, not enraging — it has to name what you
+            // actually did), and a sentence needs about two seconds to land. The
+            // toast still doesn't block: the retry happens underneath it either way.
+            if (_toast != null) { _toast.text = msg; StartCoroutine(ClearToastAfter(msg, 2.1f)); }
             Vector3 deathPos = _player != null ? _player.transform.position : Vector3.zero;
             if (_player != null)
             {
@@ -5961,16 +6038,16 @@ namespace TrustIssues
         // hesitation is the thing that kills you. Written to be said out loud.
         static readonly string[] CastleRemembersLines =
         {
-            // Short, like every other roast — these fire mid-retry and a sentence
-            // never gets read. Still the ONE place the castle admits it's watching.
-            "Built that for you.",
-            "You paused there. I waited.",
-            "Same spot. Again.",
-            "That was your safe place.",
-            "I remembered.",
-            "Caught in 4K.",
-            "Knew it.",
-            "Predictable.",
+            // The one place the castle openly admits it is watching YOU, so these
+            // stay specific — a vague line here wastes the best beat in the game.
+            "You stood right there last time.",
+            "I built that one just for you.",
+            "I watched you pause there. So I waited.",
+            "You keep going back to the same spot.",
+            "That was your safe place. Was.",
+            "I remembered. You didn't.",
+            "I moved it while you were dead.",
+            "You hesitated here before. I noticed.",
         };
 
         void RecordReactiveTrap()

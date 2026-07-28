@@ -10,14 +10,23 @@ namespace TrustIssues
     /// It also maps each death cause to a punchy SFX so dying to spikes SOUNDS
     /// different from being crushed or burned by daylight.
     ///
-    /// ROAST STYLE RULE (2026 rewrite): every line is ONE TO THREE WORDS.
-    /// The retry is instant and the toast only lives ~1.2s, so a full sentence
-    /// never gets read — the player is already moving. Short lines land, get
-    /// quoted back, and read cleanly out loud through the TTS voice. The register
-    /// is current internet trash-talk (skill issue / womp womp / cooked / aura /
-    /// caught in 4K / bro thought), because the reaction being farmed is
-    /// "nah I'M him, watch this" — dismissive, never explanatory. Nothing here
-    /// ever blames the trap or apologises for it; the castle is smug, not sorry.
+    /// ROAST STYLE RULE. These were one-to-three words for exactly one build and
+    /// it failed playtest: "Mid." and "Cooked." are *annoying* rather than
+    /// enraging, because a bare insult with no content isn't ABOUT you — it's
+    /// noise you learn to tune out, and the player's reaction was to go and mute
+    /// it. What actually lands is SPECIFICITY: the castle naming the exact
+    /// stupid thing you just did, in one short sentence, with the insult riding
+    /// on top. "Did you not see the spike? A vampire. With cataracts." stings
+    /// because it proves something was watching.
+    ///
+    /// So the rules are:
+    ///   • ONE sentence, ~5-10 words. Long enough to carry an observation,
+    ///     short enough to read before the respawn.
+    ///   • It must name WHAT HAPPENED, not just deliver a verdict.
+    ///   • It blames the PLAYER, never the trap. The reaction being farmed is
+    ///     "wait, watch, I'll show you" — so the castle is smug, never sorry.
+    ///   • Current internet register is seasoning, not the meal. One "skill
+    ///     issue" among specifics hits; ten in a row is wallpaper.
     /// </summary>
     public static class Juice
     {
@@ -88,103 +97,154 @@ namespace TrustIssues
         {
             [TrapType.FakeFloor] = new[]
             {
-                "Floor said nah.", "You trusted it.", "Trust issues.", "The floor lied.",
-                "Womp womp.", "Not solid, bestie.", "Gravity claims you.", "Bro thought.",
+                "You trusted a floor. In THIS game.",
+                "The game is called Trust Issues. It's on the box.",
+                "Solid ground is a rumour around here.",
+                "You stood on it like it owed you nothing.",
+                "Every floor lies. That one just went first.",
+                "Walked onto thin air with total confidence.",
             },
             [TrapType.LateSpike] = new[]
             {
-                "Spikes. Obviously.", "You saw nothing.", "Late. Like you.", "Called it.",
-                "Zero aura.", "Skill issue.", "Every time.", "Predictable.",
+                "It waited for you to land. You obliged.",
+                "The ground bit back. You look shocked.",
+                "It came up AFTER you landed. That's the joke.",
+                "You keep landing on the same tile, hero.",
+                "Out-waited by a spike. A spike.",
+                "It had all night. You had one job.",
             },
             [TrapType.Crusher] = new[]
             {
-                "Greed. Classic.", "Stay low.", "The bait won.", "Flattened.",
-                "You reached. Cute.", "Shiny thing bad.", "Pancaked.", "Mid.",
+                "You went for the shiny thing. Obviously.",
+                "Greed, then a ceiling. Very poetic.",
+                "Stay low. I'll say it slower next time.",
+                "The bait worked. The bait always works.",
+                "Reached for treasure, received a ceiling.",
+                "Every single time with the high ground.",
             },
             [TrapType.FakeExit] = new[]
             {
-                "Not the door.", "Wrong door, king.", "Delulu.", "That was bait.",
-                "The BRIGHT one? Really.", "Too obvious.", "Cooked.", "Womp womp.",
+                "The bright obvious door. Really. Truly.",
+                "Doors are exits in other games. Not mine.",
+                "You sprinted at the one thing glowing.",
+                "Only coffins let you out. Take notes.",
+                "That door has killed better than you.",
             },
             [TrapType.Surprise] = new[]
             {
-                "Skill issue.", "Unlucky.", "Diabolical.", "Nothing was there. Ok.",
-                "My bad. Not really.", "Sue me.", "Nah he tweakin.", "Sorry not sorry.",
+                "There was nothing there. Now there's you.",
+                "I put that in this morning. Just for you.",
+                "Unfair? Obviously. Read the title.",
+                "You died to empty air. Frame that one.",
+                "No warning, no tell, no mercy. Lovely.",
             },
             [TrapType.Dart] = new[]
             {
-                "Dodge? Never heard.", "Caught in 4K.", "Shot. Ratio.", "NPC behaviour.",
-                "Stood still. Bold.", "It fired. You didn't.", "Sniped.", "L.",
+                "It fired. You stood there thinking about it.",
+                "A dart. Travelling in a straight line. Unbeatable.",
+                "You had a full second and used none of it.",
+                "Caught in 4K and also in the chest.",
+                "It moved. That was your cue. You sat.",
             },
             [TrapType.Faller] = new[]
             {
-                "Look UP.", "Bonk.", "From above, genius.", "Ceiling won.",
-                "Never looked up.", "Squish.", "Skill issue.", "Two dimensions. TWO.",
+                "Look UP. That's the tip. That's the whole tip.",
+                "Something fell on you. From above. Again.",
+                "Two dimensions and you only watch one.",
+                "The ceiling would like to be acknowledged.",
+                "It dropped exactly where you were standing.",
             },
             [TrapType.Spring] = new[]
             {
-                "Boing. Bye.", "Free flight, free L.", "You LIKED that spring.", "Up. Then over.",
-                "Yeeted.", "That was a launch pad.", "Airborne. Briefly.", "Womp.",
+                "You liked the bouncy thing. It didn't like you.",
+                "You launched yourself. Nobody made you.",
+                "Great height. Genuinely awful landing.",
+                "Free flight, and you still found a way.",
             },
             [TrapType.Saw] = new[]
             {
-                "Saw won.", "It was spinning.", "Blender.", "Shredded.",
-                "You walked in.", "Loud AND visible.", "Confetti.", "Mid.",
+                "It was spinning. Loudly. In plain sight.",
+                "You walked into a blender on purpose.",
+                "The saw has exactly one move. It worked.",
+                "Big, loud and obvious. Still got you.",
+                "That blade has never once hidden from anyone.",
             },
             [TrapType.WarpBack] = new[]
             {
-                "Back to start.", "Spite. Pure spite.", "Run it back.", "Say sike.",
-                "Shortcut? Sike.", "Do it again.", "From the top.", "Diabolical.",
+                "Back to the start. That's the trap. That's it.",
+                "The shortcut was the bait. It's always the bait.",
+                "You saved zero seconds. Congratulations.",
+                "Enjoy the walk. Take your time.",
             },
             [TrapType.Reverse] = new[]
             {
-                "Left is right. Cope.", "Controls: delulu.", "Brain AFK.", "You flipped.",
-                "Skill issue, inverted.", "Adapt. Or don't.", "Confused?", "Same buttons.",
+                "Left is right now. Deal with it.",
+                "Your own hands turned on you.",
+                "The controls flipped. You did not.",
+                "Same buttons. Different meaning. Keep up.",
             },
             [TrapType.SpikeStatic] = new[]
             {
-                "It never moved.", "One job.", "Jump. That's it.", "Stationary.",
-                "Didn't even hide.", "Zero aura.", "Skill issue.", "It's been there.",
+                "It never moved. Not once. It just stood there.",
+                "That spike has been there since before you.",
+                "You had one job. The spike had none.",
+                "Killed by scenery. Actual scenery.",
+                "It didn't even hide. It just waited.",
             },
             [TrapType.ArrowRain] = new[]
             {
-                "Rain check.", "Timing? Zero.", "From the ceiling. Again.", "Sky issue.",
-                "It's on a timer.", "Count. Please.", "Riddled.", "Womp womp.",
+                "It's on a timer. You could count. You didn't.",
+                "The ceiling rains. Every few seconds. Forever.",
+                "You walked in mid-volley. Confident.",
+                "Rhythm exists. You've heard of it.",
             },
             [TrapType.GrowSpike] = new[]
             {
-                "It GROWS.", "Pattern? What pattern.", "Grew. You didn't.", "Timed that awfully.",
-                "Watch it breathe.", "Impatient.", "Wait two seconds.", "Cooked.",
+                "It grows and shrinks. Wait two seconds.",
+                "Impatience. That's the actual cause of death.",
+                "Did you time that with your eyes shut?",
+                "It was small a moment ago. That was the moment.",
             },
             [TrapType.Pendulum] = new[]
             {
-                "Swing and a miss.", "It has rhythm.", "Tick. Tock. Dead.", "Read the room.",
-                "No beat.", "Off tempo.", "Sliced.", "Mid.",
+                "It swings on a beat. You have no rhythm.",
+                "Tick. Tock. You.",
+                "The most predictable object ever built.",
+                "It's been doing that loop all night.",
             },
             [TrapType.FlameJet] = new[]
             {
-                "Toasted.", "Well done.", "Fire has a schedule.", "Crispy.",
-                "It was OFF. Then on.", "Extra crispy.", "Cooked. Literally.", "Sizzle.",
+                "The fire has a schedule. You don't read schedules.",
+                "It was off. You waited. Then it wasn't.",
+                "Cooked. Literally, this time.",
+                "You stood on a hole that breathes fire.",
             },
             [TrapType.Chandelier] = new[]
             {
-                "Big ceiling. Big L.", "You WATCHED it fall.", "Telegraphed. Ignored.", "Chandelier: 1.",
-                "It creaked first.", "Decor got you.", "Squish.", "Bonk.",
+                "It creaked first. You ignored the creak.",
+                "You watched it fall and stayed anyway.",
+                "Killed by interior decorating.",
+                "A whole chandelier. Telegraphed. Ignored.",
             },
             [TrapType.HolyWater] = new[]
             {
-                "Holy. Water. Vampire.", "It was glowing.", "Sizzle.", "Read the puddle.",
-                "You're a VAMPIRE.", "Blessed. Unfortunately.", "Steamed.", "Skill issue.",
+                "You're a VAMPIRE. That's HOLY WATER.",
+                "It was glowing. Glowing means don't.",
+                "Read the puddle. It's one puddle.",
+                "Blessed to death. Embarrassing for a vampire.",
             },
             [TrapType.BatSwoop] = new[]
             {
-                "You ARE a bat.", "Out-batted.", "It flared first.", "Mogged by a bat.",
-                "Your own kind.", "Embarrassing.", "The red glow. Hello.", "Womp womp.",
+                "Out-flown by a bat. You ARE a bat.",
+                "It flared red first. That was your cue.",
+                "Mogged by your own species.",
+                "A bat beat you at being a bat.",
             },
             [TrapType.BreakBlock] = new[]
             {
-                "Shoot it.", "You have a GUN.", "Walls don't move.", "Try shooting.",
-                "Brain AFK.", "Skill issue.",
+                "You have a gun. Try it on the wall.",
+                "Walls don't move. Bullets do.",
+                "There's a shoot button. Genuinely.",
             },
         };
 
@@ -193,39 +253,55 @@ namespace TrustIssues
         {
             [Spike] = new[]
             {
-                "Impaled. Ok.", "Pointy sticks. Wow.", "You walked in.", "Skill issue.",
-                "Zero aura.", "Cooked.", "Sharp. Obviously.", "Womp womp.",
+                "Did you not SEE that? A vampire with cataracts.",
+                "Impaled by something that never moved.",
+                "You walked directly into the pointy bit.",
+                "Centuries of night vision, wasted.",
+                "Sharp things are sharp. Noted for next time.",
             },
             [Crush] = new[]
             {
-                "Flattened.", "Stay low.", "Squish.", "Pancaked.",
-                "Bonk.", "Two dimensions now.", "Mid.", "L.",
+                "Flattened. Try existing lower down.",
+                "You jumped straight into it. On purpose?",
+                "Two dimensions was already plenty.",
+                "The ceiling had the better idea.",
             },
             [Burn] = new[]
             {
-                "Sunburn. Rookie.", "Crispy.", "Ash.", "Toasted.",
-                "You had TIME.", "Well done.", "Cooked. Literally.", "Sizzle.",
+                "Sunburn. On a vampire. Genuinely a first.",
+                "You had time. You always have time.",
+                "Ash. That's it. That's all that's left.",
+                "Burned alive by scheduled lighting.",
             },
             [Bat] = new[]
             {
-                "Out-batted.", "You ARE a bat.", "Mogged.", "Embarrassing.",
-                "By a BAT.", "Womp womp.", "Screeched.", "Cooked.",
+                "Killed by a bat. You turn INTO a bat.",
+                "Out-flapped by something the size of a fist.",
+                "It saw you coming. You saw nothing.",
+                "Your own species is embarrassed.",
             },
             [Saw] = new[]
             {
-                "Shredded.", "Blender.", "It was spinning.", "Confetti.",
-                "Saw won.", "Sliced.", "Mid.", "L.",
+                "Shredded by the loudest object in the room.",
+                "It was spinning the entire time.",
+                "You and the saw disagreed. Saw won.",
+                "Cut to ribbons. Very tidy about it.",
             },
             [Fall] = new[]
             {
-                "Down bad.", "You found the hole.", "Bye.", "Gravity: 1.",
-                "Not a shortcut.", "Yeeted.", "Womp womp.", "Skill issue.",
+                "You found the one hole. Of course you did.",
+                "Gravity remains undefeated.",
+                "That was not a shortcut.",
+                "Straight down. No hesitation. Impressive.",
             },
             [Generic] = new[]
             {
-                "Skill issue.", "Womp womp.", "Cooked.", "Bonk.",
-                "Mid.", "L.", "Zero aura.", "Trust issues.",
-                "Delulu.", "Nah he tweakin.", "Bro thought.", "Caught in 4K.",
+                "That was entirely your own doing.",
+                "Skill issue, and I mean that clinically.",
+                "The castle didn't even try that time.",
+                "You did that to yourself. I just watched.",
+                "Trust issues confirmed. Yours, not mine.",
+                "Maybe try jumping. Wild idea, I know.",
             },
         };
 
@@ -235,31 +311,45 @@ namespace TrustIssues
         // is "wait and watch, I'll show you", and pity does that better than anger.
         static readonly string[] TierMocking =   // ~4–9 deaths
         {
-            "Again?", "Same trap.", "Bold strategy.", "Predictable.",
-            "You're not him.", "Womp womp.", "Skill issue. Again.", "Mid run.",
-            "Chat, he's cooked.", "Bro thought.", "Zero progress.", "Try harder.",
+            "Same trap. Same spot. Same face.",
+            "Bold of you to try that identically.",
+            "Centuries undead, beaten by a hallway.",
+            "The spikes recognise you now.",
+            "That's twice. I'm keeping count.",
+            "You walked into that like it owed you money.",
+            "The castle didn't even move that one.",
         };
         static readonly string[] TierBrutal =    // ~10–24 deaths
         {
-            "Down horrendous.", "It's over.", "Pack watch.", "Aura: gone.",
-            "Crash out incoming.", "You're NOT him.", "Cooked. Thoroughly.", "L + ratio.",
-            "Touch grass.", "Genuinely mid.", "Brain AFK.", "Not cooking.",
-            "Diabolical.", "Get ripped, bozo.",
+            "This floor has a body count and it's all you.",
+            "The bats have started taking bets.",
+            "I'd offer a tutorial but you'd die in it.",
+            "Your ghost has requested a transfer.",
+            "Even the trap feels strange about this now.",
+            "The floor has filed a formal complaint.",
+            "At some point this stops being my fault.",
         };
         static readonly string[] TierPity =      // 25+ deaths
         {
-            "It's okay. (It's not.)", "We can stop.", "Please stop.", "For me?",
-            "This is sad.", "I'm not angry.", "Just disappointed.", "Take a break.",
-            "Hydrate, king.", "Try easy mode.", "You good?", "Blink twice.",
-            "Sending me.", "Unemployed behaviour.",
+            "Hey. It's fine. It isn't, but hey.",
+            "We can stop whenever you like. Please.",
+            "You've earned a participation coffin.",
+            "I'm not angry. I'm genuinely puzzled.",
+            "Would you like me to remove one? Honestly.",
+            "Your deaths have their own leaderboard now.",
+            "Take a break. The castle will wait. Forever.",
         };
 
         // Twisting the knife when you die RIGHT before the exit (the viral moment).
         static readonly string[] NearMiss =
         {
-            "SO close.", "Almost. ALMOST.", "One step.", "Right at the end.",
-            "Choked.", "Clutch? No.", "Hope: deleted.", "It was RIGHT there.",
-            "Sending me.", "That's crazy.", "Nooo way.", "Womp womp womp.",
+            "That was hope leaving your body.",
+            "One step. That's all it was. One.",
+            "The exit waved at you. Then you died.",
+            "You could taste it. Now taste the floor.",
+            "It watched you die from a metre away.",
+            "So close the coffin actually flinched.",
+            "Right at the end. Every single time.",
         };
 
         // ------------------------------------------------------------------
@@ -287,7 +377,7 @@ namespace TrustIssues
         /// <summary>Pick from a pool, avoiding anything said in the last few deaths.</summary>
         static string Pick(string[] a)
         {
-            if (a == null || a.Length == 0) return "Womp womp.";
+            if (a == null || a.Length == 0) return "That was entirely your own doing.";
             // Try a handful of times, then take whatever comes — a small pool
             // shouldn't be able to starve the picker into a stall.
             for (int i = 0; i < 6; i++)
@@ -312,13 +402,13 @@ namespace TrustIssues
             // seconds to read is a milestone nobody reads.
             switch (deaths)
             {
-                case 10:  return Remember("Ten. Nice.");
-                case 25:  return Remember("Twenty-five. On floor " + floor + ".");
-                case 50:  return Remember("FIFTY. Genuinely.");
-                case 75:  return Remember("Seventy-five. Wow.");
-                case 100: return Remember("One hundred. Respect. Kind of.");
-                case 150: return Remember("One fifty. This floor is yours now.");
-                case 200: return Remember("Two hundred. You ARE the trap.");
+                case 10:  return Remember("Ten deaths. A perfect, round, embarrassing number.");
+                case 25:  return Remember("Twenty-five on floor " + floor + ". That's framed now.");
+                case 50:  return Remember("FIFTY. The castle has adopted you as a ghost.");
+                case 75:  return Remember("Seventy-five. The other ghosts held a meeting.");
+                case 100: return Remember("One hundred deaths. Genuinely impressive. Genuinely.");
+                case 150: return Remember("One fifty. This floor is named after you now.");
+                case 200: return Remember("Two hundred. At this point you ARE the trap.");
             }
 
             // Dying at the doorstep is the funniest death — call it out.

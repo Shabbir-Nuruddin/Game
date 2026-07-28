@@ -141,12 +141,13 @@ namespace TrustIssues
             int tag = PlayerPrefs.GetInt(NemLastKey, -1);
             int streak = PlayerPrefs.GetInt(NemStreakKey, 0);
             if (tag < 0 || tag != Nemesis || streak < 3) return null;
+            string name = Codex.Title((TrapType)tag);
             switch (streak % 4)
             {
-                case 0:  return $"{streak} in a row.";
-                case 1:  return "It owns you.";
-                case 2:  return $"{streak}-nil.";
-                default: return "Again. Same thing.";
+                case 0:  return $"{streak} in a row to the same trap.";
+                case 1:  return $"{name} owns you at this point.";
+                case 2:  return $"{name} {streak}, you nil.";
+                default: return $"Again. The exact same {name}.";
             }
         }
 

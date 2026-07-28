@@ -22,7 +22,13 @@ namespace TrustIssues
             var ti = (TextureImporter)assetImporter;
             ti.textureType = TextureImporterType.Sprite;
             ti.spriteImportMode = SpriteImportMode.Single; // sheets are sliced in code
-            ti.filterMode = FilterMode.Point;              // crisp pixels, no blur
+            // Point filtering is right for the pixel-art sprites, but art/ui holds
+            // pieces cut straight out of the painted reference (the control rings,
+            // the portrait). Those are smooth, gradient-heavy and always drawn at a
+            // reduced size, so Point makes their rims crawl and alias — they want
+            // bilinear.
+            bool painted = assetPath.Replace('\\', '/').Contains("/Resources/art/ui/");
+            ti.filterMode = painted ? FilterMode.Bilinear : FilterMode.Point;
             ti.mipmapEnabled = false;
             ti.alphaIsTransparency = true;
             ti.spritePixelsPerUnit = 100;                  // scale is driven in code

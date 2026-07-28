@@ -522,38 +522,51 @@ namespace TrustIssues
         static Level L1()
         {
             var b = new B();
-            b.Room(RoomRule.None);              // S1: learn the ONE lie — a floor that isn't
-            b.Plat(5f); b.Gap(2.2f);
-            float a1 = b.Plat(6f); b.Spike(a1 + 2f);
+            // THE TEACHING FLOOR. This used to be the third-hardest floor in the
+            // game (13 traps, 8 of them untelegraphed) and it was the first thing
+            // anyone played — the difficulty x-ray had it scoring worse than floor
+            // 24. The rule now, for every stage on this floor: exactly ONE thing
+            // can kill you, and it gets a whole stage to itself. The rage comes
+            // from the lie, not from three lies stacked in one screen.
+
+            // S1: THE ONE LIE. Nothing to jump, nothing to time — walk right and
+            // the floor stops existing under you. Level Devil's first level is
+            // this and nothing else, and it works because the player learns the
+            // game's entire thesis before being asked for a single skill.
+            b.Room(RoomRule.None);
+            b.Plat(7f);
             b.FakeFloor(2f);
+            b.Plat(8f);
+
+            // S2: the first ASK — one gap and one spike, both in plain sight and
+            // far apart. A stage you can clear first try, placed right after the
+            // stage that proved the game lies, so the player learns it's winnable.
+            b.Room(RoomRule.None);
+            b.Plat(5f); b.Gap(2.2f);
+            float a2 = b.Plat(7f); b.Spike(a2 + 1.5f);
+            b.Plat(5f);
+
+            // S3: the ground bites back — ONE late spike, alone, on a wide
+            // platform, so the death reads as "the spike came up" instead of
+            // "and then I also fell in a pit I couldn't see".
+            b.Room(RoomRule.None);
+            b.Plat(6f); b.Gap(2.2f);
+            float a3 = b.Plat(8f); b.LateSpike(a3);
+            b.Plat(5f);
+
+            // S4: the first MOVING threat, fully visible, with standing room on
+            // both sides so you can watch its cycle before committing to it.
+            b.Room(RoomRule.None);
             b.Plat(6f);
+            float a4 = b.Plat(7f); b.Saw(a4);
+            b.Gap(2.2f); b.Plat(6f);
 
-            b.Room(RoomRule.None);              // S2: add the late spike — the ground bites back
-            b.Plat(4f); b.Gap(2.3f);
-            float a2 = b.Plat(5f); b.LateSpike(a2 + 1f);
-            b.Gap(2.3f);
-            b.FakeFloor(2f); b.Plat(5f);
-
-            b.Room(RoomRule.None);              // S3: add the saw — a moving threat to time
-            b.Plat(4f);
-            float a3 = b.Plat(5f); b.Saw(a3);
-            b.Gap(2.3f); b.FakeFloor(2f);
-            float c3 = b.Plat(5f); b.Spike(c3 + 1.5f);
-            b.Plat(3f);
-
-            b.Room(RoomRule.None);              // S4: add the drop-from-above — falling block
-            b.Plat(4f); b.Gap(2.4f);
-            float a4 = b.Plat(6f); b.Faller(a4 - 1f);
-            b.Gap(2.3f);
-            float c4 = b.Plat(5f); b.LateSpike(c4 + 1.2f);
-            b.Plat(3f);
-
-            b.Room(RoomRule.None, 0.4f, true);  // S5 (gated): the exam — everything learned, spaced
-            b.Plat(4f); b.FakeFloor(2f);
-            float a5 = b.Plat(5f); b.Saw(a5);
-            b.Gap(2.3f);
-            float c5 = b.Plat(5f); b.Faller(c5 - 1f); b.Spike(c5 + 1.8f);
-            b.Plat(4f);
+            // S5: the exam — the lie and the spike together, but spaced so they
+            // are two separate problems rather than one unreadable pinch.
+            b.Room(RoomRule.None, 0.4f, true);
+            b.Plat(5f); b.FakeFloor(2f);
+            float a5 = b.Plat(7f); b.Spike(a5 + 2f);
+            b.Gap(2.2f); b.Plat(6f);
             return b.Finish();
         }
 
@@ -602,39 +615,42 @@ namespace TrustIssues
         static Level L3()
         {
             var b = new B();
-            b.Room(RoomRule.None);              // S1: dart + twin spikes + lying floor
+            // Thinned hard: this scored 9.8 on the difficulty x-ray — as punishing
+            // as floor 25 — while sitting third in the game. Every stage kept its
+            // IDEA and lost the pile-on around it, so the floor still introduces
+            // the dart, the slab ride, the pendulum and the chase, one at a time.
+            b.Room(RoomRule.None);              // S1: the dart — one new thing, in the open
+            b.Plat(4.5f);
+            float a1 = b.Plat(6f); b.Dart(a1);
+            b.Gap(2.3f);
+            float c1 = b.Plat(6f); b.Spike(c1 + 1.5f);
             b.Plat(4f);
-            float a1 = b.Plat(5f); b.Dart(a1);
+
+            b.Room(RoomRule.None);              // S2: the bobbing slab ride, then a saw
+            b.Plat(4f); b.MoverGap(6.8f);
+            float a2 = b.Plat(6f); b.Saw(a2);
+            b.Plat(4f);
+
+            b.Room(RoomRule.None);              // S3: pendulum, then a floor that lies
+            b.Plat(4f);
+            float a3 = b.Plat(6f); b.Pendulum(a3);
+            b.Gap(2.3f); b.FakeFloor(2.2f);
+            b.Plat(5f);
+
+            b.Room(RoomRule.None);              // S4: the drop from above, on its own
+            b.Plat(4f); b.Gap(2.3f);
+            float a4 = b.Plat(6f); b.Faller(a4);
             b.Gap(2.3f);
-            float c1 = b.Plat(4f); b.Spike(c1 - 1f); b.Spike(c1 + 1f);
-            b.FakeFloor(2f); b.Plat(3.5f);
-
-            b.Room(RoomRule.None);              // S2: the bobbing slab, then a saw, then acid
-            b.Plat(3.5f); b.MoverGap(6.8f);
-            float a2 = b.Plat(5f); b.Saw(a2);
-            b.Gap(2.3f);
-            float c2 = b.Plat(4f); b.HolyWater(c2);
-            b.Plat(2.5f);
-
-            b.Room(RoomRule.None);              // S3: pendulum + lying floor + dart
-            b.Plat(3.5f);
-            float a3 = b.Plat(5f); b.Pendulum(a3);
-            b.Gap(2.4f); b.FakeFloor(2.2f);
-            float c3 = b.Plat(5f); b.Dart(c3 + 1f);
-            b.Plat(3f);
-
-            b.Room(RoomRule.None);              // S4: faller + saw/spike pinch
-            b.Plat(3.5f); b.Gap(2.3f);
-            float a4 = b.Plat(4f); b.Faller(a4);
-            b.Gap(2.4f);
-            float c4 = b.Plat(5f); b.Saw(c4 - 1.2f); b.Spike(c4 + 1.5f);
-            b.Plat(3.5f);
+            float c4 = b.Plat(6f); b.Spike(c4 + 1.5f);
+            b.Plat(4f);
 
             b.Room(RoomRule.Flee, 0.05f, true); // S5: THE CHASE (gate slams behind you)
             float p5 = b.Plat(3.5f);
-            float a5 = b.Plat(5f); b.Spike(a5 + 1f);
+            float a5 = b.Plat(6f); b.Spike(a5 + 1f);
             b.Gap(2.3f);
-            float c5 = b.Plat(9f); b.HolyWater(c5 - 2.5f); b.Dart(c5 + 1f); b.Spike(c5 + 3f);
+            // The chase is the whole point of this stage, so the lane it runs
+            // through is kept READABLE — one hazard to swerve round, not three.
+            float c5 = b.Plat(10f); b.Dart(c5 + 1f);
             b.Plat(5f);
             b.ExitAt(p5 + 0.6f);   // one step ahead of you. it knows.
             return b.FinishBare();
@@ -650,31 +666,31 @@ namespace TrustIssues
             float a1 = b.Plat(12f); b.Spike(a1 + 2f);
             b.Plat(4f);
 
-            b.Room(RoomRule.Press, 0.25f);      // S2: press + lying floor + saw
-            b.Plat(3.5f); b.FakeFloor(2.2f);
-            float a2 = b.Plat(5f); b.Spike(a2);
-            b.Gap(2.3f);
-            float c2 = b.Plat(5f); b.Saw(c2);
-            b.Plat(3f);
+            b.Room(RoomRule.Press, 0.25f);      // S2: press + a floor that lies
+            b.Plat(4f); b.FakeFloor(2.2f);
+            float a2 = b.Plat(6f); b.Saw(a2);
+            b.Plat(4f);
 
-            b.Room(RoomRule.None);              // S3: open sky — chandelier + late spike
-            b.Plat(3.5f); b.Gap(2.4f);
-            float a3 = b.Plat(4f); b.Chandelier(a3);
+            // S3: open sky. The chandelier is a big, loud, one-off idea and it
+            // used to share a stage with a late spike — two blind kills in one
+            // screen, which reads as the game cheating rather than trolling.
+            b.Room(RoomRule.None);
+            b.Plat(4f); b.Gap(2.4f);
+            float a3 = b.Plat(6f); b.Chandelier(a3);
             b.Gap(2.4f);
-            float c3 = b.Plat(4f); b.LateSpike(c3);
-            b.Plat(3.5f);
+            b.Plat(5f);
 
             b.Room(RoomRule.Press, 0.22f);      // S4: keep moving under the drop — jumpable pits, not a slab-ride
             b.Plat(4f); b.Gap(2.4f);
             float a4 = b.Plat(5f); b.HolyWater(a4);
             b.Gap(2.4f); b.Plat(5f);
 
-            b.Room(RoomRule.Press, 0.2f, true); // S5: gate, press, two lying floors, saw
-            b.Plat(3.5f); b.FakeFloor(2f);
-            float a5 = b.Plat(4f); b.Spike(a5);
-            b.FakeFloor(2f);
-            float c5 = b.Plat(4f); b.Saw(c5);
-            b.Plat(2.5f);
+            b.Room(RoomRule.Press, 0.2f, true); // S5: gate, press, one lying floor, saw
+            b.Plat(4f); b.FakeFloor(2f);
+            float a5 = b.Plat(6f); b.Spike(a5 + 1.5f);
+            b.Gap(2.3f);
+            float c5 = b.Plat(5f); b.Saw(c5);
+            b.Plat(3.5f);
             return b.Finish();
         }
 
@@ -740,19 +756,22 @@ namespace TrustIssues
             float c3 = b.Plat(5f); b.Dart(c3);
             b.Plat(3f);
 
-            b.Room(RoomRule.Reverse, 0.2f);     // S4: dodge a dart with flipped hands
-            b.Plat(3.5f);
-            float a4 = b.Plat(5f); b.Dart(a4);
+            // S4: dodge a dart with flipped hands. Reversed controls already ARE
+            // the difficulty here — stacking a lying floor and a twin-spike pinch
+            // on top of them was asking for pixel precision with the wrong hands.
+            b.Room(RoomRule.Reverse, 0.2f);
+            b.Plat(4f);
+            float a4 = b.Plat(6f); b.Dart(a4);
             b.FakeFloor(2.2f);
-            float c4 = b.Plat(5f); b.Spike(c4 - 1.2f); b.Spike(c4 + 1.2f);
-            b.Gap(2.3f); b.Plat(3.5f);
+            float c4 = b.Plat(6f); b.Spike(c4 + 1.5f);
+            b.Gap(2.3f); b.Plat(4f);
 
             b.Room(RoomRule.Reverse, 0.15f, true); // S5: the reversed gauntlet
-            b.Plat(3.5f);
-            float a5 = b.Plat(4f); b.Saw(a5);
+            b.Plat(4f);
+            float a5 = b.Plat(5f); b.Saw(a5);
             b.Gap(2.4f);
-            float c5 = b.Plat(4f); b.Pendulum(c5);
-            b.FakeFloor(2f); b.Plat(2f);
+            float c5 = b.Plat(5f); b.Pendulum(c5);
+            b.Plat(4f);
             return b.Finish();
         }
 
@@ -842,29 +861,29 @@ namespace TrustIssues
             float c1 = b.Plat(5f); b.Spike(c1 + 1.5f);
             b.Plat(3.5f);
 
+            // Thinned from a 12.0 x-ray score (10 blind kills) — the worst wall in
+            // the first half of the game. The fake coffin is a great lie, but four
+            // of them in a stage stops being a lie and becomes a guessing game.
             b.Room(RoomRule.None);              // S2: fire guards a coffin that's ALSO lying
-            b.Plat(3.5f);
-            float a2 = b.Plat(6f); b.FlameJet(a2 - 1.5f); b.FakeCoffin(a2 + 1.5f);
-            b.Gap(2.3f);
-            float c2 = b.Plat(5f); b.HolyWater(c2);
-            b.Plat(3.5f);
-
-            b.Room(RoomRule.Dark, 0.16f);       // S3: coffins loom out of the dark, saw runs
             b.Plat(4f);
-            float a3 = b.Plat(9f); b.FakeCoffin(a3 - 2.5f); b.FakeCoffin(a3 + 1f); b.Saw(a3 + 3.2f);
+            float a2 = b.Plat(7f); b.FlameJet(a2 - 1.5f); b.FakeCoffin(a2 + 1.5f);
+            b.Gap(2.3f);
+            b.Plat(5f);
+
+            b.Room(RoomRule.Dark, 0.16f);       // S3: a coffin looms out of the dark, saw runs
+            b.Plat(4f);
+            float a3 = b.Plat(9f); b.FakeCoffin(a3 - 2f); b.Saw(a3 + 3.2f);
             b.Gap(2.3f); b.Plat(5f);
 
             b.Room(RoomRule.None);              // S4: lying floor into the coffin-and-fire pinch
-            b.Plat(3.5f); b.FakeFloor(2f);
-            float a4 = b.Plat(5f); b.FakeCoffin(a4 + 0.7f); b.FlameJet(a4 - 1.3f);
+            b.Plat(4f); b.FakeFloor(2f);
+            float a4 = b.Plat(6f); b.FakeCoffin(a4 + 0.7f); b.FlameJet(a4 - 1.6f);
             b.Gap(2.4f);
-            float c4 = b.Plat(4f); b.Dart(c4);
-            b.Plat(3.5f);
+            b.Plat(4.5f);
 
             b.Room(RoomRule.Flee, 0.05f);       // S5: the slalom chase through the fakes
             float p5 = b.Plat(3.5f);
-            float a5 = b.Plat(12f); b.FakeCoffin(a5 - 3.5f); b.FakeCoffin(a5 - 0.5f);
-            b.FakeCoffin(a5 + 2.5f); b.HolyWater(a5 + 4.5f);
+            float a5 = b.Plat(12f); b.FakeCoffin(a5 - 3f); b.FakeCoffin(a5 + 1.5f);
             b.Plat(5f);
             b.ExitAt(p5 + 0.6f);
             return b.FinishBare();

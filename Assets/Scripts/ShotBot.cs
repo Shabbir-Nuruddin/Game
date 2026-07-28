@@ -28,15 +28,30 @@ namespace TrustIssues
         static void Boot()
         {
             var args = System.Environment.GetCommandLineArgs();
-            string dir = null; int floor = 1; string warps = null;
+            string dir = null; int floor = 1; string warps = null; bool touch = false;
             for (int i = 0; i < args.Length; i++)
             {
                 bool hasNext = i + 1 < args.Length;
                 if (args[i] == "-shot" && hasNext) dir = args[i + 1];
                 else if (args[i] == "-floor" && hasNext) int.TryParse(args[i + 1], out floor);
                 else if (args[i] == "-warp" && hasNext) warps = args[i + 1];
+                else if (args[i] == "-touch") touch = true;
             }
             if (string.IsNullOrEmpty(dir)) return;   // a normal launch — do nothing at all
+
+            // -touch forces the PHONE layout on in a desktop shot. The on-screen
+            // controls are the part of the game most often checked against the
+            // reference artwork, and they're invisible on desktop by default —
+            // which meant every button change had to go out as an APK before
+            // anyone could see whether it was right.
+            if (touch)
+            {
+                PlayerPrefs.SetInt("opt_touch", 1);
+                // Arrow pads, not the joystick: the joystick is deliberately
+                // invisible until a thumb lands on it, so a joystick shot shows an
+                // empty corner and proves nothing about the movement controls.
+                PlayerPrefs.SetInt("opt_joystick", 0);
+            }
 
             var bot = new GameObject("ShotBot").AddComponent<ShotBot>();
             bot._dir = dir;
