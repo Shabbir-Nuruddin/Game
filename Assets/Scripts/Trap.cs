@@ -39,6 +39,10 @@ namespace TrustIssues
     {
         public TrapType type;
         public Sprite[] frames;   // optional spin/animation frames (e.g. the saw)
+        // True when this trap is drawn with its Bestiary illustration. Those are
+        // fully painted, so the "tint it red while lethal" telegraphs have to become
+        // brightness changes instead — tinting a painted sprite red erases the art.
+        public bool paintedArt;
         float _animTimer;
         SpriteRenderer _sr;
         BoxCollider2D _col;
@@ -74,19 +78,23 @@ namespace TrustIssues
             if (type == TrapType.Faller || type == TrapType.Chandelier)
             {
                 bool chand = type == TrapType.Chandelier;
-                var sp = Assets.Sprite(chand ? "chandelier" : "rockhead");
+                // The Bestiary page's own illustration first — it's already painted in
+                // the castle's palette, so it goes in untinted.
+                var painted = Assets.TrapArt(chand ? "chandelier" : "faller");
+                var sp = painted ?? Assets.Sprite(chand ? "chandelier" : "rockhead");
                 var size = chand ? new Vector2(2.4f, 1.1f) : new Vector2(1.5f, 1.5f);
+                if (painted != null && chand) size = new Vector2(2.4f, 2.0f);   // the candelabra is taller than the old bar
                 var pos = transform.position + Vector3.up * (chand ? 4.0f : 3.5f);
                 var go = sp != null
                     ? Theme.SpriteBox(chand ? "Chandelier" : "RockHead", transform, pos, size, sp, 4)
                     : Theme.Box(chand ? "Chandelier" : "RockHead", transform, pos, size,
                                 chand ? Theme.Hex("4A3016") : Theme.Trick, 4);   // bronze body
-                if (sp != null && !chand) go.GetComponent<SpriteRenderer>().color = new Color(0.5f, 0.45f, 0.5f);
-                // WROUGHT IRON, not gold. The imported sprite is a bright brass
+                if (painted == null && sp != null && !chand) go.GetComponent<SpriteRenderer>().color = new Color(0.5f, 0.45f, 0.5f);
+                // WROUGHT IRON, not gold. The old imported sprite is a bright brass
                 // blob that reads as a mystery cheese block against the night sky
                 // (playtest: "how does that fit the theme") — tint it down to
                 // black iron so only its shape and the drop threat read.
-                if (sp != null && chand) go.GetComponent<SpriteRenderer>().color = new Color(0.34f, 0.3f, 0.38f);
+                if (painted == null && sp != null && chand) go.GetComponent<SpriteRenderer>().color = new Color(0.34f, 0.3f, 0.38f);
                 if (chand && sp == null) // fallback art: the exact hanging fixture from the game art
                 {
                     // A bronze bar with a red gem at its heart and a row of red spikes
@@ -119,10 +127,10 @@ namespace TrustIssues
                 const float arm = 3.0f;
                 Theme.Box("Chain", transform, transform.position + Vector3.down * (arm / 2f),
                     new Vector2(0.08f, arm), Theme.Hex("2A2230"), 2);
-                var sp = Assets.Sprite("pendulum");
+                var sp = Assets.TrapArt("pendulum") ?? Assets.Sprite("pendulum");
                 var bladePos = transform.position + Vector3.down * arm;
                 var blade = sp != null
-                    ? Theme.SpriteBox("Blade", transform, bladePos, new Vector2(1.3f, 1.3f), sp, 3)
+                    ? Theme.SpriteBox("Blade", transform, bladePos, new Vector2(1.5f, 1.3f), sp, 3)
                     : Theme.Box("Blade", transform, bladePos, new Vector2(1.0f, 1.0f), Theme.Danger, 3);
                 var col = blade.AddComponent<BoxCollider2D>(); col.isTrigger = true; col.size = Vector2.one * 0.7f;
                 var kz = blade.AddComponent<KillZone>(); kz.msg = "Sliced by the pendulum blade.";
@@ -138,10 +146,10 @@ namespace TrustIssues
             yield return new WaitForSeconds(Random.Range(0f, 1f)); // desync multiple columns
             while (true)
             {
-                var sp = Assets.Sprite("spike");
+                var sp = Assets.TrapArt("arrowrain") ?? Assets.Sprite("spike");
                 var spawn = transform.position + Vector3.up * 5.5f;
                 var go = sp != null
-                    ? Theme.SpriteBox("RainDart", transform, spawn, new Vector2(0.5f, 0.8f), sp, 4)
+                    ? Theme.SpriteBox("RainDart", transform, spawn, new Vector2(0.8f, 0.6f), sp, 4)
                     : Theme.Box("RainDart", transform, spawn, new Vector2(0.3f, 0.7f), Theme.Danger, 4);
                 var col = go.AddComponent<BoxCollider2D>(); col.isTrigger = true;
                 col.size *= 0.8f; // reliable spike hitbox
@@ -191,8 +199,9 @@ namespace TrustIssues
                 if (_col != null) _col.enabled = lethal;       // only deadly when grown
                 // Brighten as it rises so the lethal phase reads at a glance.
                 if (_sr != null)
-                    _sr.color = lethal ? Theme.Danger
-                                       : new Color(0.55f, 0.12f, 0.14f, 1f); // dim while safe
+                    _sr.color = paintedArt
+                        ? (lethal ? Color.white : new Color(0.45f, 0.42f, 0.48f, 1f))   // painted: dim it, don't dye it
+                        : (lethal ? Theme.Danger : new Color(0.55f, 0.12f, 0.14f, 1f)); // flat sprite: red = lethal
             }
 
             // A pendulum blade: swing the pivot back and forth. The chain + blade
@@ -397,12 +406,13 @@ namespace TrustIssues
         {
             _armed = false;
             GameRoot.I?.TrapFired(type, transform.position);   // clear the ambush = CALLED IT
-            var sp = Assets.Sprite("spike");
+            var painted = Assets.TrapArt("latespike");
+            var sp = painted ?? Assets.Sprite("spike");
             var pos = transform.position + Vector3.down * 0.9f;
             GameObject go = sp != null
-                ? Theme.SpriteBox("Spikes", transform.parent, pos, new Vector2(1f, 1f), sp, 3)
+                ? Theme.SpriteBox("Spikes", transform.parent, pos, painted != null ? new Vector2(1.4f, 0.9f) : new Vector2(1f, 1f), sp, 3)
                 : Theme.Box("Spikes", transform.parent, pos, new Vector2(0.7f, 0.9f), Theme.Danger, 3);
-            if (sp != null) go.GetComponent<SpriteRenderer>().color = Theme.Danger; // blood spikes
+            if (painted == null && sp != null) go.GetComponent<SpriteRenderer>().color = Theme.Danger; // blood spikes
             var kz = go.AddComponent<KillZone>();
             kz.msg = "Impaled.";
             var col = go.AddComponent<BoxCollider2D>();
@@ -433,7 +443,7 @@ namespace TrustIssues
         IEnumerator Crush()
         {
             _armed = false;
-            var sp = Assets.Sprite("rockhead");
+            var sp = Assets.TrapArt("crusher") ?? Assets.Sprite("rockhead");
             var top = transform.position + Vector3.up * 3.2f;
             GameObject go = sp != null
                 ? Theme.SpriteBox("Crusher", transform.parent, top, new Vector2(1.6f, 1.6f), sp, 4)

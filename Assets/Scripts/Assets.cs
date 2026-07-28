@@ -21,6 +21,19 @@ namespace TrustIssues
             return s;
         }
 
+        /// <summary>
+        /// A trap's illustration, cut out of the Vampire's Bestiary artwork
+        /// (Resources/art/traps/trap_*.png). Every trap in a level is drawn with the
+        /// same picture the codex shows for it, so what you learn on the page is what
+        /// you recognise on the floor. Returns null if that trap has no cut-out yet,
+        /// and callers fall back to their old flat sprite.
+        ///
+        /// These are FULLY COLOURED illustrations, unlike the old flat silhouettes —
+        /// callers must not tint them (a Theme.Danger tint turns the painted metal
+        /// into a red blob).
+        /// </summary>
+        public static Sprite TrapArt(string key) => Sprite("traps/trap_" + key);
+
         static readonly Dictionary<string, Sprite[]> _sheets = new();
 
         /// <summary>

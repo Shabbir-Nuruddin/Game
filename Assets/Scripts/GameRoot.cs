@@ -254,11 +254,15 @@ namespace TrustIssues
             // camera-parented so it's always visible. Its colour changes per theme.
             if (Theme.Moon != null)
             {
+                // Sized and placed off the gameplay artwork: the moon's disc is about a
+                // quarter of the screen height, sitting high on the right where the
+                // castle spires cut into it. It used to be nearly half the screen and
+                // sat almost in the corner, which read as a wash rather than a moon.
                 var moon = new GameObject("ThemeMoon");
                 moon.transform.SetParent(_cam.transform, false);
-                moon.transform.localPosition = new Vector3(6.5f, 4.6f, 21f);
+                moon.transform.localPosition = new Vector3(6.2f, 3.1f, 21f);
                 var mb = Theme.Moon.bounds.size;
-                float ms = 7.5f / Mathf.Max(0.0001f, mb.y);
+                float ms = 5.2f / Mathf.Max(0.0001f, mb.y);
                 moon.transform.localScale = new Vector3(ms, ms, 1f);
                 var msr = moon.AddComponent<SpriteRenderer>();
                 msr.sprite = Theme.Moon; msr.sortingOrder = -8; msr.color = ThemeMoon[0];
@@ -277,14 +281,22 @@ namespace TrustIssues
                 var root = new GameObject("Parallax");
                 _parallax = root.AddComponent<Parallax>();
                 _parallax.Init(_cam.transform);
-                float camX = _cam.transform.position.x;
-                //          sprite      tint(multiply)    yCenter order  follow alpha
-                AddParallax("bg_sky",    Theme.Hex("16101F"), 1.2f,  -28, 0.97f);
-                AddParallax("bg_far",    Theme.Hex("2A2038"), 0.9f,  -24, 0.90f);
-                AddParallax("bg_castle", Theme.Hex("531B26"), 0.6f,  -20, 0.82f); // blood-red castle
-                AddParallax("bg_mid",    Theme.Hex("241A30"), 0.2f,  -17, 0.72f);
-                AddParallax("bg_near",   Theme.Hex("140E1C"), -0.4f, -14, 0.60f);
-                AddParallax("bg_fog",    Theme.Hex("3A1622"), 0.4f,  -12, 0.55f, 0.30f);
+
+                // The imported backdrop art is a BLUE mountain range, and a multiply
+                // tint can't take blue out of it — every attempt just came out a darker
+                // blue. So the layers were recoloured once, offline, onto the exact
+                // ramp sampled from the gameplay artwork (near-black stone lit only by
+                // the blood moon) and saved as bgv_*. Those go in untinted; the old
+                // blue files stay as the fallback if the recoloured set is missing.
+                bool v = Assets.Sprite("bgv_sky") != null;
+                var neutral = Color.white;
+                //          sprite                        tint            yCenter order follow alpha
+                AddParallax(v ? "bgv_sky" : "bg_sky",       v ? neutral : Theme.Hex("16101F"), 1.2f,  -28, 0.97f);
+                AddParallax(v ? "bgv_far" : "bg_far",       v ? neutral : Theme.Hex("2A2038"), 0.9f,  -24, 0.90f);
+                AddParallax(v ? "bgv_castle" : "bg_castle", v ? neutral : Theme.Hex("531B26"), 0.6f,  -20, 0.82f);
+                AddParallax(v ? "bgv_mid" : "bg_mid",       v ? neutral : Theme.Hex("241A30"), 0.2f,  -17, 0.72f);
+                AddParallax(v ? "bgv_near" : "bg_near",     v ? neutral : Theme.Hex("140E1C"), -0.4f, -14, 0.60f);
+                AddParallax(v ? "bgv_fog" : "bg_fog",       v ? neutral : Theme.Hex("3A1622"), 0.4f,  -12, 0.55f, 0.30f);
                 return;
             }
 
@@ -508,11 +520,16 @@ namespace TrustIssues
             _curShadeFloor = shadeFloor;
             var t = ThemeTint[idx];
             float castleVis = ThemeCastleVis[idx];
+            // Half-strength on the parallax: the backdrop art now carries the castle's
+            // own colour, so a full world tint would wash the painting away. The theme
+            // wash, sky and moon still swing the full amount, which is what actually
+            // makes one world read differently from another.
+            var pt = Color.Lerp(Color.white, t, 0.5f);
             for (int i = 0; i < _bgSr.Count; i++)
             {
                 if (_bgSr[i] == null) continue;
                 var b = _bgBase[i];
-                _bgSr[i].color = new Color(b.r * t.r, b.g * t.g, b.b * t.b, b.a * castleVis);
+                _bgSr[i].color = new Color(b.r * pt.r, b.g * pt.g, b.b * pt.b, b.a * castleVis);
             }
             // Every visible backdrop layer gets the per-floor shade, so the whole
             // picture shifts together instead of one element looking recoloured.
@@ -536,8 +553,50 @@ namespace TrustIssues
             foreach (var m in _motes) if (m != null) m.Recolor(accent);
         }
 
+        // The gameplay artwork frames its play area the way the menus frame theirs:
+        // a band of castle stone down each edge with the ornate gold-and-blood border
+        // outside it. Built once, shown only while a level is actually running, and
+        // never a raycast target — it's a picture frame, not a wall.
+        GameObject _levelFrame;
+        void BuildLevelFrame()
+        {
+            _levelFrame = new GameObject("LevelFrame", typeof(RectTransform));
+            _levelFrame.transform.SetParent(Theme.Canvas.transform, false);
+            var rt = _levelFrame.GetComponent<RectTransform>();
+            rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
+            rt.offsetMin = rt.offsetMax = Vector2.zero;
+
+            // Stone band on the top and both sides. The BOTTOM is deliberately left
+            // open: that's where the thumb controls live, and a band under them just
+            // eats screen. Kept thin — every unit of it is playfield you can't see.
+            const float Side = 30f, Top = 26f;
+            AddFrameBand(rt, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0, -Top), new Vector2(0, 0));
+            AddFrameBand(rt, new Vector2(0f, 0f), new Vector2(0f, 1f), new Vector2(0, 0), new Vector2(Side, 0));
+            AddFrameBand(rt, new Vector2(1f, 0f), new Vector2(1f, 1f), new Vector2(-Side, 0), new Vector2(0, 0));
+
+            // The ornate border, right at the screen edge.
+            Gothic.Border(_levelFrame.transform, 0f);
+            _levelFrame.SetActive(false);
+        }
+
+        // One masonry band along an edge of the level frame.
+        void AddFrameBand(RectTransform parent, Vector2 aMin, Vector2 aMax, Vector2 offMin, Vector2 offMax)
+        {
+            var go = new GameObject("Band", typeof(RectTransform));
+            go.transform.SetParent(parent, false);
+            var img = go.AddComponent<Image>();
+            img.sprite = Theme.StoneTile; img.type = Image.Type.Tiled;
+            img.pixelsPerUnitMultiplier = 0.16f;
+            img.color = new Color(0.30f, 0.26f, 0.30f, 1f);
+            img.raycastTarget = false;
+            var r = img.rectTransform;
+            r.anchorMin = aMin; r.anchorMax = aMax;
+            r.offsetMin = offMin; r.offsetMax = offMax;
+        }
+
         void BuildHUD()
         {
+            BuildLevelFrame();
             _hud = Theme.Label(Theme.Canvas.transform, "DEATHS  0", 46, Theme.Player,
                 new Vector2(0f, 1f), new Vector2(280, -55), new Vector2(520, 70),
                 TextAnchor.MiddleLeft);
@@ -1875,78 +1934,121 @@ namespace TrustIssues
             _menuPanel = Overlay(new Color(Theme.Sky.r, Theme.Sky.g, Theme.Sky.b, 0.96f), out var root);
             _onBack = ShowMenu;
 
-            // HYBRID: wear the bestiary artwork's ornate frame, gargoyles, candles and
-            // painted title, but draw the REAL cards on top so progress and the preview
-            // toggle work. The art paints only 15 slots and a frozen "3 / 19"; the book
-            // has 19 traps, so the painted grid is covered and re-laid live as 5 across
-            // by 4 down — each page in its own ornate plate, matching the paintings
-            // instead of the flat grey boxes that used to sit there.
+            // HYBRID: the artwork supplies the frame, gargoyles, candles, title AND all
+            // nineteen ornate card frames — one per trap, which is exactly the book's
+            // length. So nothing is covered wholesale any more: each card's interior is
+            // chipped and its real page drawn inside its own painted frame. (The painted
+            // lore can't just be left alone — it has typos, and a locked trap must not
+            // give its answer away before it has killed you.)
             bool skinned = Skin.Background(root, "bestiary_bg") != null;
-            if (skinned)
-            {
-                // Castle-stone ground over the painted grid — dark enough to hide the
-                // artwork's own cards, textured enough not to read as a black box.
-                var cover = new GameObject("Cover", typeof(RectTransform));
-                cover.transform.SetParent(root, false);
-                var ci = cover.AddComponent<Image>();
-                ci.color = new Color(0.05f, 0.032f, 0.062f, 0.995f); ci.raycastTarget = false;
-                var crt = ci.rectTransform;
-                // Starts just under the title's blood drips and swallows the painted
-                // "3 / 19" caption, which is frozen art.
-                crt.anchorMin = new Vector2(0.075f, 0.148f); crt.anchorMax = new Vector2(0.925f, 0.885f);
-                crt.offsetMin = crt.offsetMax = Vector2.zero;
-
-                var grain = new GameObject("Grain", typeof(RectTransform)).AddComponent<Image>();
-                grain.transform.SetParent(root, false);
-                grain.sprite = Theme.StoneTile; grain.type = Image.Type.Tiled;
-                grain.pixelsPerUnitMultiplier = 0.14f; grain.raycastTarget = false;
-                grain.color = new Color(0.55f, 0.5f, 0.62f, 0.09f);
-                var grt = grain.rectTransform;
-                grt.anchorMin = crt.anchorMin; grt.anchorMax = crt.anchorMax;
-                grt.offsetMin = grt.offsetMax = Vector2.zero;
-            }
-            else
+            if (!skinned)
             {
                 Gothic.Backdrop(root);
                 Gothic.Heading(root, "VAMPIRE'S BESTIARY", null);
             }
 
-            // Live tally — the artwork's painted "3 / 19" is under the cover, so this is
-            // the only count on screen and it always tells the truth. On the skinned
-            // screen it's anchored in ARTWORK fractions, not canvas units: the canvas is
-            // shorter than the painting on a tall phone, so a canvas-positioned caption
-            // would slide off the spot the art left for it.
+            // Live tally over the painted "9 / 19". Anchored in ARTWORK fractions,
+            // not canvas units: the canvas is shorter than the painting on a tall
+            // phone, so a canvas-positioned caption slides off its painted spot.
             string tally = $"{Codex.KnownCount()} / {Codex.Total} CATALOGUED  —  DIE TO A NEW TRAP TO REVEAL ITS PAGE";
             if (skinned)
             {
-                var t = Skin.LiveText(root, tally, 0.10f, 0.155f, 0.90f, 0.192f, 25, Gothic.Faint);
-                if (Theme.MenuFont != null) t.font = Theme.MenuFont;
-                Skin.Fit(t, 25, 13);
+                Skin.Chip(root, 0.255f, 0.1420f, 0.775f, 0.1640f, new Color(0.045f, 0.033f, 0.026f));
+                var tl = Skin.LiveText(root, tally, 0.20f, 0.1420f, 0.83f, 0.1640f, 25, Gothic.Faint);
+                if (Theme.MenuFont != null) tl.font = Theme.MenuFont;
+                Skin.Fit(tl, 25, 12);
+
+                // The painting supplies all nineteen ornate card frames, so the pages
+                // are drawn INSIDE them rather than over the top: each card's interior
+                // is chipped out (its painted lore has typos, and a locked trap must
+                // not show its answer) and the real icon, name and lore go in its place.
+                for (int i = 0; i < Codex.Entries.Length; i++)
+                    CodexPage(root, Codex.Entries[i], CodexColX[i % 5], CodexRowTop[i / 5]);
+
+                // The artwork leaves the last cell of the bottom row empty — that's
+                // where the PREVIEW toggle lives.
+                bool prevOn = Codex.PreviewAll;
+                Skin.Chip(root, CodexColX[4] - CodexHalfW, CodexRowTop[3],
+                          CodexColX[4] + CodexHalfW, CodexRowTop[3] + CodexCardH, CodexInterior);
+                var pv = Skin.Slot(root, "Preview", CodexColX[4] - CodexHalfW, CodexRowTop[3],
+                                   CodexColX[4] + CodexHalfW, CodexRowTop[3] + CodexCardH);
+                var pvImg = pv.gameObject.AddComponent<Image>();
+                pvImg.color = prevOn ? new Color(0.30f, 0.035f, 0.055f, 1f) : Gothic.Plate;
+                var pvBtn = pv.gameObject.AddComponent<Button>();
+                pvBtn.targetGraphic = pvImg;
+                pvBtn.onClick.AddListener(() => { Codex.PreviewAll = !Codex.PreviewAll; ShowCodex(); });
+                Gothic.InnerFrame(pv);
+                var pvT = Skin.LiveText(root, prevOn ? "PREVIEW\nON" : "PREVIEW\nOFF",
+                    CodexColX[4] - CodexHalfW, CodexRowTop[3] + 0.055f,
+                    CodexColX[4] + CodexHalfW, CodexRowTop[3] + 0.110f, 24, Theme.Coin);
+                if (Theme.MenuFont != null) pvT.font = Theme.MenuFont;
+
+                Skin.Zone(root, 0.41f, 0.910f, 0.59f, 0.970f, ShowMenu, "back");
             }
-            else Gothic.Line(root, tally, 25, Gothic.Faint, new Vector2(0, 344), new Vector2(1600, 40));
+            else
+            {
+                Gothic.Line(root, tally, 25, Gothic.Faint, new Vector2(0, 344), new Vector2(1600, 40));
+                var entries = Codex.Entries;
+                const int cols = 5;
+                var card = new Vector2(300, 156);
+                float stepX = 316f, stepY = 166f, startX = -((cols - 1) * stepX) / 2f, startY = 224f;
+                for (int i = 0; i < entries.Length; i++)
+                    BuildCodexCard(root, entries[i],
+                        new Vector2(startX + (i % cols) * stepX, startY - (i / cols) * stepY), card);
+                bool prev = Codex.PreviewAll;
+                Gothic.Button(root, prev ? "PREVIEW: ON" : "PREVIEW: OFF",
+                    new Vector2(startX + 4 * stepX, startY - 3 * stepY), card,
+                    () => { Codex.PreviewAll = !Codex.PreviewAll; ShowCodex(); }, prev, 26);
+                Gothic.Back(root, ShowMenu);
+            }
+        }
 
-            // 5 across, 4 down: 19 pages fill every cell but the last, which the
-            // PREVIEW toggle takes. The grid is sized so it still lands inside the
-            // artwork's covered area on a tall phone, where the canvas is shorter than
-            // the reference 1080 but the painting still fills the screen.
-            var entries = Codex.Entries;
-            const int cols = 5;
-            var card = new Vector2(300, 156);
-            float stepX = 316f, stepY = 166f, startX = -((cols - 1) * stepX) / 2f, startY = 224f;
-            for (int i = 0; i < entries.Length; i++)
-                BuildCodexCard(root, entries[i],
-                    new Vector2(startX + (i % cols) * stepX, startY - (i / cols) * stepY), card);
+        // The Bestiary artwork's card grid, measured off the 1600x953 painting: five
+        // columns, four rows, and the interior of each painted frame.
+        static readonly float[] CodexColX   = { 0.20813f, 0.35625f, 0.50438f, 0.65250f, 0.80063f };
+        static readonly float[] CodexRowTop = { 0.18363f, 0.38510f, 0.57712f, 0.76495f };
+        const float CodexHalfW = 0.0650f, CodexCardH = 0.16475f;
+        static readonly Color CodexInterior = new Color(0.040f, 0.035f, 0.026f, 1f);
 
-            // PREVIEW toggle — flip the whole book open (to review every page) or back
-            // to its real locked/unlocked state (the "UNDISCOVERED" silhouette look).
-            // Re-opens the screen so all cards re-draw in the new state.
-            bool prev = Codex.PreviewAll;
-            Gothic.Button(root, prev ? "PREVIEW: ON" : "PREVIEW: OFF",
-                new Vector2(startX + 4 * stepX, startY - 3 * stepY), card,
-                () => { Codex.PreviewAll = !Codex.PreviewAll; ShowCodex(); }, prev, 26);
+        /// <summary>
+        /// One page drawn inside its painted frame: chip the interior, then set the
+        /// trap's own illustration, its name and its lore — or the undiscovered
+        /// silhouette if it hasn't killed you yet.
+        /// </summary>
+        void CodexPage(Transform root, TrapType t, float cx, float top)
+        {
+            bool known = Codex.IsKnown(t);
+            Skin.Chip(root, cx - CodexHalfW, top, cx + CodexHalfW, top + CodexCardH, CodexInterior);
 
-            if (skinned) Skin.Zone(root, 0.40f, 0.875f, 0.60f, 0.965f, ShowMenu, "back");
-            else Gothic.Back(root, ShowMenu);
+            if (known)
+            {
+                var sp = Assets.Sprite(Codex.Art(t));
+                if (sp != null)
+                {
+                    var rt = Skin.Slot(root, "Art", cx - 0.045f, top + 0.006f, cx + 0.045f, top + 0.070f);
+                    var img = rt.gameObject.AddComponent<Image>();
+                    img.sprite = sp; img.preserveAspect = true; img.raycastTarget = false;
+                }
+            }
+            else
+            {
+                var q = Skin.LiveText(root, "?", cx - 0.045f, top + 0.006f, cx + 0.045f, top + 0.070f,
+                    44, new Color(0.62f, 0.55f, 0.52f, 0.30f));
+                if (Theme.MenuFont != null) q.font = Theme.MenuFont;
+            }
+
+            var title = Skin.LiveText(root, known ? Codex.Title(t).ToUpperInvariant() : "UNDISCOVERED",
+                cx - 0.062f, top + 0.070f, cx + 0.062f, top + 0.092f,
+                24, known ? Theme.Coin : new Color(0.62f, 0.55f, 0.52f, 0.55f));
+            if (Theme.MenuFont != null) title.font = Theme.MenuFont;
+            Skin.Fit(title, 24, 12);
+
+            var lore = Skin.LiveText(root, known ? Codex.Lore(t) : "die to this trap to reveal its page",
+                cx - 0.060f, top + 0.096f, cx + 0.060f, top + 0.158f,
+                17, known ? new Color(0.82f, 0.76f, 0.70f, 0.90f) : new Color(0.62f, 0.55f, 0.52f, 0.38f));
+            if (Theme.MenuFont != null) lore.font = Theme.MenuFont;
+            lore.verticalOverflow = VerticalWrapMode.Truncate;
+            Skin.Fit(lore, 17, 10);
         }
 
         // One bestiary page, in the artwork's language: an ornate framed plate with the
@@ -1966,8 +2068,7 @@ namespace TrustIssues
                 var img = new GameObject("Art", typeof(RectTransform)).AddComponent<Image>();
                 img.transform.SetParent(ct, false);
                 img.sprite = sp; img.preserveAspect = true; img.raycastTarget = false;
-                img.color = t == TrapType.BatSwoop ? new Color(1f, 0.3f, 0.3f) : Color.white;
-                var irt = img.rectTransform;
+                var irt = img.rectTransform;   // painted illustration — never tinted
                 irt.anchorMin = irt.anchorMax = c; irt.pivot = c;
                 irt.anchoredPosition = new Vector2(0, 44); irt.sizeDelta = new Vector2(48, 48);
             }
@@ -4111,6 +4212,40 @@ namespace TrustIssues
             var edge = Theme.Box("Edge", go.transform, pos + new Vector2(0, size.y / 2f - 0.06f),
                 new Vector2(size.x, lipH), lipCol, 2);
             edge.transform.localPosition = new Vector3(0, size.y / 2f - 0.06f, 0);
+
+            // A pale highlight hairline right under the blood lip. In the artwork every
+            // ledge catches a sliver of moonlight along its top face — it's what stops a
+            // platform reading as a flat bar and makes the edge you have to land on
+            // legible against a near-black backdrop.
+            if (!wide)
+            {
+                var lit = Theme.Box("LitEdge", go.transform, Vector2.zero,
+                    new Vector2(size.x, 0.05f), new Color(0.62f, 0.56f, 0.60f, 0.5f), 2);
+                lit.transform.localPosition = new Vector3(0, size.y / 2f - 0.135f, 0);
+            }
+
+            // Blood running down the face, the way it drips off every ledge in the
+            // artwork. Seeded from the platform's own position so a given floor always
+            // drips the same way — a level that reshuffled its gore each retry would
+            // read as flicker on a screen you're staring at for fifty attempts.
+            if (!wide && size.x >= 1.6f)
+            {
+                var rng = new System.Random(Mathf.RoundToInt(pos.x * 73.3f + pos.y * 19.7f));
+                int drips = Mathf.Clamp(Mathf.RoundToInt(size.x / 2.6f), 1, 5);
+                for (int i = 0; i < drips; i++)
+                {
+                    float dx = (float)(rng.NextDouble() - 0.5) * (size.x - 0.5f);
+                    float len = 0.20f + (float)rng.NextDouble() * 0.45f;
+                    var drip = Theme.Box("Drip", go.transform, Vector2.zero,
+                        new Vector2(0.09f, len), new Color(0.42f, 0.05f, 0.08f, 0.85f), 2);
+                    drip.transform.localPosition = new Vector3(dx, size.y / 2f - 0.10f - len / 2f, 0);
+                    // The bead at the bottom of the run, a touch brighter than the trail.
+                    var bead = Theme.Box("Bead", go.transform, Vector2.zero,
+                        new Vector2(0.14f, 0.13f), new Color(0.55f, 0.06f, 0.10f, 0.9f), 2);
+                    bead.transform.localPosition = new Vector3(dx, size.y / 2f - 0.10f - len, 0);
+                }
+            }
+
             if (trapType.HasValue) go.AddComponent<Trap>().Init(trapType.Value);
             return go;
         }
@@ -4191,25 +4326,31 @@ namespace TrustIssues
                 }
                 case TrapType.SpikeStatic:
                 {
-                    var sp = Assets.Sprite("spike");
+                    // The Bestiary's own Iron Spike illustration, drawn as painted —
+                    // the old flat sprite needed a red tint to read as lethal.
+                    var painted = Assets.TrapArt("spike");
+                    var sp = painted ?? Assets.Sprite("spike");
                     GameObject go = sp != null
                         ? Theme.SpriteBox("Spikes", _levelRoot, t.pos, t.size, sp, 3)
                         : Theme.Box("Spikes", _levelRoot, t.pos, t.size, Theme.Danger, 3);
-                    if (sp != null) go.GetComponent<SpriteRenderer>().color = Theme.Danger; // blood
+                    if (painted == null && sp != null) go.GetComponent<SpriteRenderer>().color = Theme.Danger; // blood
                     FitTrigger(go, 0.85f); // reliable: roughly the full visible spike
                     var kz = go.AddComponent<KillZone>(); kz.msg = "Impaled."; kz.trapTag = (int)TrapType.SpikeStatic;
                     break;
                 }
                 case TrapType.GrowSpike:
                 {
-                    var sp = Assets.Sprite("spike");
+                    var painted = Assets.TrapArt("growspike");
+                    var sp = painted ?? Assets.Sprite("spike");
                     GameObject go = sp != null
                         ? Theme.SpriteBox("GrowSpike", _levelRoot, t.pos, t.size, sp, 3)
                         : Theme.Box("GrowSpike", _levelRoot, t.pos, t.size, Theme.Danger, 3);
-                    if (sp != null) go.GetComponent<SpriteRenderer>().color = Theme.Danger;
+                    if (painted == null && sp != null) go.GetComponent<SpriteRenderer>().color = Theme.Danger;
                     FitTrigger(go, 0.85f); // reliable spike hitbox
                     var kz = go.AddComponent<KillZone>(); kz.msg = "Skewered.";
-                    go.AddComponent<Trap>().Init(TrapType.GrowSpike);
+                    var gtrap = go.AddComponent<Trap>();
+                    gtrap.paintedArt = painted != null;
+                    gtrap.Init(TrapType.GrowSpike);
                     break;
                 }
                 case TrapType.Checkpoint:
@@ -4236,7 +4377,7 @@ namespace TrustIssues
                 }
                 case TrapType.Spring:
                 {
-                    var sp = Assets.Sprite("trampoline");
+                    var sp = Assets.TrapArt("spring") ?? Assets.Sprite("trampoline");
                     GameObject go = sp != null
                         ? Theme.SpriteBox("Spring", _levelRoot, t.pos, new Vector2(t.size.x, 0.7f), sp, 3)
                         : Theme.Box("Spring", _levelRoot, t.pos, t.size, Theme.Coin, 3);
@@ -4246,13 +4387,16 @@ namespace TrustIssues
                 }
                 case TrapType.Saw:
                 {
-                    // The saw sprite is an 8-frame spin strip; show frame 0 and let
-                    // the Trap cycle it (it also slides the saw along its track).
-                    var frames = Assets.Sheet("saw", 38);
-                    var sp = (frames != null && frames.Length > 0) ? frames[0] : null;
+                    // The Bestiary's Whirling Blade is one painted disc, so it spins by
+                    // ROTATION; the older imported saw is an 8-frame strip the Trap
+                    // cycles instead. Either way it also slides along its track.
+                    var painted = Assets.TrapArt("saw");
+                    var frames = painted != null ? null : Assets.Sheet("saw", 38);
+                    var sp = painted ?? ((frames != null && frames.Length > 0) ? frames[0] : null);
                     GameObject go = sp != null
-                        ? Theme.SpriteBox("Saw", _levelRoot, t.pos, new Vector2(1.1f, 1.1f), sp, 3)
+                        ? Theme.SpriteBox("Saw", _levelRoot, t.pos, new Vector2(1.25f, 1.25f), sp, 3)
                         : Theme.Box("Saw", _levelRoot, t.pos, t.size, Theme.Danger, 3);
+                    if (painted != null) go.AddComponent<Spinner>().speed = 320f;
                     FitTrigger(go, 0.66f); // matches the visible blade
                     // TONIGHT'S RUMOR (0): the saws lie — same spin, same slide,
                     // but no kill. Touching one and living proves the rumor.
@@ -4273,12 +4417,14 @@ namespace TrustIssues
                     // an invisible trigger that just teleported you with a red
                     // flash — it read as a buggy "death" that didn't count. Now
                     // it's a clear, intentional trap you can see and choose to dodge.
-                    var sp = Assets.Sprite("portal");
+                    var painted = Assets.TrapArt("warpback");
+                    var sp = painted ?? Assets.Sprite("portal");
                     GameObject go = sp != null
-                        ? Theme.SpriteBox("WarpBack", _levelRoot, t.pos, new Vector2(1.3f, 2f), sp, 2)
+                        ? Theme.SpriteBox("WarpBack", _levelRoot, t.pos,
+                                          painted != null ? new Vector2(1.5f, 1.5f) : new Vector2(1.3f, 2f), sp, 2)
                         : Theme.Box("WarpBack", _levelRoot, t.pos, new Vector2(1f, 1.8f), Theme.Trick, 2);
                     var wsr = go.GetComponent<SpriteRenderer>();
-                    wsr.color = new Color(0.55f, 0.2f, 0.8f, 0.85f);   // necro-purple swirl
+                    if (painted == null) wsr.color = new Color(0.55f, 0.2f, 0.8f, 0.85f);   // necro-purple swirl
                     go.AddComponent<Spinner>().speed = 70f;            // slow ominous swirl
                     FitTrigger(go, 0.55f);
                     go.AddComponent<Trap>().Init(TrapType.WarpBack);
@@ -4294,7 +4440,7 @@ namespace TrustIssues
                 }
                 case TrapType.FlameJet:
                 {
-                    var sp = Assets.Sprite("flame");
+                    var sp = Assets.TrapArt("flamejet") ?? Assets.Sprite("flame");
                     GameObject go = sp != null
                         ? Theme.SpriteBox("FlameJet", _levelRoot, t.pos, t.size, sp, 3)
                         : Theme.Box("FlameJet", _levelRoot, t.pos, t.size, Theme.Hex("FF7A1A"), 3);
@@ -4305,7 +4451,7 @@ namespace TrustIssues
                 }
                 case TrapType.HolyWater:
                 {
-                    var sp = Assets.Sprite("holywater");
+                    var sp = Assets.TrapArt("holywater") ?? Assets.Sprite("holywater");
                     GameObject go = sp != null
                         ? Theme.SpriteBox("HolyWater", _levelRoot, t.pos, t.size, sp, 3)
                         : Theme.Box("HolyWater", _levelRoot, t.pos, t.size, new Color(0.5f, 0.8f, 0.95f, 0.5f), 3);
@@ -5009,6 +5155,13 @@ namespace TrustIssues
                 bool showPause = _state == State.Play;
                 if (_pauseBtn.gameObject.activeSelf != showPause)
                     _pauseBtn.gameObject.SetActive(showPause);
+            }
+            // The stone-and-gold picture frame follows the same rule — it belongs to
+            // the level, not to the menus (which bring their own frames).
+            if (_levelFrame != null)
+            {
+                bool showFrame = _state == State.Play || _state == State.Paused;
+                if (_levelFrame.activeSelf != showFrame) _levelFrame.SetActive(showFrame);
             }
 
             // Desktop convenience: 1/2/3 fire the three sabotage trolls in a race.

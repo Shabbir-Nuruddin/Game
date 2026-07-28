@@ -111,25 +111,35 @@ namespace TrustIssues
             _ => "A trap of the castle.",
         };
 
-        // Which sprite represents this trap in the book. EVERY entry maps to a real
-        // sprite that exists in Resources/art so no discovered page is ever a blank
-        // "?" — several traps reuse the closest-matching art (e.g. the pendulum and
-        // saw share the blade sprite) until bespoke per-trap icons are dropped in.
-        public static string Art(TrapType t) => t switch
+        // Which sprite represents this trap. Every entry now has its OWN illustration,
+        // cut out of the Vampire's Bestiary artwork into Resources/art/traps — the same
+        // picture the level draws, so a page you've read is a thing you can recognise
+        // mid-run. Several traps used to share a stand-in sprite (the pendulum and saw
+        // both showed the blade, the chandelier showed a torch); that's over.
+        public static string Art(TrapType t) => "traps/trap_" + ArtKey(t);
+
+        /// <summary>The trap's short art key, shared by the codex page and the level.</summary>
+        public static string ArtKey(TrapType t) => t switch
         {
-            TrapType.SpikeStatic or TrapType.LateSpike or TrapType.GrowSpike or TrapType.ArrowRain => "spike",
-            TrapType.Saw or TrapType.Pendulum => "saw",       // both are sweeping blades
-            TrapType.Faller or TrapType.Crusher => "rockhead",
-            TrapType.Chandelier => "torch",                    // a hanging light fixture
-            TrapType.FakeFloor => "platform",                 // the treacherous floor tile
-            TrapType.FlameJet => "explosion",                 // erupting fire
-            TrapType.HolyWater => "blood",                    // a glistening floor puddle
-            TrapType.Surprise => "torch",                     // the hidden sunbeam / light
-            TrapType.Reverse or TrapType.WarpBack => "portal",// swirling magic (hex / banishment)
-            TrapType.BatSwoop => "bat_fly",
-            TrapType.Spring => "trampoline",
-            TrapType.FakeExit => "door",
-            TrapType.Dart => "bolt",
+            TrapType.SpikeStatic => "spike",
+            TrapType.LateSpike   => "latespike",
+            TrapType.GrowSpike   => "growspike",
+            TrapType.ArrowRain   => "arrowrain",
+            TrapType.FakeFloor   => "fakefloor",
+            TrapType.Crusher     => "crusher",
+            TrapType.Faller      => "faller",
+            TrapType.Chandelier  => "chandelier",
+            TrapType.Dart        => "dart",
+            TrapType.Saw         => "saw",
+            TrapType.Pendulum    => "pendulum",
+            TrapType.FlameJet    => "flamejet",
+            TrapType.HolyWater   => "holywater",
+            TrapType.BatSwoop    => "bat",
+            TrapType.Spring      => "spring",
+            TrapType.Reverse     => "reverse",
+            TrapType.WarpBack    => "warpback",
+            TrapType.FakeExit    => "fakeexit",
+            TrapType.Surprise    => "surprise",
             _ => "spike",                                      // last-ditch: never blank
         };
     }
