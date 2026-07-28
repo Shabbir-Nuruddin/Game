@@ -422,8 +422,13 @@ namespace TrustIssues
         // Per-theme gameplay music (drop Resources/audio/music_<x>.mp3 in whenever
         // it's ready — until then every theme quietly falls back to "music" via
         // Audio.MusicOr, so a missing track never leaves a floor silent).
+        // Endless cycles three THEMES (abyss/void/inferno) but has one identity, and
+        // only ever had one track file — the other two names resolved to nothing and
+        // fell back to the MENU music, so a deep Endless run kept dropping into the
+        // title theme. All three now point at the same Endless track.
         static readonly string[] ThemeMusic =
-        { "music_castle", "music_crypt", "music_swamp", "music_throne", "music_bloodmoon", "music_abyss", "music_void", "music_inferno", "music_arena" };
+        { "music_castle", "music_crypt", "music_swamp", "music_throne", "music_bloodmoon",
+          "music_endless", "music_endless", "music_endless", "music_arena" };
         // Tint MULTIPLIED over the (dark crimson) parallax art — strong enough that each
         // theme reads as a different place, not a faint colour wash.
         static readonly Color[] ThemeTint =
