@@ -14,12 +14,18 @@ namespace TrustIssues
         Sprite[] _fly;
         SpriteRenderer _sr;
         Vector3 _home;
-        float _animTimer, _timer, _baseScale = 1f;
+        float _animTimer, _timer, _baseScale = 1f, _baseX = 1f;
         Vector3 _diveTo;
 
         // Attacking bats are tinted a prominent blood-red so they stand out clearly
         // against the gloom (and read as a threat, not decoration).
         static readonly Color BatRed = new Color(1f, 0.22f, 0.22f, 1f);
+        // …unless the bat is wearing its painted Bestiary illustration, which is a
+        // real picture of a bat and must not be dyed red on sight. The book promises
+        // "hovers, FLARES RED, then dives" — so the red is the flare, and only the
+        // flare, exactly as the page describes it.
+        bool _painted;
+        Color Resting => _painted ? Color.white : BatRed;
 
         enum S { Hover, Telegraph, Dive, Return }
         S _state = S.Hover;
@@ -29,12 +35,17 @@ namespace TrustIssues
         const float DiveSpeed = 11f;   // slower dive = escapable on reaction
         const float ReturnSpeed = 6f;
 
-        public void Init(Sprite[] fly) { _fly = fly; }
+        public void Init(Sprite[] fly, bool painted = false) { _fly = fly; _painted = painted; }
 
         void Start()
         {
             _sr = GetComponent<SpriteRenderer>();
-            if (_sr != null) { _baseScale = Mathf.Abs(transform.localScale.y); _sr.color = BatRed; }
+            if (_sr != null)
+            {
+                _baseScale = Mathf.Abs(transform.localScale.y);
+                _baseX = Mathf.Abs(transform.localScale.x);
+                _sr.color = Resting;
+            }
             _home = transform.position;
             var col = gameObject.AddComponent<BoxCollider2D>();
             col.isTrigger = true; col.size = Vector2.one * 0.7f;
@@ -70,6 +81,9 @@ namespace TrustIssues
                     // Pulse to a hot, bright red so the wind-up still reads against the
                     // already-red bat.
                     if (_sr != null) _sr.color = Color.Lerp(BatRed, new Color(1f, 0.85f, 0.6f), 0.5f + 0.5f * Mathf.Sin(Time.time * 30f));
+                    // A painted bat has no flap sheet, so the wind-up beats its wings
+                    // by squeezing horizontally — otherwise it just sits there glowing.
+                    if (_painted) SetScaleX(1f - 0.18f * Mathf.Abs(Mathf.Sin(Time.time * 18f)));
                     if (_timer <= 0f)
                     {
                         // Aim at the player's position NOW, overshoot slightly past them.
@@ -81,12 +95,16 @@ namespace TrustIssues
 
                 case S.Dive:
                     SetScaleY(1f);
+                    if (_painted) SetScaleX(1f);
                     if (_sr != null) _sr.color = BatRed;
                     transform.position = Vector3.MoveTowards(transform.position, _diveTo, DiveSpeed * Time.deltaTime);
                     if (Vector3.Distance(transform.position, _diveTo) < 0.1f) _state = S.Return;
                     break;
 
                 case S.Return:
+                    // Back to its resting colour — a painted bat that stayed red
+                    // after one swoop would never show its dodge cue again.
+                    if (_sr != null) _sr.color = Resting;
                     transform.position = Vector3.MoveTowards(transform.position, _home, ReturnSpeed * Time.deltaTime);
                     if (Vector3.Distance(transform.position, _home) < 0.1f)
                     { _state = S.Hover; _timer = Random.Range(2.0f, 3.5f); }
@@ -99,6 +117,13 @@ namespace TrustIssues
             float dir = Mathf.Sign(x - transform.position.x);
             var s = transform.localScale;
             transform.localScale = new Vector3(Mathf.Abs(s.x) * (dir >= 0 ? 1f : -1f), s.y, s.z);
+        }
+
+        // Horizontal squeeze, keeping whichever way the bat is currently facing.
+        void SetScaleX(float mul)
+        {
+            var s = transform.localScale;
+            transform.localScale = new Vector3(Mathf.Abs(_baseX) * mul * Mathf.Sign(s.x), s.y, s.z);
         }
 
         void SetScaleY(float mul)

@@ -260,9 +260,11 @@ namespace TrustIssues
                 // sat almost in the corner, which read as a wash rather than a moon.
                 var moon = new GameObject("ThemeMoon");
                 moon.transform.SetParent(_cam.transform, false);
-                moon.transform.localPosition = new Vector3(6.2f, 3.1f, 21f);
+                // Measured off the artwork (its moon centres at 78% across, 32% down):
+                // just inside the right edge and high, not jammed into the corner.
+                moon.transform.localPosition = new Vector3(4.4f, 0.9f, 21f);
                 var mb = Theme.Moon.bounds.size;
-                float ms = 5.2f / Mathf.Max(0.0001f, mb.y);
+                float ms = 2.9f / Mathf.Max(0.0001f, mb.y);
                 moon.transform.localScale = new Vector3(ms, ms, 1f);
                 var msr = moon.AddComponent<SpriteRenderer>();
                 msr.sprite = Theme.Moon; msr.sortingOrder = -8; msr.color = ThemeMoon[0];
@@ -289,14 +291,23 @@ namespace TrustIssues
                 // the blood moon) and saved as bgv_*. Those go in untinted; the old
                 // blue files stay as the fallback if the recoloured set is missing.
                 bool v = Assets.Sprite("bgv_sky") != null;
-                var neutral = Color.white;
-                //          sprite                        tint            yCenter order follow alpha
-                AddParallax(v ? "bgv_sky" : "bg_sky",       v ? neutral : Theme.Hex("16101F"), 1.2f,  -28, 0.97f);
-                AddParallax(v ? "bgv_far" : "bg_far",       v ? neutral : Theme.Hex("2A2038"), 0.9f,  -24, 0.90f);
-                AddParallax(v ? "bgv_castle" : "bg_castle", v ? neutral : Theme.Hex("531B26"), 0.6f,  -20, 0.82f);
-                AddParallax(v ? "bgv_mid" : "bg_mid",       v ? neutral : Theme.Hex("241A30"), 0.2f,  -17, 0.72f);
-                AddParallax(v ? "bgv_near" : "bg_near",     v ? neutral : Theme.Hex("140E1C"), -0.4f, -14, 0.60f);
-                AddParallax(v ? "bgv_fog" : "bg_fog",       v ? neutral : Theme.Hex("3A1622"), 0.4f,  -12, 0.55f, 0.30f);
+                // Each layer is stepped DOWN in brightness the nearer it is, which is
+                // how the painting reads: far mountains catch what light there is,
+                // the ridge in front of you is almost a silhouette. Going in at full
+                // white made every layer equally bright, so the whole hall behind the
+                // player was one flat mauve field with no depth in it at all.
+                Color Dim(float k) => new Color(k, k * 0.94f, k * 1.02f, 1f);
+                //          sprite                        tint                          yCenter order follow alpha
+                AddParallax(v ? "bgv_sky" : "bg_sky",       v ? Dim(0.62f) : Theme.Hex("16101F"), 1.2f,  -28, 0.97f);
+                AddParallax(v ? "bgv_far" : "bg_far",       v ? Dim(0.66f) : Theme.Hex("2A2038"), 0.9f,  -24, 0.90f);
+                AddParallax(v ? "bgv_castle" : "bg_castle", v ? Dim(0.80f) : Theme.Hex("531B26"), 0.6f,  -20, 0.82f);
+                AddParallax(v ? "bgv_mid" : "bg_mid",       v ? Dim(0.44f) : Theme.Hex("241A30"), 0.2f,  -17, 0.72f);
+                AddParallax(v ? "bgv_near" : "bg_near",     v ? Dim(0.28f) : Theme.Hex("140E1C"), -0.4f, -14, 0.60f);
+                // The fog used to be a full-bleed haze at 30% over all of it, and that
+                // is what turned the hall into one flat mauve field with no ridges and
+                // no castle in it. In the painting the air is CLEAR: the depth comes
+                // from the layers being different brightnesses, not from smoke.
+                AddParallax(v ? "bgv_fog" : "bg_fog",       v ? Dim(0.55f) : Theme.Hex("3A1622"), 0.4f,  -12, 0.55f, 0.09f);
                 return;
             }
 
@@ -398,26 +409,35 @@ namespace TrustIssues
             Theme.Hex("2A0610"), Theme.Hex("160830"), Theme.Hex("042220"), Theme.Hex("2A1004"),
             Theme.Hex("10141C"),
         };
-        // The big visible difference between themes: a translucent colour wash over the
-        // whole backdrop (alpha baked in). Without this every backdrop reads near-black.
-        // Pushed strong so each mode/world is UNMISTAKABLY a different colour.
+        // The per-theme colour wash over the whole backdrop (alpha baked in), so each
+        // world reads as a different place.
+        //
+        // It used to be twice this strong, and that one number was the difference
+        // between the game and its own artwork: at alpha 0.46 the castle wasn't a
+        // night with a blood moon in it, it was a flat pink field with everything —
+        // mountains, castle, spires, fog — flooded out behind it. Sampling the
+        // gameplay painting settles the argument: its sky is (21,11,20) and its
+        // deepest mountain (37,17,29), i.e. almost black with a violet lean. So the
+        // wash is now a TINT on a night rather than a filter over one — every layer
+        // of backdrop art is visible again, and the only genuinely bright things on
+        // screen are the moon, the candles and the blood.
         static readonly Color[] ThemeWash =
         {
-            new Color(0.42f, 0.12f, 0.17f, 0.46f),  // castle  — crimson
-            new Color(0.10f, 0.22f, 0.55f, 0.52f),  // crypt   — cold blue
-            new Color(0.10f, 0.42f, 0.16f, 0.52f),  // swamp   — sickly green
-            new Color(0.52f, 0.34f, 0.08f, 0.50f),  // throne  — hot amber
-            new Color(0.70f, 0.05f, 0.12f, 0.56f),  // blood moon — searing red
-            new Color(0.36f, 0.10f, 0.58f, 0.52f),  // abyss   — violet
-            new Color(0.04f, 0.48f, 0.44f, 0.52f),  // void    — teal
-            new Color(0.68f, 0.20f, 0.04f, 0.54f),  // inferno — ember orange
-            new Color(0.18f, 0.24f, 0.40f, 0.48f),  // arena   — cold steel
+            new Color(0.26f, 0.13f, 0.22f, 0.20f),  // castle  — violet-black night
+            new Color(0.10f, 0.22f, 0.55f, 0.30f),  // crypt   — cold blue
+            new Color(0.10f, 0.42f, 0.16f, 0.30f),  // swamp   — sickly green
+            new Color(0.52f, 0.34f, 0.08f, 0.28f),  // throne  — hot amber
+            new Color(0.70f, 0.05f, 0.12f, 0.36f),  // blood moon — searing red (its whole point)
+            new Color(0.36f, 0.10f, 0.58f, 0.30f),  // abyss   — violet
+            new Color(0.04f, 0.48f, 0.44f, 0.30f),  // void    — teal
+            new Color(0.68f, 0.20f, 0.04f, 0.32f),  // inferno — ember orange
+            new Color(0.18f, 0.24f, 0.40f, 0.28f),  // arena   — cold steel
         };
         // A big themed MOON in the upper sky — a bold, obvious per-theme anchor so the
         // modes read as completely different places at a glance.
         static readonly Color[] ThemeMoon =
         {
-            new Color(0.88f, 0.22f, 0.26f, 0.92f),  // castle  — blood moon
+            new Color(0.64f, 0.13f, 0.20f, 0.88f),  // castle  — blood moon (the painting's deep crimson)
             new Color(0.72f, 0.84f, 1.00f, 0.88f),  // crypt   — pale blue
             new Color(0.72f, 1.00f, 0.66f, 0.82f),  // swamp   — sickly green
             new Color(1.00f, 0.82f, 0.42f, 0.92f),  // throne  — gold
@@ -447,8 +467,12 @@ namespace TrustIssues
         static readonly float[] ThemeCastleVis =
         { 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.22f, 0.18f, 0.30f, 0.55f };
         // Moon world-diameter per theme (Blood Moon looms huge; the arena's is small).
+        // Measured against the artwork: its moon is a disc about a quarter of the
+        // screen height, high on the right where the castle spires cut into it. The
+        // view is 11.2 units tall, so the Castle's moon is ~2.9 — it was 7.5, which
+        // is two thirds of the screen and reads as a red sky, not a moon.
         static readonly float[] ThemeMoonSize =
-        { 7.5f, 6.0f, 6.5f, 7.0f, 12.0f, 8.0f, 7.0f, 8.5f, 5.0f };
+        { 2.9f, 2.6f, 2.8f, 3.0f, 6.0f, 3.4f, 3.0f, 3.6f, 2.4f };
 
         public static int WorldOf(int floorIdx) => Mathf.Clamp((floorIdx / 10) % 4, 0, 3);
 
@@ -594,75 +618,205 @@ namespace TrustIssues
             r.offsetMin = offMin; r.offsetMax = offMax;
         }
 
+        // ---- the HUD, laid out off the gameplay artwork ----------------------
+        // Every position here is measured from the painting (1568x1003) and scaled
+        // by 1920/1568 into canvas units, then anchored to the CORNER it belongs to
+        // — a tall phone gives the canvas far less than 1080 of height, so anything
+        // positioned from the centre walks off the screen there.
+        Image[] _heartPips;      // the lives row beside the portrait
+        Text _stageText;         // "STAGE 2 / 5" under the title
+        GameObject _hudChrome;   // everything that shows only while a floor is running
+
         void BuildHUD()
         {
             BuildLevelFrame();
-            _hud = Theme.Label(Theme.Canvas.transform, "DEATHS  0", 46, Theme.Player,
-                new Vector2(0f, 1f), new Vector2(280, -55), new Vector2(520, 70),
-                TextAnchor.MiddleLeft);
+
+            // One container for the whole play-time HUD, so showing and hiding it is
+            // a single switch instead of six.
+            _hudChrome = new GameObject("HudChrome", typeof(RectTransform));
+            _hudChrome.transform.SetParent(Theme.Canvas.transform, false);
+            var hrt = _hudChrome.GetComponent<RectTransform>();
+            hrt.anchorMin = Vector2.zero; hrt.anchorMax = Vector2.one;
+            hrt.offsetMin = hrt.offsetMax = Vector2.zero;
+            var chrome = _hudChrome.transform;
+            var topLeft = new Vector2(0f, 1f);
+
+            BuildPortraitPlate(chrome);
+
+            // The title, centred along the top rail in the artwork's Roman serif:
+            // the floor in blood red, the world it belongs to in candle gold.
+            _hud = Theme.Label(chrome, "", 46, Theme.Player,
+                new Vector2(0.5f, 1f), new Vector2(0, -56), new Vector2(1500, 76));
+            if (Theme.MenuFont != null) _hud.font = Theme.MenuFont;
+            _hud.supportRichText = true;
+            _hud.raycastTarget = false;
+
+            _stageText = Theme.Label(chrome, "", 27, new Color(0.80f, 0.75f, 0.70f, 0.85f),
+                new Vector2(0.5f, 1f), new Vector2(0, -110), new Vector2(900, 40));
+            if (Theme.MenuFont != null) _stageText.font = Theme.MenuFont;
+            _stageText.raycastTarget = false;
+
             _toast = Theme.Label(Theme.Canvas.transform, "", 60, Theme.Player,
                 new Vector2(0.5f, 0.5f), new Vector2(0, 150), new Vector2(1400, 100));
 
-            // Bat-flight meter (top-left under the deaths line).
+            // The blood bar under the portrait — the bat-flight meter, wearing the
+            // artwork's ornate end-capped frame instead of a plain black box.
             var barBg = new GameObject("FlyBarBg", typeof(RectTransform));
-            barBg.transform.SetParent(Theme.Canvas.transform, false);
-            var bgi = barBg.AddComponent<Image>(); bgi.color = new Color(0, 0, 0, 0.5f);
+            barBg.transform.SetParent(chrome, false);
+            var bgi = barBg.AddComponent<Image>();
+            bgi.color = new Color(0.05f, 0.02f, 0.03f, 0.85f);
+            bgi.raycastTarget = false;
             var brt = bgi.rectTransform;
-            brt.anchorMin = brt.anchorMax = new Vector2(0f, 1f); brt.pivot = new Vector2(0f, 1f);
-            // Pushed right so the "BAT" label (sits to the bar's left) is fully on
-            // screen — it was clipping off the left edge in Endless/Blood Moon.
-            brt.anchoredPosition = new Vector2(150, -110); brt.sizeDelta = new Vector2(320, 26);
-            Theme.Label(barBg.transform, "BAT", 22, new Color(1, 1, 1, 0.75f),
-                new Vector2(0f, 0.5f), new Vector2(-46, 0), new Vector2(80, 30));
+            brt.anchorMin = brt.anchorMax = topLeft; brt.pivot = new Vector2(0f, 1f);
+            brt.anchoredPosition = new Vector2(181, -74); brt.sizeDelta = new Vector2(250, 34);
             var fill = new GameObject("FlyBarFill", typeof(RectTransform));
             fill.transform.SetParent(barBg.transform, false);
-            _flyBar = fill.AddComponent<Image>(); _flyBar.color = Theme.Player;
+            _flyBar = fill.AddComponent<Image>();
+            _flyBar.color = new Color(0.62f, 0.06f, 0.10f, 1f);   // the painted blood red
+            _flyBar.raycastTarget = false;
             var frt = _flyBar.rectTransform;
             frt.anchorMin = frt.anchorMax = new Vector2(0f, 0.5f);
             frt.pivot = new Vector2(0f, 0.5f);
-            frt.anchoredPosition = new Vector2(2, 0);
-            frt.sizeDelta = new Vector2(316, 22);
+            frt.anchoredPosition = new Vector2(3, 0);
+            frt.sizeDelta = new Vector2(BarFillW, 26);
+            // The bar's own frame, drawn over the fill so the fill reads as liquid
+            // inside it. bar_frame is the dropped-in art; the ornate border stands in
+            // if it ever goes missing.
+            var barArt = Assets.Sprite("bar_frame");
+            var barFrame = new GameObject("FlyBarFrame", typeof(RectTransform)).AddComponent<Image>();
+            barFrame.transform.SetParent(barBg.transform, false);
+            barFrame.sprite = barArt != null ? barArt : Gothic.Frame;
+            barFrame.type = Image.Type.Sliced;
+            barFrame.pixelsPerUnitMultiplier = barArt != null ? 0.35f : Gothic.PlateFrameMul;
+            barFrame.raycastTarget = false;
+            var bfr = barFrame.rectTransform;
+            bfr.anchorMin = Vector2.zero; bfr.anchorMax = Vector2.one;
+            bfr.offsetMin = new Vector2(-6, -6); bfr.offsetMax = new Vector2(6, 6);
 
-            // Mute toggle (top-right). Reflects the saved preference immediately.
-            _muteBtn = Theme.Button(Theme.Canvas.transform, Audio.Muted ? "✕" : "♪",
-                new Color(0, 0, 0, 0.45f), Color.white, 40,
-                new Vector2(1f, 1f), new Vector2(-70, -64), new Vector2(96, 96), ToggleMute);
-
-            // PAUSE (top-left). Pausing used to be Escape-ONLY, which on a phone —
-            // where there is no Esc key — meant a player could never open the pause
-            // menu and therefore could never reach MAIN MENU. Blood Moon made that
-            // fatal: it auto-restarts instead of ending, so there was no result
-            // screen to escape through either and the mode became a one-way trap.
-            // An on-screen button gives every mode a way out on every device.
-            _pauseBtn = Theme.Button(Theme.Canvas.transform, "II",
-                new Color(0, 0, 0, 0.45f), Color.white, 38,
-                new Vector2(0f, 1f), new Vector2(68, -58), new Vector2(88, 88), TogglePause);
+            // PAUSE, top-right, as the artwork draws it: a framed stone plate rather
+            // than a floating letterform. (It exists because pausing used to be
+            // Escape-ONLY — on a phone that meant no way back to the main menu, and
+            // Blood Moon, which restarts instead of ending, became a one-way trap.)
+            _pauseBtn = Gothic.Button(chrome, "II", new Vector2(-82, -78), new Vector2(84, 84),
+                TogglePause, false, 40, new Vector2(1f, 1f));
             _pauseBtn.gameObject.SetActive(false);   // shown only while actually playing
 
-            // Blood-shard counter (top-right, left of the mute button). The diamond
-            // icon is a 45°-rotated Image — the pixel font has no ♦ glyph (same
-            // reason the hearts HUD uses '*' pips).
+            // Mute sits under it, smaller — the artwork keeps the top rail clean, but
+            // a player who wants silence right now must not have to dig for it.
+            _muteBtn = Gothic.Button(chrome, Audio.Muted ? "✕" : "♪", new Vector2(-82, -176),
+                new Vector2(68, 68), ToggleMute, false, 30, new Vector2(1f, 1f));
+
+            // Blood-shard counter, left of the pause plate. The diamond icon is a
+            // 45°-rotated Image — the pixel font has no ♦ glyph.
             _shardHud = new GameObject("Shards", typeof(RectTransform));
-            _shardHud.transform.SetParent(Theme.Canvas.transform, false);
+            _shardHud.transform.SetParent(chrome, false);
             var srt = _shardHud.GetComponent<RectTransform>();
             srt.anchorMin = srt.anchorMax = new Vector2(1f, 1f); srt.pivot = new Vector2(1f, 1f);
-            srt.anchoredPosition = new Vector2(-130, -50); srt.sizeDelta = new Vector2(240, 60);
+            srt.anchoredPosition = new Vector2(-140, -50); srt.sizeDelta = new Vector2(240, 60);
             var dia = new GameObject("Dia", typeof(RectTransform)).AddComponent<Image>();
             dia.transform.SetParent(_shardHud.transform, false);
             dia.color = Theme.Coin; dia.raycastTarget = false;
             var drt = dia.rectTransform;
             drt.anchorMin = drt.anchorMax = new Vector2(0f, 0.5f); drt.pivot = new Vector2(0.5f, 0.5f);
-            drt.anchoredPosition = new Vector2(24, 0); drt.sizeDelta = new Vector2(20, 20);
+            drt.anchoredPosition = new Vector2(24, 0); drt.sizeDelta = new Vector2(22, 22);
             drt.localRotation = Quaternion.Euler(0, 0, 45f);
             _shardText = Theme.Label(_shardHud.transform, Currency.Balance.ToString(), 38, Theme.Coin,
                 new Vector2(0f, 0.5f), new Vector2(140, 0), new Vector2(190, 56), TextAnchor.MiddleLeft);
+            if (Theme.MenuFont != null) _shardText.font = Theme.MenuFont;
             _shardText.raycastTarget = false;
-            _shardHud.SetActive(false);                    // shown alongside _hud during play
+            _shardHud.SetActive(false);                    // shown alongside the title during play
             Currency.OnEarned += OnShardsEarned;
+
+            BuildHudFooter(chrome);
+            _hudChrome.SetActive(false);
 
             BuildTouchControls();
             BuildTrollButtons();
             BuildRotatePanel();
+        }
+
+        const float BarFillW = 244f;   // the blood bar's full-length fill
+
+        // The character plate in the top-left corner of the artwork: an ornate frame
+        // with the Heir's portrait in it, and the lives row beside it.
+        void BuildPortraitPlate(Transform chrome)
+        {
+            var topLeft = new Vector2(0f, 1f);
+            var plate = new GameObject("Portrait", typeof(RectTransform)).AddComponent<Image>();
+            plate.transform.SetParent(chrome, false);
+            plate.color = new Color(0.055f, 0.028f, 0.045f, 0.95f);
+            plate.raycastTarget = false;
+            var prt = plate.rectTransform;
+            prt.anchorMin = prt.anchorMax = topLeft; prt.pivot = new Vector2(0f, 1f);
+            prt.anchoredPosition = new Vector2(22, -10); prt.sizeDelta = new Vector2(150, 140);
+
+            // The Heir himself — his own idle sprite, so the face on the plate is
+            // literally the skin you're wearing (change skin, change portrait).
+            var frames = Assets.Grid("vamp_idle_sheet", 64, 3);
+            Sprite face = (frames != null && frames.Length > 0) ? frames[0] : Assets.Sprite("vamp_idle");
+            if (face != null)
+            {
+                var img = new GameObject("Face", typeof(RectTransform)).AddComponent<Image>();
+                img.transform.SetParent(plate.transform, false);
+                img.sprite = face; img.preserveAspect = true; img.raycastTarget = false;
+                img.color = Skins.Shade(Skins.Current);
+                var irt = img.rectTransform;
+                irt.anchorMin = irt.anchorMax = new Vector2(0.5f, 0.5f); irt.pivot = new Vector2(0.5f, 0.5f);
+                irt.anchoredPosition = Vector2.zero; irt.sizeDelta = new Vector2(132, 132);
+            }
+            Gothic.InnerFrame(plate.transform);
+
+            // The lives row. It only appears in the modes that HAVE lives — the
+            // Castle lets you retry forever, and a row of hearts that never empties
+            // would be the screen telling you a comfortable lie.
+            _heartPips = new Image[Diff.MaxHearts];
+            for (int i = 0; i < _heartPips.Length; i++)
+            {
+                var h = new GameObject("Heart", typeof(RectTransform)).AddComponent<Image>();
+                h.transform.SetParent(chrome, false);
+                h.sprite = Gothic.Heart; h.raycastTarget = false; h.preserveAspect = true;
+                var rt = h.rectTransform;
+                rt.anchorMin = rt.anchorMax = topLeft; rt.pivot = new Vector2(0.5f, 0.5f);
+                rt.anchoredPosition = new Vector2(205 + i * 60, -38);
+                rt.sizeDelta = new Vector2(46, 46);
+                h.gameObject.SetActive(false);
+                _heartPips[i] = h;
+            }
+        }
+
+        // The ornament along the bottom rail of the artwork: a stone bar with a skull
+        // set at each end and a blood diamond at its heart. Purely decorative, and
+        // deliberately narrow so it sits BETWEEN the two thumb clusters on a phone.
+        void BuildHudFooter(Transform chrome)
+        {
+            var bottom = new Vector2(0.5f, 0f);
+            var bar = new GameObject("HudFooter", typeof(RectTransform)).AddComponent<Image>();
+            bar.transform.SetParent(chrome, false);
+            bar.color = new Color(0.075f, 0.047f, 0.062f, 0.92f);
+            bar.raycastTarget = false;
+            var rt = bar.rectTransform;
+            rt.anchorMin = rt.anchorMax = bottom; rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.anchoredPosition = new Vector2(0, 48); rt.sizeDelta = new Vector2(560, 60);
+            Gothic.InnerFrame(bar.transform);
+
+            var gem = new GameObject("Gem", typeof(RectTransform)).AddComponent<Image>();
+            gem.transform.SetParent(bar.transform, false);
+            gem.sprite = Gothic.Diamond; gem.raycastTarget = false;
+            var grt = gem.rectTransform;
+            grt.anchorMin = grt.anchorMax = new Vector2(0.5f, 0.5f); grt.pivot = grt.anchorMin;
+            grt.sizeDelta = new Vector2(34, 34);
+
+            for (int s = -1; s <= 1; s += 2)
+            {
+                var sk = new GameObject("Skull", typeof(RectTransform)).AddComponent<Image>();
+                sk.transform.SetParent(bar.transform, false);
+                sk.sprite = Gothic.Skull; sk.raycastTarget = false; sk.preserveAspect = true;
+                sk.color = new Color(0.62f, 0.58f, 0.54f, 0.85f);
+                var skrt = sk.rectTransform;
+                skrt.anchorMin = skrt.anchorMax = new Vector2(0.5f, 0.5f); skrt.pivot = skrt.anchorMin;
+                skrt.anchoredPosition = new Vector2(s * 200, 0);
+                skrt.sizeDelta = new Vector2(38, 38);
+            }
         }
 
         GameObject _shardHud;
@@ -1143,7 +1297,7 @@ namespace TrustIssues
             Time.timeScale = 1f;
             ApplyTheme(0);               // menu always shows the Castle mood
             Audio.Music("music", 0.3f);
-            _hud.gameObject.SetActive(false);
+            if (_hudChrome != null) _hudChrome.SetActive(false);
             if (_shardHud != null) _shardHud.SetActive(false);
             if (_touchPanel != null) { _touchPanel.SetActive(false); TouchInput.Clear(); }
             _rig.SetFrame(-1.5f, CamY, NormalCamSize);   // reset in case we left a zoomed-out boss arena
@@ -3509,6 +3663,26 @@ namespace TrustIssues
 
         // Common setup for any run. A new run starts the death count fresh;
         // restarting/respawning within a run keeps it.
+        // ---- dev screenshot hooks (see ShotBot) ------------------------------
+        // The whole game is built from code, so these three lines are the only way
+        // to LOOK at a floor without a phone in hand: a headless player launched
+        // with -shot drives them and writes PNGs. Harmless in a shipped build —
+        // nothing calls them unless that flag is on the command line.
+        public void DevStartFloor(int levelIndex)
+        {
+            _mode = Mode.Curated;
+            BeginRun(Mathf.Clamp(levelIndex, 0, Levels.Count - 1));
+        }
+
+        public void DevWarp(float x)
+        {
+            if (_player == null) return;
+            _player.transform.position = new Vector3(x, _player.transform.position.y + 0.4f, 0f);
+            SnapCamera();
+        }
+
+        public void DevOpenBestiary() => ShowCodex();
+
         void BeginRun(int levelIndex)
         {
             // Hard guarantee: whatever state timeScale was left in (a stray
@@ -3541,7 +3715,7 @@ namespace TrustIssues
             // when you finish it, never because you ran out of lives.
             _hearts = (_mode == Mode.Curated || _mode == Mode.Versus || _mode == Mode.Custom) ? -1
                      : _mode == Mode.Daily ? Diff.StartHearts + 2 : Diff.StartHearts;
-            _hud.gameObject.SetActive(true);
+            if (_hudChrome != null) _hudChrome.SetActive(true);
             if (_shardHud != null)
             {
                 _shardHud.SetActive(true);
@@ -3745,7 +3919,7 @@ namespace TrustIssues
                 BuildPortals(pp);
             _rumorFloorUsed = false;
             BuildReactiveTraps();   // the "Trust Issues" learned traps from past deaths
-            PlaceTorches();         // gothic ambience — flickering wall sconces
+            PlaceLanterns();        // gothic ambience — chained lanterns off the vault
             BuildAerialHazards();
             if (_mode == Mode.Daily && _levelIndex == 1 && Rumor.HiddenDoor)
                 BuildHiddenDoor();  // tonight's rumor (2): the ghost door of night 2
@@ -3976,20 +4150,47 @@ namespace TrustIssues
             ShakeCam(0.12f, 0.08f);                   // …and the castle sealing behind you
         }
 
-        // Gothic ambience: flickering torch sconces along the level with a warm glow.
-        void PlaceTorches()
+        // Gothic ambience: the lanterns the artwork hangs down every hall — an iron
+        // cage on a chain from the vault, a live flame inside it, a warm pool of
+        // light around it. They used to be bare flames floating at head height with
+        // nothing holding them up, which is the detail that made a castle hall read
+        // as a dark room with some fire in it.
+        void PlaceLanterns()
         {
             if (_mode == Mode.Versus) return;
             var frames = Assets.Sheet("torch", 32);
-            if (frames == null || frames.Length == 0) return;   // no torch art → skip silently
+
+            const float CeilY = 2.9f;      // the vault's underside
+            const float LampY = 1.05f;     // where the lantern hangs — clear of the jump apex
             for (float x = _level.Spawn.x + 3f; x <= _levelEndX - 1f; x += 6f)
             {
-                float y = 1.2f;   // upper-background sconce height (off the play plane)
-                var go = Theme.SpriteBox("Torch", _levelRoot, new Vector3(x, y, 0f), new Vector2(1f, 1f), frames[0], 1);
-                go.AddComponent<LoopAnim>().Init(frames, 10f);
-                var glow = Theme.SpriteBox("TorchGlow", go.transform, new Vector3(x, y, 0f), new Vector2(2.4f, 2.4f), Theme.Moon, 0);
-                glow.GetComponent<SpriteRenderer>().color = new Color(1f, 0.55f, 0.2f, 0.2f);
-                var fp = glow.AddComponent<FaintPulse>(); fp.min = 0.1f; fp.max = 0.24f; fp.speed = 6f;
+                // The chain, drawn link by link and passing BEHIND the ceiling stone
+                // (order 0) so it looks bolted into the vault rather than stuck on it.
+                float top = LampY + 0.42f;
+                var chain = new GameObject("Chain");
+                chain.transform.SetParent(_levelRoot, false);
+                chain.transform.position = new Vector3(x, (top + CeilY) / 2f, 0f);
+                var csr = chain.AddComponent<SpriteRenderer>();
+                csr.sprite = Gothic.ChainLink;
+                csr.drawMode = SpriteDrawMode.Tiled;
+                csr.size = new Vector2(0.16f, CeilY - top);
+                csr.sortingOrder = 0;
+
+                // The pool of candlelight first, so everything else sits inside it.
+                var glow = Theme.SpriteBox("LanternGlow", _levelRoot, new Vector3(x, LampY, 0f),
+                    new Vector2(3.0f, 3.0f), Theme.Moon, 0);
+                glow.GetComponent<SpriteRenderer>().color = new Color(1f, 0.52f, 0.18f, 0.16f);
+                var fp = glow.AddComponent<FaintPulse>(); fp.min = 0.09f; fp.max = 0.20f; fp.speed = 5f;
+
+                // The flame inside the glass, then the cage over the top of it.
+                if (frames != null && frames.Length > 0)
+                {
+                    var fire = Theme.SpriteBox("Flame", _levelRoot, new Vector3(x, LampY - 0.03f, 0f),
+                        new Vector2(0.42f, 0.52f), frames[0], 1);
+                    fire.AddComponent<LoopAnim>().Init(frames, 10f);
+                }
+                Theme.SpriteBox("Lantern", _levelRoot, new Vector3(x, LampY + 0.06f, 0f),
+                    new Vector2(0.62f, 0.94f), Gothic.LanternCage, 2);
             }
         }
 
@@ -4061,19 +4262,44 @@ namespace TrustIssues
             // In a boss arena the centred boss name + HP bar own the top of the screen,
             // so keep the corner HUD MINIMAL (just your shield + ammo) — no FLOOR/DEATHS
             // clutter overlapping the boss title. '*' pips render in the pixel font (♥ did not).
+            UpdateHearts();
+            string gold = ColorUtility.ToHtmlStringRGB(Theme.Coin);
             if (InBossRoom)
             {
                 string shield = _bossHp > 0 ? "SHIELD " + new string('*', _bossHp) : "";
                 string ammoB = _player != null && _player.ammo > 0 ? "     AMMO " + _player.ammo : "";
                 _hud.text = shield + ammoB;
+                if (_stageText != null) _stageText.text = "";
                 return;
             }
-            string left = _mode == Mode.Endless ? $"FLOOR {_levelIndex + 1}    "
-                        : _mode == Mode.Daily ? $"NIGHT {_levelIndex + 1}/{DailyLen}    "
-                        : _mode == Mode.Versus ? $"RACE {Net.RoomCode}  ({Net.PlayerCount})    "
-                        : $"FLOOR {_levelIndex + 1}  •  {WorldNames[WorldOf(_levelIndex)]}    ";
-            string hearts = _hearts >= 0 ? "    LIVES " + Mathf.Max(0, _hearts) : "";
-            _hud.text = left + "DEATHS " + _deaths + hearts;
+            // The artwork's own top line: the floor in blood red, the place it's in
+            // in candle gold, then the tally that never stops climbing.
+            string place = _mode == Mode.Endless ? $"FLOOR {_levelIndex + 1}"
+                         : _mode == Mode.Daily ? $"NIGHT {_levelIndex + 1}/{DailyLen}"
+                         : _mode == Mode.Versus ? $"RACE {Net.RoomCode}"
+                         : $"FLOOR {_levelIndex + 1}   <color=#{gold}>•   {WorldNames[WorldOf(_levelIndex)]}</color>";
+            _hud.text = place + "     DEATHS " + _deaths;
+
+            // …and the stage counter beneath it, which the HUD had nowhere to say
+            // even though every roomed floor is scored in stages.
+            if (_stageText == null) return;
+            int stages = _level != null ? _level.Rooms.Count : 0;
+            _stageText.text = stages > 1 ? $"STAGE {Mathf.Min(_stageIndex + 1, stages)} / {stages}" : "";
+        }
+
+        // Light one pip per life left, dim the ones already spent. Hidden entirely in
+        // the modes that retry forever — see BuildPortraitPlate.
+        void UpdateHearts()
+        {
+            if (_heartPips == null) return;
+            for (int i = 0; i < _heartPips.Length; i++)
+            {
+                if (_heartPips[i] == null) continue;
+                bool show = _hearts >= 0 && i < Mathf.Max(_hearts, Diff.StartHearts);
+                if (_heartPips[i].gameObject.activeSelf != show) _heartPips[i].gameObject.SetActive(show);
+                if (show)
+                    _heartPips[i].color = i < _hearts ? Color.white : new Color(0.28f, 0.20f, 0.24f, 0.85f);
+            }
         }
 
         // Lets the player controller refresh the ammo readout as a clip is spent.
@@ -4085,6 +4311,12 @@ namespace TrustIssues
         /// desaturated and dark — the stone should read as "this world's rock",
         /// never as coloured plastic that fights the hazards for attention.
         /// </summary>
+        /// <summary>The world's stone, darkened to the value the artwork gives a ledge.</summary>
+        Color FloorStone
+        {
+            get { var c = WorldStone; return new Color(c.r * 0.52f, c.g * 0.52f, c.b * 0.55f, 1f); }
+        }
+
         Color WorldStone
         {
             get
@@ -4109,8 +4341,54 @@ namespace TrustIssues
         void BuildPlatform(Rect2 p)
         {
             bool ceiling = p.pos.y > 2.5f && p.size.x > p.size.y * 2f;
+            // …and the third case, which used to fall through to the floor builder:
+            // the DIVIDER WALLS between chambers. They were getting a blood-red
+            // landing lip and gore running down them, so every wall in the castle
+            // read as a floor stood on its end. A wall is masonry, and in the
+            // artwork it carries the banners.
+            bool wall = p.size.y > p.size.x * 1.4f;
             if (ceiling) BuildCeilingVault(p);
+            else if (wall) BuildWall(p);
             else BuildStoneFloor("Platform", p.pos, p.size, null);
+        }
+
+        // A masonry wall: castle stone, a lit corner down the side the candles reach,
+        // and — if it's tall enough to carry one — the crimson banner the artwork
+        // hangs down every wall of the hall.
+        void BuildWall(Rect2 p)
+        {
+            var go = new GameObject("Wall");
+            go.transform.SetParent(_levelRoot, false);
+            go.transform.position = p.pos;
+            var sr = go.AddComponent<SpriteRenderer>();
+            sr.sprite = Theme.StoneTile;
+            sr.drawMode = SpriteDrawMode.Tiled;
+            sr.size = p.size;
+            sr.sortingOrder = 1;
+            var stone = WorldStone;
+            sr.color = new Color(stone.r * 0.46f, stone.g * 0.46f, stone.b * 0.50f, 1f);
+            go.AddComponent<BoxCollider2D>().size = p.size;   // gameplay untouched
+
+            // A hairline of candlelight down each face, so the column has edges
+            // against a near-black backdrop instead of dissolving into it.
+            for (int s = -1; s <= 1; s += 2)
+            {
+                var lit = Theme.Box("WallEdge", go.transform, Vector2.zero,
+                    new Vector2(0.055f, p.size.y), new Color(0.46f, 0.40f, 0.46f, 0.40f), 2);
+                lit.transform.localPosition = new Vector3(s * (p.size.x / 2f - 0.03f), 0f, 0f);
+            }
+
+            // The banner. Seeded off the wall's own position so a given floor always
+            // dresses itself the same way — décor that reshuffled every retry would
+            // read as flicker on a screen you stare at for fifty attempts.
+            if (p.size.y < 2.2f || p.size.x < 0.5f) return;
+            var rng = new System.Random(Mathf.RoundToInt(p.pos.x * 61.7f + p.pos.y * 13.1f));
+            if (rng.Next(3) == 0) return;                     // not every wall wears one
+            float bh = Mathf.Min(2.4f, p.size.y * 0.7f);
+            var ban = Theme.SpriteBox("Banner", go.transform,
+                new Vector3(p.pos.x, p.pos.y + p.size.y / 2f - bh / 2f - 0.15f, 0f),
+                new Vector2(bh * 0.34f, bh), Gothic.Banner, 2);
+            ban.transform.localPosition = new Vector3(0f, p.size.y / 2f - bh / 2f - 0.15f, 0f);
         }
 
         // A vaulted ceiling: dark recessed stone that falls AWAY from the eye, with
@@ -4121,16 +4399,27 @@ namespace TrustIssues
             var go = new GameObject("Ceiling");
             go.transform.SetParent(_levelRoot, false);
             go.transform.position = p.pos;
-            var sr = go.AddComponent<SpriteRenderer>();
-            sr.sprite = Theme.StoneTile;
-            sr.drawMode = SpriteDrawMode.Tiled;
-            sr.size = p.size;
-            sr.sortingOrder = 1;
-            // Deep shadow: a ceiling is the least-lit surface in a castle, and a dark
-            // band at the top of frame reads as "space above" instead of "lid".
-            sr.color = new Color(0.34f, 0.30f, 0.34f, 1f);
             var col = go.AddComponent<BoxCollider2D>();
             col.size = p.size;                       // unchanged — gameplay identical
+
+            // The stone is a CHILD, drawn taller than the ceiling really is so it runs
+            // up past the top of the frame. The collider above keeps the true
+            // thickness, so nothing about gameplay changes — but the strip of empty
+            // black sky that used to sit above every ceiling (a quarter of the screen,
+            // in a game whose artwork has masonry right up to the frame) is gone.
+            const float Overhead = 5f;
+            var vault = new GameObject("Vault");
+            vault.transform.SetParent(go.transform, false);
+            vault.transform.localPosition = new Vector3(0f, Overhead / 2f, 0f);
+            var sr = vault.AddComponent<SpriteRenderer>();
+            sr.sprite = Theme.StoneTile;
+            sr.drawMode = SpriteDrawMode.Tiled;
+            sr.size = new Vector2(p.size.x, p.size.y + Overhead);
+            sr.sortingOrder = 1;
+            // In the artwork the vault is the BRIGHTEST surface in the hall — big
+            // legible brickwork catching every lantern from below — so it wears the
+            // stone tile at full value while the ledges are stepped down.
+            sr.color = new Color(0.98f, 0.90f, 0.84f, 1f);   // warm: it's lit by fire, not moonlight
 
             // A soft underline along the underside so the surface still reads as
             // solid ground when the Chapel flips gravity and you walk on it.
@@ -4171,11 +4460,14 @@ namespace TrustIssues
             sr.drawMode = SpriteDrawMode.Tiled;
             sr.size = size;
             sr.sortingOrder = 1;
-            // The stonework itself now takes the world's colour. Backdrops already
+            // The stonework itself takes the world's colour. Backdrops already
             // changed per world, but the FLOOR you stare at for the whole level was
             // the identical grey everywhere — so the crypt and the swamp still felt
             // like the same place. This is the other half of the sameness fix.
-            sr.color = WorldStone;
+            // Halved, because in the artwork the LEDGES are the dark thing in the
+            // room and the ceiling is the lit one; the tile is now bright enough
+            // that a floor taking it neat would out-glare the walls.
+            sr.color = FloorStone;
             var col = go.AddComponent<BoxCollider2D>();
             col.size = size;
             // 2.5D: stacked darker copies behind the face read as extruded stone
@@ -4186,7 +4478,7 @@ namespace TrustIssues
             if (Depth25)
             {
                 float[] shade = { 0.72f, 0.55f, 0.4f };
-                var stone = WorldStone;               // extruded sides share the world's rock
+                var stone = FloorStone;               // extruded sides share the world's rock
                 for (int i = 0; i < 3; i++)
                 {
                     var slice = new GameObject("DepthSlice");
@@ -4293,11 +4585,22 @@ namespace TrustIssues
                 }
                 case TrapType.FakeExit:
                 {
-                    var sp = Assets.Sprite("door");
+                    // The Bestiary calls this the FALSE COFFIN — "the brightest, most
+                    // obvious door is death" — and paints it. It used to be the
+                    // generic door sprite dyed pink, which matched neither the book
+                    // nor the castle.
+                    var painted = Assets.TrapArt("fakeexit");
+                    var sp = painted ?? Assets.Sprite("door");
                     GameObject go = sp != null
-                        ? Theme.SpriteBox("FakeExit", _levelRoot, t.pos, new Vector2(1.7f, 2.1f), sp, 2)
+                        ? Theme.SpriteBox("FakeExit", _levelRoot, t.pos,
+                                          painted != null ? new Vector2(1.9f, 2.2f) : new Vector2(1.7f, 2.1f), sp, 2)
                         : Theme.Box("FakeExit", _levelRoot, t.pos, t.size, Theme.Trick, 2);
-                    if (sp != null) go.GetComponent<SpriteRenderer>().color = new Color(1f, 0.45f, 0.5f);
+                    if (painted == null && sp != null) go.GetComponent<SpriteRenderer>().color = new Color(1f, 0.45f, 0.5f);
+                    // The bait is that it looks WELCOMING, so it keeps a warm glow
+                    // behind it either way — the lie is the invitation, not the paint.
+                    var lure = Theme.SpriteBox("FakeGlow", go.transform, t.pos, new Vector2(3.0f, 3.0f), Theme.Moon, 1);
+                    lure.GetComponent<SpriteRenderer>().color = new Color(1f, 0.72f, 0.35f, 0.16f);
+                    var lp = lure.AddComponent<FaintPulse>(); lp.min = 0.09f; lp.max = 0.20f; lp.speed = 1.6f;
                     FitTrigger(go, 0.7f);
                     go.AddComponent<Trap>().Init(TrapType.FakeExit);
                     break;
@@ -4333,7 +4636,9 @@ namespace TrustIssues
                     GameObject go = sp != null
                         ? Theme.SpriteBox("Spikes", _levelRoot, t.pos, t.size, sp, 3)
                         : Theme.Box("Spikes", _levelRoot, t.pos, t.size, Theme.Danger, 3);
-                    if (painted == null && sp != null) go.GetComponent<SpriteRenderer>().color = Theme.Danger; // blood
+                    // Blood red: the Bestiary's iron is multiplied onto the artwork's
+                    // colour, so a spike reads from across the hall (see Trap.SpikeRed).
+                    if (sp != null) go.GetComponent<SpriteRenderer>().color = painted != null ? Trap.SpikeRed : Theme.Danger;
                     FitTrigger(go, 0.85f); // reliable: roughly the full visible spike
                     var kz = go.AddComponent<KillZone>(); kz.msg = "Impaled."; kz.trapTag = (int)TrapType.SpikeStatic;
                     break;
@@ -4345,7 +4650,7 @@ namespace TrustIssues
                     GameObject go = sp != null
                         ? Theme.SpriteBox("GrowSpike", _levelRoot, t.pos, t.size, sp, 3)
                         : Theme.Box("GrowSpike", _levelRoot, t.pos, t.size, Theme.Danger, 3);
-                    if (painted == null && sp != null) go.GetComponent<SpriteRenderer>().color = Theme.Danger;
+                    if (sp != null) go.GetComponent<SpriteRenderer>().color = painted != null ? Trap.SpikeRed : Theme.Danger;
                     FitTrigger(go, 0.85f); // reliable spike hitbox
                     var kz = go.AddComponent<KillZone>(); kz.msg = "Skewered.";
                     var gtrap = go.AddComponent<Trap>();
@@ -4360,18 +4665,58 @@ namespace TrustIssues
                     go.transform.position = t.pos;
                     var col = go.AddComponent<BoxCollider2D>(); col.isTrigger = true;
                     col.size = new Vector2(1.2f, 1.6f);
-                    Theme.Box("Pole", go.transform, t.pos + new Vector2(0f, 0.1f),
-                        new Vector2(0.14f, 1.5f), Theme.Hex("BFE9FF"), 2);
-                    Theme.Box("Flag", go.transform, t.pos + new Vector2(0.32f, 0.5f),
-                        new Vector2(0.5f, 0.34f), Theme.Exit, 3);
+                    // A candle on an iron stand — the castle's own way of marking a
+                    // place. It used to be an ice-blue pole with a green flag, the
+                    // last two colours in the game that belonged to another palette.
+                    Theme.Box("Stand", go.transform, t.pos + new Vector2(0f, 0.05f),
+                        new Vector2(0.12f, 1.3f), new Color(0.20f, 0.17f, 0.22f, 1f), 2);
+                    Theme.Box("Foot", go.transform, t.pos + new Vector2(0f, -0.58f),
+                        new Vector2(0.62f, 0.14f), new Color(0.26f, 0.22f, 0.26f, 1f), 2);
+                    Theme.Box("Wax", go.transform, t.pos + new Vector2(0f, 0.72f),
+                        new Vector2(0.26f, 0.44f), new Color(0.72f, 0.14f, 0.18f, 1f), 3);
+                    var flame = Theme.SpriteBox("Flame", go.transform, t.pos + new Vector2(0f, 1.02f),
+                        new Vector2(0.26f, 0.34f), Theme.Moon, 4);
+                    flame.GetComponent<SpriteRenderer>().color = new Color(1f, 0.82f, 0.42f, 0.95f);
+                    var cf = flame.AddComponent<FaintPulse>(); cf.min = 0.7f; cf.max = 1f; cf.speed = 7f;
+                    var halo = Theme.SpriteBox("CheckGlow", go.transform, t.pos + new Vector2(0f, 0.9f),
+                        new Vector2(2.4f, 2.4f), Theme.Moon, 1);
+                    halo.GetComponent<SpriteRenderer>().color = new Color(1f, 0.68f, 0.28f, 0.16f);
                     go.AddComponent<Trap>().Init(TrapType.Checkpoint);
+                    break;
+                }
+                case TrapType.Reverse:
+                {
+                    // THE HEX OF CONFUSION. The Bestiary paints it as a spiral rune
+                    // and tells you to invert your instincts — but in the level it was
+                    // an invisible sensor, so the only way to learn it was to walk
+                    // into nothing and lose your hands. Now the rune is on the floor,
+                    // turning slowly, exactly as the book draws it.
+                    var painted = Assets.TrapArt("reverse");
+                    GameObject go = painted != null
+                        ? Theme.SpriteBox("Reverse", _levelRoot, t.pos, new Vector2(1.3f, 1.3f), painted, 2)
+                        : Theme.Box("Reverse", _levelRoot, t.pos, t.size, Theme.Trick, 2);
+                    if (painted != null) go.AddComponent<Spinner>().speed = 26f;   // a slow, wrong turn
+                    Theme.AddTrigger(go, painted != null ? Vector2.one * 0.7f : Vector2.one);
+                    go.AddComponent<Trap>().Init(TrapType.Reverse);
                     break;
                 }
                 case TrapType.BreakBlock:
                 {
-                    // A solid candy wall you must SHOOT (lavender = "breakable").
-                    var go = Theme.Box("BreakBlock", _levelRoot, t.pos, t.size, Theme.Trick, 2);
-                    Theme.AddSolid(go);
+                    // A cracked stone block you must SHOOT. It was lavender "candy",
+                    // the one survivor of the pre-vampire palette, sitting in a hall
+                    // of blood and masonry.
+                    var go = Theme.Box("BreakBlock", _levelRoot, t.pos, t.size, new Color(0.34f, 0.29f, 0.34f, 1f), 2);
+                    var bsr = go.GetComponent<SpriteRenderer>();
+                    bsr.sprite = Theme.StoneTile;
+                    bsr.drawMode = SpriteDrawMode.Tiled;
+                    bsr.size = t.size;
+                    go.transform.localScale = Vector3.one;      // tiled mode sizes it, not scale
+                    Theme.AddSolid(go).size = t.size;
+                    // The crack that says "this one is different" — a blood-red fissure
+                    // down its face, so a shootable block reads without a colour code.
+                    var crack = Theme.Box("Crack", go.transform, Vector2.zero,
+                        new Vector2(0.10f, t.size.y * 0.72f), new Color(0.62f, 0.09f, 0.13f, 0.9f), 3);
+                    crack.transform.localPosition = Vector3.zero;
                     go.AddComponent<Breakable>();
                     break;
                 }
@@ -4440,37 +4785,48 @@ namespace TrustIssues
                 }
                 case TrapType.FlameJet:
                 {
-                    var sp = Assets.TrapArt("flamejet") ?? Assets.Sprite("flame");
+                    var painted = Assets.TrapArt("flamejet");
+                    var sp = painted ?? Assets.Sprite("flame");
                     GameObject go = sp != null
                         ? Theme.SpriteBox("FlameJet", _levelRoot, t.pos, t.size, sp, 3)
                         : Theme.Box("FlameJet", _levelRoot, t.pos, t.size, Theme.Hex("FF7A1A"), 3);
                     FitTrigger(go, 0.8f);
                     var kz = go.AddComponent<KillZone>(); kz.msg = "Burned by the flame jet.";
-                    go.AddComponent<Trap>().Init(TrapType.FlameJet);
+                    var ftrap = go.AddComponent<Trap>();
+                    ftrap.paintedArt = painted != null;   // telegraph by brightness, not by dye
+                    ftrap.Init(TrapType.FlameJet);
                     break;
                 }
                 case TrapType.HolyWater:
                 {
-                    var sp = Assets.TrapArt("holywater") ?? Assets.Sprite("holywater");
+                    var painted = Assets.TrapArt("holywater");
+                    var sp = painted ?? Assets.Sprite("holywater");
                     GameObject go = sp != null
                         ? Theme.SpriteBox("HolyWater", _levelRoot, t.pos, t.size, sp, 3)
                         : Theme.Box("HolyWater", _levelRoot, t.pos, t.size, new Color(0.5f, 0.8f, 0.95f, 0.5f), 3);
                     FitTrigger(go, 0.9f);
                     var kz = go.AddComponent<KillZone>(); kz.msg = "Burned by holy water.";
-                    go.AddComponent<Trap>().Init(TrapType.HolyWater);
+                    var wtrap = go.AddComponent<Trap>();
+                    wtrap.paintedArt = painted != null;
+                    wtrap.Init(TrapType.HolyWater);
                     break;
                 }
                 case TrapType.BatSwoop:
                 {
-                    var frames = Assets.Sheet("bat_fly", 32);   // 128x32 strip = 4 frames
-                    var sp = (frames != null && frames.Length > 0) ? frames[0] : Theme.Bat;
-                    var go = Theme.SpriteBox("Bat", _levelRoot, t.pos, new Vector2(0.95f, 0.95f), sp, 4);
-                    // Blood-red from frame one so swooping bats are unmistakable (no glow disc).
-                    go.GetComponent<SpriteRenderer>().color = new Color(1f, 0.22f, 0.22f, 1f);
-                    go.AddComponent<BatEnemy>().Init(frames);
+                    // The Bestiary's own Swooping Bat, so what the page shows is what
+                    // hangs off the rafters. It rides in untinted and only flares red
+                    // on the wind-up — which is precisely the dodge cue the page
+                    // promises. (The old pixel flap-sheet stands in if the cut-out
+                    // ever goes missing.)
+                    var painted = Assets.TrapArt("bat");
+                    var frames = painted != null ? null : Assets.Sheet("bat_fly", 32);
+                    var sp = painted ?? ((frames != null && frames.Length > 0) ? frames[0] : Theme.Bat);
+                    var go = Theme.SpriteBox("Bat", _levelRoot, t.pos,
+                        painted != null ? new Vector2(1.25f, 0.95f) : new Vector2(0.95f, 0.95f), sp, 4);
+                    go.AddComponent<BatEnemy>().Init(frames, painted != null);
                     break;
                 }
-                default: // LateSpike / Crusher / Surprise / Dart / Faller / Chandelier / Reverse = invisible sensors
+                default: // LateSpike / Crusher / Surprise / Dart / Faller / Chandelier = invisible sensors
                 {
                     var go = Theme.Box(t.type.ToString(), _levelRoot, t.pos, t.size,
                         new Color(0, 0, 0, 0f), 0);
@@ -5260,7 +5616,7 @@ namespace TrustIssues
                 if (barObj.activeSelf != show) barObj.SetActive(show);
                 if (show)
                     _flyBar.rectTransform.sizeDelta =
-                        new Vector2(316f * Mathf.Clamp01(_player.flightMeter), 22f);
+                        new Vector2(BarFillW * Mathf.Clamp01(_player.flightMeter), 26f);
             }
 
             // Broadcast our position to the room ~15x/sec so rivals see our ghost.
@@ -5425,8 +5781,12 @@ namespace TrustIssues
             _deaths++;
             // A short rumble on death — on a phone the screen shake alone is easy to
             // miss mid-thumb. Opt-out lives in Settings > RUMBLE.
+            // (Handheld only exists on the phone platforms — a desktop/dev build
+            // won't compile against it at all, hence the guard as well as the check.)
+#if UNITY_ANDROID || UNITY_IOS
             if (Application.isMobilePlatform && PlayerPrefs.GetInt("opt_haptics", 1) == 1)
                 Handheld.Vibrate();
+#endif
             _floorDeaths++;
             // If the nemesis trap just scored, its kill-streak taunt rides the roast.
             if (msg != null) msg = Memory.DecorateRoast(msg);

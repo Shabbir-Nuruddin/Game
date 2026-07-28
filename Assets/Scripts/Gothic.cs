@@ -115,15 +115,21 @@ namespace TrustIssues
 
         // Bake a small square sprite from a per-pixel shader function. Texture space
         // is y-UP, so shapes below are written the way they're seen on screen.
-        static Sprite Bake(int S, System.Func<int, int, Color> shade)
+        static Sprite Bake(int S, System.Func<int, int, Color> shade) => Bake(S, S, shade, false);
+
+        // The rectangular version, for the pieces that hang (a banner, a chain link).
+        static Sprite Bake(int W, int H, System.Func<int, int, Color> shade, bool repeat)
         {
-            var tex = new Texture2D(S, S, TextureFormat.RGBA32, false)
-                { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
-            for (int y = 0; y < S; y++)
-                for (int x = 0; x < S; x++)
+            var tex = new Texture2D(W, H, TextureFormat.RGBA32, false)
+            {
+                filterMode = FilterMode.Bilinear,
+                wrapMode = repeat ? TextureWrapMode.Repeat : TextureWrapMode.Clamp,
+            };
+            for (int y = 0; y < H; y++)
+                for (int x = 0; x < W; x++)
                     tex.SetPixel(x, y, shade(x, y));
             tex.Apply();
-            return Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), S);
+            return Sprite.Create(tex, new Rect(0, 0, W, H), new Vector2(0.5f, 0.5f), W);
         }
 
         // Distance from a point to a line segment — the crossed bones are two of these.
@@ -197,6 +203,100 @@ namespace TrustIssues
             if (d <= 0f) return BoneFill;
             return d <= 1.3f ? Ink : new Color(0, 0, 0, 0);
         }));
+
+        // ---- the castle's own fixtures --------------------------------------
+        // These four are what the gameplay artwork hangs in every hall: a heart pip
+        // in the corner, banners down the walls, lanterns on chains from the vault.
+        // Baked here for the same reason as the glyphs above — no art files, and
+        // they scale to any resolution.
+
+        static readonly Color IronDark = new Color(0.13f, 0.11f, 0.15f, 1f);   // wrought iron
+        static readonly Color IronLit = new Color(0.34f, 0.29f, 0.22f, 1f);    // its candle-lit edge
+
+        /// <summary>A heart pip for the lives row — blood red with a carved black rim.</summary>
+        static Sprite _heart;
+        public static Sprite Heart => _heart != null ? _heart : (_heart = Bake(32, (x, y) =>
+        {
+            // Two lobes and a point: the shape everyone reads as a heart at 20px.
+            bool In(float inset)
+            {
+                float lx = x - 10.5f, rx = x - 21.5f, ly = y - 21f;
+                bool lobes = (lx * lx + ly * ly <= (7f - inset) * (7f - inset))
+                          || (rx * rx + ly * ly <= (7f - inset) * (7f - inset));
+                // The V beneath, narrowing to the bottom tip.
+                float t = Mathf.InverseLerp(3f + inset, 22f, y);
+                bool point = y <= 22f && y >= 3f + inset && Mathf.Abs(x - 16f) <= 12.5f * t - inset;
+                return lobes || point;
+            }
+            if (!In(0)) return new Color(0, 0, 0, 0);
+            if (!In(1.8f)) return new Color(0.06f, 0.02f, 0.03f, 1f);           // carved rim
+            // A slick of candlelight on the upper-left lobe, so it isn't a flat blob.
+            float hx = x - 9f, hy = y - 24f;
+            if (hx * hx + hy * hy <= 9f) return new Color(0.95f, 0.42f, 0.42f, 1f);
+            return new Color(0.78f, 0.10f, 0.14f, 1f);
+        }));
+
+        /// <summary>
+        /// The crimson banner that hangs down every wall in the artwork: a cloth with
+        /// a gold rail at the top, a gold cross at its heart and a notched hem.
+        /// </summary>
+        static Sprite _banner;
+        public static Sprite Banner => _banner != null ? _banner : (_banner = Bake(32, 96, (x, y) =>
+        {
+            var clear = new Color(0, 0, 0, 0);
+            if (x < 3 || x > 28) return clear;
+            if (y > 92) return clear;
+            if (y >= 86) return IronLit;                                        // the rail it hangs from
+            // The hem is cut into two points, the way a pennant is.
+            if (y < 14)
+            {
+                float notch = 14f - y;
+                if (Mathf.Abs(Mathf.Abs(x - 15.5f) - 7f) < notch - 6f) return clear;
+                if (y < 4) return clear;
+            }
+            // Cloth, shaded in vertical folds so it doesn't read as a flat rectangle.
+            float fold = 0.82f + 0.18f * Mathf.Cos((x - 15.5f) * 0.9f);
+            var cloth = new Color(0.42f * fold, 0.035f * fold, 0.06f * fold, 1f);
+            if (x <= 4 || x >= 27) cloth *= 0.55f;                              // its shadowed edges
+            // The gold cross.
+            bool cross = (Mathf.Abs(x - 15.5f) <= 2.5f && y >= 38 && y <= 68)
+                      || (y >= 56 && y <= 61 && Mathf.Abs(x - 15.5f) <= 9f);
+            return cross ? new Color(0.62f * fold, 0.47f * fold, 0.20f * fold, 1f) : cloth;
+        }, false));
+
+        /// <summary>One iron chain link, tiled vertically to hang a lantern from the vault.</summary>
+        static Sprite _chain;
+        public static Sprite ChainLink => _chain != null ? _chain : (_chain = Bake(8, 16, (x, y) =>
+        {
+            // An elongated ring: inside the outer oval, outside the inner one.
+            float dx = (x - 3.5f) / 3.2f, dy = (y - 7.5f) / 7.5f;
+            float outer = dx * dx + dy * dy;
+            float ix = (x - 3.5f) / 1.5f, iy = (y - 7.5f) / 5.2f;
+            float inner = ix * ix + iy * iy;
+            if (outer > 1f || inner < 1f) return new Color(0, 0, 0, 0);
+            return x <= 3 ? IronLit * 0.8f : IronDark;                          // lit on one side
+        }, true));
+
+        /// <summary>
+        /// The lantern cage from the artwork: an iron frame with an open middle, so a
+        /// live flame can be animated behind it and read as light inside the glass.
+        /// </summary>
+        static Sprite _lantern;
+        public static Sprite LanternCage => _lantern != null ? _lantern : (_lantern = Bake(32, 48, (x, y) =>
+        {
+            var clear = new Color(0, 0, 0, 0);
+            float cx = Mathf.Abs(x - 15.5f);
+            // Finial and crown on top, foot at the bottom, four posts between.
+            if (y >= 44) return cx <= 1.5f ? IronLit : clear;                   // the ring it hangs by
+            if (y >= 40) return cx <= 5f ? IronLit : clear;                     // finial
+            if (y >= 36) return cx <= 11f ? IronLit : clear;                    // crown
+            if (y <= 3) return cx <= 9f ? IronLit : clear;                      // foot
+            if (y <= 6) return cx <= 10f ? IronDark : clear;
+            if (cx > 10f) return clear;
+            if (cx >= 8f) return IronDark;                                      // corner posts
+            if (y == 20 || y == 21) return IronDark;                            // the cross-bar
+            return new Color(1f, 0.72f, 0.35f, 0.13f);                          // warm glass
+        }, false));
 
         // ==================== screen furniture ====================
 

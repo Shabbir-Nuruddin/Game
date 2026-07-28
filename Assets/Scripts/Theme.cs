@@ -224,9 +224,15 @@ namespace TrustIssues
                 if (_stone != null) return _stone;
                 const int W = 16, H = 16;
                 var tex = new Texture2D(W, H) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Repeat };
-                var baseCol  = Hex("3A3340"); // castle stone
-                var mortar   = Hex("231D2A"); // dark seams between bricks
-                var light    = Hex("47404F"); // top-lit face of each brick
+                // Sampled off the gameplay artwork: its ceiling brickwork reads at
+                // about (84,75,76) — the most legible thing in the frame after the
+                // moon. The tile used to be so dark that even at full white it came
+                // out four times dimmer than that, which is why every hall's ceiling
+                // read as a black bar. It's bright here and DARKENED per use instead
+                // (floors and walls multiply it down; the vault takes it neat).
+                var baseCol  = Hex("564E5E"); // castle stone
+                var mortar   = Hex("332B3A"); // dark seams between bricks
+                var light    = Hex("6A6274"); // top-lit face of each brick
                 var rng = new System.Random(7);
                 for (int y = 0; y < H; y++)
                     for (int x = 0; x < W; x++)

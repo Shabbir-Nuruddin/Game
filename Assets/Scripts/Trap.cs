@@ -43,6 +43,15 @@ namespace TrustIssues
         // fully painted, so the "tint it red while lethal" telegraphs have to become
         // brightness changes instead — tinting a painted sprite red erases the art.
         public bool paintedArt;
+        /// <summary>
+        /// Blood red. The Bestiary draws the spikes as forged iron on a lit page, but
+        /// in the HALL they are red — that's how the gameplay artwork paints them, and
+        /// the dark metal simply vanished against a near-black floor. Multiplying the
+        /// painted art by this keeps every highlight and shadow of the illustration
+        /// and lands it on the artwork's colour, which is the one tint on painted art
+        /// this game allows.
+        /// </summary>
+        public static readonly Color SpikeRed = new Color(1f, 0.34f, 0.34f, 1f);
         float _animTimer;
         SpriteRenderer _sr;
         BoxCollider2D _col;
@@ -200,7 +209,7 @@ namespace TrustIssues
                 // Brighten as it rises so the lethal phase reads at a glance.
                 if (_sr != null)
                     _sr.color = paintedArt
-                        ? (lethal ? Color.white : new Color(0.45f, 0.42f, 0.48f, 1f))   // painted: dim it, don't dye it
+                        ? (lethal ? SpikeRed : SpikeRed * 0.45f)                        // painted: same red, dimmed when safe
                         : (lethal ? Theme.Danger : new Color(0.55f, 0.12f, 0.14f, 1f)); // flat sprite: red = lethal
             }
 
@@ -224,10 +233,17 @@ namespace TrustIssues
                 float curH = _growFullH * h;
                 transform.position = new Vector3(_origin.x, _growBottomY + curH / 2f, 0f);
                 if (_col != null) _col.enabled = erupt;
+                // Painted fire is already fire — dyeing it orange only flattens the
+                // illustration, so the lethal window reads as BRIGHTNESS instead
+                // (same rule the grow-spike above follows).
                 if (_sr != null)
-                    _sr.color = erupt ? Theme.Hex("FF7A1A")
-                              : warn ? Theme.Hex("FFC24D")
-                                     : new Color(1f, 0.5f, 0.1f, 0.25f);
+                    _sr.color = paintedArt
+                        ? (erupt ? Color.white
+                                 : warn ? new Color(0.85f, 0.80f, 0.78f, 0.85f)
+                                        : new Color(0.55f, 0.45f, 0.42f, 0.30f))
+                        : (erupt ? Theme.Hex("FF7A1A")
+                                 : warn ? Theme.Hex("FFC24D")
+                                        : new Color(1f, 0.5f, 0.1f, 0.25f));
             }
 
             // Holy water: a flat puddle that turns lethal on a slow pulse. Bright =
@@ -238,8 +254,10 @@ namespace TrustIssues
                 bool lethal = k > 0.6f;
                 if (_col != null) _col.enabled = lethal;
                 if (_sr != null)
-                    _sr.color = lethal ? new Color(0.85f, 0.97f, 1f, 0.95f)
-                                       : new Color(0.5f, 0.8f, 0.95f, 0.4f);
+                    _sr.color = paintedArt
+                        ? (lethal ? Color.white : new Color(0.62f, 0.66f, 0.70f, 0.45f))
+                        : (lethal ? new Color(0.85f, 0.97f, 1f, 0.95f)
+                                  : new Color(0.5f, 0.8f, 0.95f, 0.4f));
             }
         }
 
@@ -334,8 +352,16 @@ namespace TrustIssues
         IEnumerator FireDart()
         {
             GameRoot.I?.TrapFired(type, transform.position);   // dodge the stake = CALLED IT
-            var dart = Theme.Box("Dart", transform.parent, transform.position + Vector3.right * 5f,
-                new Vector2(0.6f, 0.22f), Theme.Danger, 4);
+            // The Bestiary's STAKE LAUNCHER fires actual stakes; this fired a red
+            // rectangle. Same flight, same timing — it just looks like the page now.
+            var stake = Assets.TrapArt("dart");
+            var dart = stake != null
+                ? Theme.SpriteBox("Dart", transform.parent, transform.position + Vector3.right * 5f,
+                    new Vector2(1.0f, 0.5f), stake, 4)
+                : Theme.Box("Dart", transform.parent, transform.position + Vector3.right * 5f,
+                    new Vector2(0.6f, 0.22f), Theme.Danger, 4);
+            if (stake != null) dart.transform.localScale =
+                new Vector3(-dart.transform.localScale.x, dart.transform.localScale.y, 1f);   // point the way it flies
             var kz = dart.AddComponent<KillZone>(); kz.msg = "Skewered by a flying stake."; kz.trapTag = (int)type;
             var col = dart.AddComponent<BoxCollider2D>(); col.isTrigger = true;
             float t = 0f;
@@ -412,7 +438,8 @@ namespace TrustIssues
             GameObject go = sp != null
                 ? Theme.SpriteBox("Spikes", transform.parent, pos, painted != null ? new Vector2(1.4f, 0.9f) : new Vector2(1f, 1f), sp, 3)
                 : Theme.Box("Spikes", transform.parent, pos, new Vector2(0.7f, 0.9f), Theme.Danger, 3);
-            if (painted == null && sp != null) go.GetComponent<SpriteRenderer>().color = Theme.Danger; // blood spikes
+            // Blood red either way — the painted iron is multiplied onto it (see SpikeRed).
+            if (sp != null) go.GetComponent<SpriteRenderer>().color = painted != null ? SpikeRed : Theme.Danger;
             var kz = go.AddComponent<KillZone>();
             kz.msg = "Impaled.";
             var col = go.AddComponent<BoxCollider2D>();

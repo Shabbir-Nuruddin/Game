@@ -399,7 +399,6 @@ namespace TrustIssues
         // --- Room dots (the "five stages" readout, Level Devil's door dots) ---
         GameObject _dotsGO;
         Image[] _dots = System.Array.Empty<Image>();
-        Text _roomLabel;
 
         public void Init(Level level, Transform player, Transform levelRoot)
         {
@@ -537,7 +536,10 @@ namespace TrustIssues
                 else
                 { _dots[i].color = new Color(1f, 1f, 1f, 0.30f); _dots[i].rectTransform.localScale = Vector3.one; }
             }
-            if (_roomLabel != null) _roomLabel.text = $"STAGE {idx + 1} / {_rooms.Count}";
+            // The words "STAGE n / m" now live in the HUD proper, under the floor
+            // title, where the artwork puts them — printing them here as well drew
+            // the line twice, one over the other.
+            if (GameRoot.I != null) GameRoot.I.RefreshHud();
         }
 
         // Seal every doorway behind the highest stage reached: banked stages are
@@ -855,12 +857,49 @@ namespace TrustIssues
         GameObject _curtainL, _curtainR, _curtainT;
         void BuildCurtains()
         {
-            var shade = new Color(0.035f, 0.015f, 0.05f, 0.97f);
-            _curtainL = Theme.Box("CurtainL", _levelRoot, Vector2.zero, new Vector2(34f, 16f), shade, 60);
-            _curtainR = Theme.Box("CurtainR", _levelRoot, Vector2.zero, new Vector2(34f, 16f), shade, 60);
+            // They are STONE now, not black. The masking job is unchanged — these
+            // still seal the chamber so you can never see into the next room — but a
+            // flat void filled the top quarter of the screen and both margins, in a
+            // game whose artwork frames every hall in masonry right up to the edge.
+            // A wall hides just as much as a void and looks like a castle doing it.
+            _curtainL = Curtain("CurtainL", 34f, 16f, true);
+            _curtainR = Curtain("CurtainR", 34f, 16f, true);
             // Wide enough to cover the widest stage at any aspect ratio; tall enough
             // that nothing shows between the ceiling and the top of frame.
-            _curtainT = Theme.Box("CurtainT", _levelRoot, Vector2.zero, new Vector2(90f, 10f), shade, 60);
+            _curtainT = Curtain("CurtainT", 90f, 10f, false);
+        }
+
+        // One masonry drape. `side` walls get a lit vertical face on both edges (only
+        // the inner one is ever on screen); the top one gets a lit lower edge, so the
+        // wall meets the room on a line of candlelight instead of a hard seam.
+        GameObject Curtain(string name, float w, float h, bool side)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(_levelRoot, false);
+            var sr = go.AddComponent<SpriteRenderer>();
+            sr.sprite = Theme.StoneTile;
+            sr.drawMode = SpriteDrawMode.Tiled;
+            sr.size = new Vector2(w, h);
+            sr.sortingOrder = 60;
+            // The upper wall is deep in shadow — only the vault's underside catches
+            // the lanterns. Lit as brightly as the ceiling it read as a great pale
+            // slab filling the top fifth of the screen.
+            sr.color = new Color(0.30f, 0.26f, 0.30f, 1f);
+            var lit = new Color(0.42f, 0.36f, 0.42f, 0.45f);
+            if (side)
+            {
+                for (int s = -1; s <= 1; s += 2)
+                {
+                    var e = Theme.Box("Face", go.transform, Vector2.zero, new Vector2(0.07f, h), lit, 61);
+                    e.transform.localPosition = new Vector3(s * (w / 2f - 0.04f), 0f, 0f);
+                }
+            }
+            else
+            {
+                var e = Theme.Box("Face", go.transform, Vector2.zero, new Vector2(w, 0.07f), lit, 61);
+                e.transform.localPosition = new Vector3(0f, -h / 2f + 0.04f, 0f);
+            }
+            return go;
         }
 
         void BuildGate(float x)
@@ -959,7 +998,8 @@ namespace TrustIssues
             var rt = (RectTransform)_dotsGO.transform;
             rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 1f);
             rt.pivot = new Vector2(0.5f, 1f);
-            rt.anchoredPosition = new Vector2(0f, -18f);
+            // Below the HUD's own title and stage line, not on top of them.
+            rt.anchoredPosition = new Vector2(0f, -146f);
             _dots = new Image[_rooms.Count];
             float span = (_rooms.Count - 1) * 24f;
             for (int i = 0; i < _rooms.Count; i++)
@@ -975,13 +1015,6 @@ namespace TrustIssues
                 img.raycastTarget = false;
                 _dots[i] = img;
             }
-            // "STAGE 3 / 5" under the dots: the dots alone were too quiet — the
-            // playtest read the whole floor as one corridor, so the sub-level
-            // structure says its own name. Sits at -46 so its rect clears the
-            // dot band (they used to overlap and crowd each other).
-            _roomLabel = Theme.Label(_dotsGO.transform, "STAGE 1 / " + _rooms.Count, 22,
-                new Color(1f, 1f, 1f, 0.55f), new Vector2(0.5f, 0.5f),
-                new Vector2(0f, -46f), new Vector2(320f, 30f));
         }
 
         void OnDestroy()
