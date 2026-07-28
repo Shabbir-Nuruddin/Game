@@ -77,10 +77,29 @@ namespace TrustIssues
             _runner = go.AddComponent<AnalyticsRunner>();
         }
 
+        /// <summary>
+        /// The player's opt-out. The privacy policy shipped with the game promises
+        /// a switch that stops gameplay analytics, and a policy that promises a
+        /// control which doesn't exist is a false statement, not a rounding error —
+        /// so the switch is here and it is checked on the single path every event
+        /// goes through. Default ON; turning it off drops events at the source, so
+        /// nothing is queued and nothing can be sent later.
+        /// </summary>
+        public static bool Enabled
+        {
+            get => PlayerPrefs.GetInt("opt_analytics", 1) == 1;
+            set
+            {
+                PlayerPrefs.SetInt("opt_analytics", value ? 1 : 0);
+                PlayerPrefs.Save();
+                if (!value) _queue.Clear();   // discard anything already waiting
+            }
+        }
+
         /// <summary>Queue an event. Props values may be string/bool/int/float.</summary>
         public static void Track(string name, Dictionary<string, object> props = null)
         {
-            if (!_started) return;
+            if (!_started || !Enabled) return;
 
             var sb = new StringBuilder(160);
             sb.Append('{');

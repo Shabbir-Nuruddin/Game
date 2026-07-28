@@ -1711,11 +1711,14 @@ namespace TrustIssues
         // locked. Each card's caption block is covered and re-drawn live: real name,
         // real lock state, the ability you actually get, and a gold ring on whichever
         // skin you're really wearing. Rects are measured off the 1600x900 mockup.
-        static readonly float[] WardrobeColX = { 0.2025f, 0.3570f, 0.5070f, 0.6580f, 0.8100f };
-        // Per-row: card top, card bottom, then the three caption lines (top,bottom).
-        static readonly float[] WardrobeRowTop = { 0.191f, 0.531f };
-        static readonly float[] WardrobeRowBot = { 0.522f, 0.861f };
-        static readonly float[] WardrobeNameY  = { 0.3930f, 0.7300f };   // caption block starts here
+        // Measured off the 1600x912 wardrobe mockup. Two 4-wide grids on the right:
+        // the CHARACTER grid up top, the STYLE grid below. The big portrait panel on
+        // the left is painted and stays painted — only THE PRINCE has full-body art,
+        // so there is nothing to swap in for the other nine yet.
+        static readonly float[] WardrobeColX = { 0.4745f, 0.5855f, 0.6975f, 0.8085f };
+        static readonly float[] WardrobeRowTop = { 0.253f, 0.423f, 0.633f, 0.763f };
+        static readonly float[] WardrobeRowBot = { 0.415f, 0.585f, 0.755f, 0.885f };
+        static readonly float[] WardrobeNameY  = { 0.372f, 0.542f, 0.722f, 0.852f };
         // The painted card interiors, sampled off the artwork so a caption chip
         // disappears into its own card instead of reading as a black bar.
         static readonly Color[] WardrobeInterior =
@@ -1729,12 +1732,18 @@ namespace TrustIssues
 
         void BuildSkinnedWardrobe(Transform root, GameObject panel)
         {
-            const float HalfW = 0.0700f;    // caption chip half-width, inside the painted border
-            for (int i = 0; i < Skins.All.Count && i < 10; i++)
+            // The painting labels its tiles (THE PRINCE, THE HEIR, THE SPECTRE…) but
+            // those are pictures of names, and the roster they'd have to match is a
+            // different list in a different order. Rather than let a tile called
+            // "THE SPECTRE" equip Golden Cursed, every caption is chipped out and
+            // rewritten from the real skin list — the same rule every other skinned
+            // screen in this game follows.
+            const float HalfW = 0.0520f;    // caption chip half-width, inside the painted card
+            for (int i = 0; i < Skins.All.Count && i < 16; i++)
             {
                 var s = Skins.All[i];
-                int r = i / 5, col = i % 5;
-                if (r > 1) break;
+                int r = i / 4, col = i % 4;
+                if (r >= WardrobeRowTop.Length) break;
                 float cx = WardrobeColX[col];
                 float top = WardrobeRowTop[r], bot = WardrobeRowBot[r], ny = WardrobeNameY[r];
                 bool unlocked = Skins.IsUnlocked(s);
@@ -1742,42 +1751,39 @@ namespace TrustIssues
                 string sid = s.id; var sdef = s;
 
                 // Hide the painted caption, then write the true one over it.
-                Skin.Chip(root, cx - HalfW, ny, cx + HalfW, ny + 0.104f, WardrobeInterior[i]);
+                Skin.Chip(root, cx - HalfW, ny, cx + HalfW, ny + 0.050f, WardrobeInterior[i]);
 
-                var nameT = Skin.LiveText(root, s.name.ToUpperInvariant(), cx - HalfW, ny + 0.002f, cx + HalfW, ny + 0.026f,
-                    26, unlocked ? Gothic.Bone : new Color(0.62f, 0.55f, 0.52f, 0.75f));
+                var nameT = Skin.LiveText(root, s.name.ToUpperInvariant(), cx - HalfW, ny + 0.001f, cx + HalfW, ny + 0.024f,
+                    22, unlocked ? Gothic.Bone : new Color(0.62f, 0.55f, 0.52f, 0.75f));
                 if (Theme.MenuFont != null) nameT.font = Theme.MenuFont;
-                Skin.Fit(nameT, 26, 13);
+                Skin.Fit(nameT, 22, 11);
 
-                var stateT = Skin.LiveText(root, unlocked ? s.ability : "LOCKED",
-                    cx - HalfW, ny + 0.032f, cx + HalfW, ny + 0.055f,
-                    19, unlocked ? Theme.Coin : new Color(0.78f, 0.24f, 0.26f, 0.95f));
+                var stateT = Skin.LiveText(root,
+                    unlocked ? (equipped ? "EQUIPPED" : "TAP TO WEAR") : "LOCKED",
+                    cx - HalfW, ny + 0.026f, cx + HalfW, ny + 0.048f,
+                    17, equipped ? Theme.Coin
+                       : unlocked ? new Color(0.70f, 0.63f, 0.60f, 0.85f)
+                                  : new Color(0.78f, 0.24f, 0.26f, 0.95f));
                 if (Theme.MenuFont != null) stateT.font = Theme.MenuFont;
-                Skin.Fit(stateT, 19, 11);
-
-                string third = unlocked ? (equipped ? "EQUIPPED" : "tap to wear") : sdef.unlockHint;
-                var hintT = Skin.LiveText(root, third, cx - HalfW, ny + 0.060f, cx + HalfW, ny + 0.100f,
-                    16, equipped ? Theme.Coin : new Color(0.70f, 0.63f, 0.60f, 0.70f));
-                if (Theme.MenuFont != null) hintT.font = Theme.MenuFont;
-                Skin.Fit(hintT, 16, 10);
+                Skin.Fit(stateT, 17, 10);
 
                 // A candle-gold ring on the skin you're actually wearing (the artwork
                 // paints its glow permanently around the first card).
                 if (equipped)
                 {
-                    var ring = Skin.Slot(root, "EquipRing", cx - 0.0755f, top, cx + 0.0755f, bot)
+                    var ring = Skin.Slot(root, "EquipRing", cx - 0.0545f, top, cx + 0.0545f, bot)
                         .gameObject.AddComponent<Image>();
                     ring.sprite = Gothic.Frame; ring.type = Image.Type.Sliced;
                     ring.pixelsPerUnitMultiplier = Gothic.RingFrameMul;
                     ring.color = Theme.Coin; ring.raycastTarget = false;
                 }
 
-                Skin.Zone(root, cx - 0.0755f, top, cx + 0.0755f, bot,
+                Skin.Zone(root, cx - 0.0545f, top, cx + 0.0545f, bot,
                     unlocked ? (System.Action)(() => { Skins.Equip(sid); Destroy(panel); ShowWardrobe(); })
                     : sdef.price > 0 ? (System.Action)(() => { Destroy(panel); ShowShop(); })
                                      : (System.Action)(() => ShowHint(sdef.unlockHint)), "skin_" + sid);
             }
-            Skin.Zone(root, 0.40f, 0.875f, 0.60f, 0.965f, () => { Destroy(panel); ShowMenu(); }, "back");
+            Skin.Zone(root, 0.43f, 0.905f, 0.57f, 0.975f, () => { Destroy(panel); ShowMenu(); }, "back");
         }
 
         // LEADERBOARD — the artwork paints a sample table (DraculaX, NightStalker) and
@@ -1927,6 +1933,16 @@ namespace TrustIssues
                 () => FlipPrefQuiet("opt_25d", 1), ApplyDepthMode);
 
             Skin.Zone(root, 0.39f, 0.905f, 0.61f, 0.975f, ShowMenu, "back");
+
+            // REQUIRED BY THE PRIVACY POLICY. The policy shipped on the store listing
+            // states the player can stop gameplay analytics from Settings, so the
+            // control has to exist and has to be findable — a promised switch that
+            // isn't there is a false statement to Google and to the player. Sits in
+            // the empty painted panel to the RIGHT of BACK, mirroring the music
+            // credit on the left.
+            SkinChoice(root, 0.625f, 0.906f, 0.875f, 0.952f, "analytics",
+                () => Skin.Caption("ANONYMOUS DATA", Analytics.Enabled ? "ON" : "OFF"),
+                () => Analytics.Enabled = !Analytics.Enabled, null);
 
             // REQUIRED ATTRIBUTION — same licence obligation as the code-built
             // screen below. The artwork doesn't paint it, so the skinned Settings
@@ -3448,6 +3464,47 @@ namespace TrustIssues
                 return;
             }
 
+            // PAINTED LOBBY. The artwork draws the heading, the name plate, HOST, the
+            // CODE box, JOIN, the hint and BACK — so all that goes on top is the two
+            // things that must be REAL (the name field and the code field, because
+            // you have to be able to type into them), the tap-zones, and the status
+            // line. Rects measured off the 1536x1024 mockup.
+            //
+            // The painted name reads "Heir-609" and the painted status reads
+            // "CREATING ROOM…". Both are baked pictures of a moment, so both are
+            // chipped out and replaced with live values — otherwise the screen would
+            // tell every player they're called Heir-609 and permanently mid-connect.
+            if (Skin.Background(root, "versus_bg") != null)
+            {
+                var plate = new Color(0.026f, 0.014f, 0.016f, 1f);
+
+                Skin.Chip(root, 0.418f, 0.288f, 0.642f, 0.352f, plate);
+                var nameSlot = Skin.Slot(root, "NameSlot", 0.424f, 0.292f, 0.636f, 0.348f);
+                var nameIn = MakeInput(nameSlot, Vector2.zero, Vector2.zero, "type a name");
+                FillParent(nameIn);
+                nameIn.characterLimit = 14;
+                nameIn.text = Net.PlayerName;
+                nameIn.onValueChanged.AddListener(v => Net.PlayerName = v);
+
+                Skin.Zone(root, 0.300f, 0.395f, 0.700f, 0.487f,
+                    () => { SetLobbyStatus("Creating room…"); Net.Host(StartVersus, LobbyError); }, "host");
+
+                Skin.Chip(root, 0.303f, 0.527f, 0.492f, 0.603f, plate);
+                var codeSlot = Skin.Slot(root, "CodeSlot", 0.309f, 0.531f, 0.486f, 0.599f);
+                var codeIn = MakeInput(codeSlot, Vector2.zero, Vector2.zero, "CODE");
+                FillParent(codeIn);
+
+                Skin.Zone(root, 0.512f, 0.527f, 0.686f, 0.603f,
+                    () => { SetLobbyStatus("Joining…"); Net.Join(codeIn.text, StartVersus, LobbyError); }, "join");
+
+                Skin.Chip(root, 0.330f, 0.652f, 0.670f, 0.700f, plate);
+                _lobbyStatus = Skin.LiveText(root, "", 0.30f, 0.652f, 0.70f, 0.700f, 30, Theme.Coin);
+
+                Skin.Zone(root, 0.42f, 0.882f, 0.58f, 0.958f,
+                    () => { Net.Leave(); ShowMenu(); }, "back");
+                return;
+            }
+
             // YOUR NAME — persisted, and shown to the rival you race. Pre-filled with
             // the stored name; every keystroke saves it.
             Gothic.Line(root, "YOUR NAME", 26, Gothic.Faint, new Vector2(-360, 190),
@@ -3473,6 +3530,17 @@ namespace TrustIssues
                 25, Gothic.Faint, new Vector2(0, -240), new Vector2(1400, 110));
 
             Gothic.Back(root, () => { Net.Leave(); ShowMenu(); });
+        }
+
+        // Stretch a code-built control to fill the painted slot it was dropped into.
+        // MakeInput positions itself with an explicit centre and size, which is right
+        // for the code-built layouts but wrong on a skinned screen where the artwork
+        // decides where things go — there the slot rect is the truth.
+        static void FillParent(InputField f)
+        {
+            var rt = (RectTransform)f.transform;
+            rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
+            rt.offsetMin = rt.offsetMax = Vector2.zero;
         }
 
         void SetLobbyStatus(string s) { if (_lobbyStatus != null) _lobbyStatus.text = s; }
@@ -6962,6 +7030,26 @@ namespace TrustIssues
             // Endless never ends on lives, so it needs an explicit "END RUN" to bank
             // your depth and see the score — that's the 4-button layout.
             bool endless = _mode == Mode.Endless;
+
+            // PAINTED PAUSE. The artwork already draws the heading and all three
+            // button plates, so nothing is built on top of it except the tap-zones —
+            // and, in Endless, the one button the painting doesn't have. Rects
+            // measured off the 1497x1051 mockup.
+            if (painted)
+            {
+                Skin.Zone(root, 0.28f, 0.395f, 0.70f, 0.525f, Resume,       "resume");
+                Skin.Zone(root, 0.28f, 0.545f, 0.70f, 0.675f, RestartLevel, "restart");
+                Skin.Zone(root, 0.28f, 0.700f, 0.70f, 0.835f, QuitToMenu,   "menu");
+                if (endless)
+                {
+                    // Endless has a fourth action the painting never anticipated, so
+                    // it gets a real drawn button below the painted three rather than
+                    // an invisible zone over empty stone nobody would ever find.
+                    Gothic.Button(root, "END RUN — BANK SCORE", new Vector2(0, -352f),
+                                  new Vector2(540, 84), EndRun, false, 28);
+                }
+                return;
+            }
 
             // The pause menu now wears the same gothic plate as the painted screens:
             // a framed slab of castle stone rather than four loose coloured bars

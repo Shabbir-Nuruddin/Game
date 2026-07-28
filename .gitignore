@@ -43,3 +43,7 @@ node_modules/
 
 # Android/Gradle native build cache (headless compile-check scratch)
 .utmp/
+
+# Upload keystore — NEVER commit. Losing control of this means losing the app.
+*.keystore
+*.jks
