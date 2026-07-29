@@ -22,6 +22,13 @@ namespace TrustIssues
         /// <summary>Is a skin image present for this screen? (art/ui/&lt;name&gt;)</summary>
         public static bool Has(string name) => Load(name) != null;
 
+        /// <summary>
+        /// A cut from the artwork used as a piece rather than a backdrop (the
+        /// "you are here" halo, say). Null when the file isn't there, so callers
+        /// can leave the spot bare instead of drawing a placeholder.
+        /// </summary>
+        public static Sprite Cut(string name) => Load(name);
+
         static readonly System.Collections.Generic.Dictionary<string, Sprite> _cache = new();
         static Sprite Load(string name)
         {

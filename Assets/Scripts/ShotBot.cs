@@ -96,6 +96,16 @@ namespace TrustIssues
             yield return new WaitForSecondsRealtime(1.2f);
             yield return Shot("bestiary");
 
+            // The castle map, with progress faked to the floor being shot, so the
+            // "you are here" glow can be checked against the right seal.
+            root.DevOpenCastle(_floor - 1);
+            yield return new WaitForSecondsRealtime(1.0f);
+            yield return Shot("castle");
+
+            root.DevOpenLobby();
+            yield return new WaitForSecondsRealtime(1.0f);
+            yield return Shot("lobby");
+
             Debug.Log("SHOTBOT_DONE " + _dir);
             Application.Quit();
         }

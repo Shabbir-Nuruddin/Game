@@ -1000,13 +1000,17 @@ namespace TrustIssues
             // it, SHOOT only while holding a loaded gun) via UpdateTouchLayout(). JUMP
             // is a bare up-arrow (no circle, no background, no label) per the same
             // "just the arrow" styling as the movement glyphs.
-            // Jump is the single most-mashed button in the game — sized up again
-            // (170 -> 200) after testers kept fat-fingering past its edge.
+            // Jump is the single most-mashed button in the game, and it had been
+            // sized up twice for that (170 -> 200 -> 232). On a phone the mobile
+            // 1.35x lands on top of that, and it finished up a third of the screen
+            // high — a dinner plate over the level you're trying to read. Back to
+            // 168: still the biggest control on the screen and still a comfortable
+            // thumb target, without eating the playfield.
             // Pulled in and up from the painting's own (187, 178). The shipped
             // screen draws an ornate border frame around the play area that the
             // reference mockup doesn't have, and at the painting's exact numbers
             // all three rings sat underneath it with their bottoms cut off.
-            MakeArtButton("btn_jump", "▲", 0, actAnchor, new Vector2(-215 * acts, 240) * k, 232f * k);
+            MakeArtButton("btn_jump", "▲", 0, actAnchor, new Vector2(-190 * acts, 215) * k, 168f * k);
             _btnFly   = MakeArtButton("btn_bat", "", 3, actAnchor, new Vector2(-121 * acts, 415) * k, 160f * k);
             _btnDash  = MakeTouch("DASH",  4, actAnchor, new Vector2(-140 * acts, 350) * k, new Vector2(130, 130) * k, 0.24f);
             _btnShoot = MakeGunButton(actAnchor, new Vector2(-360 * acts, 310) * k, new Vector2(130, 130) * k);
@@ -1681,13 +1685,16 @@ namespace TrustIssues
                     bool locked = idx > unlocked;
                     bool here = idx == unlocked;
 
-                    // The art paints all forty seals identically lit, so progress has
-                    // to be drawn live: a veil over the floors you haven't reached,
-                    // and a candle-gold ring on the one you're actually up to.
+                    // Progress has to be drawn live: a veil over the floors you
+                    // haven't reached, and the painting's own red glow over the one
+                    // you're actually up to. The artwork baked that glow onto seal 1
+                    // for ever, so the picture was lit under floor 1 no matter how
+                    // far you'd climbed — the glow has been lifted off the sheet
+                    // (castle_bg) and cut into ui/seal_glow, and it now follows you.
                     if (locked)
                         CastleSealVeil(root, cx, cy, new Color(0.02f, 0.01f, 0.03f, 0.62f), Theme.Circle);
                     else if (here)
-                        CastleSealVeil(root, cx, cy, new Color(Theme.Coin.r, Theme.Coin.g, Theme.Coin.b, 0.85f), Theme.Ring);
+                        CastleSealGlow(root, cx, cy);
 
                     Skin.Zone(root, cx - CastleHalfW, cy - CastleHalfH, cx + CastleHalfW, cy + CastleHalfH,
                         locked ? (System.Action)(() => ShowHint("Sealed — clear the floor before it first."))
@@ -1706,6 +1713,22 @@ namespace TrustIssues
             var rt = Skin.Slot(root, "Seal", cx - SealHalfW, cy - SealHalfH, cx + SealHalfW, cy + SealHalfH);
             var img = rt.gameObject.AddComponent<Image>();
             img.sprite = sprite; img.color = color; img.raycastTarget = false;
+        }
+
+        // "YOU ARE HERE" — the crowned red halo lifted off the painting's own first
+        // seal, re-laid over whichever floor you're up to. The cut is 148x138 of the
+        // 1600x900 sheet, centred on the seal, so these are its exact fractions: the
+        // halo sits a little higher than centre because the skull crown rides above
+        // the seal. Falls back to nothing if the cut is missing — the veil on the
+        // sealed floors already shows how far you've climbed.
+        const float GlowHalfW = 0.04625f, GlowUp = 0.08667f, GlowDown = 0.06667f;
+        void CastleSealGlow(Transform root, float cx, float cy)
+        {
+            var rt = Skin.Slot(root, "SealGlow", cx - GlowHalfW, cy - GlowUp, cx + GlowHalfW, cy + GlowDown);
+            var img = rt.gameObject.AddComponent<Image>();
+            img.sprite = Skin.Cut("seal_glow");
+            img.color = Color.white; img.raycastTarget = false;
+            if (img.sprite == null) Destroy(rt.gameObject);
         }
 
         // WARDROBE — 10 character cards in a 5x2 grid, same order as Skins.All.
@@ -3488,6 +3511,9 @@ namespace TrustIssues
                 var nameIn = MakeInput(nameSlot, Vector2.zero, Vector2.zero, "type a name");
                 FillParent(nameIn);
                 nameIn.characterLimit = 14;
+                // A name is not a room code: spaces and punctuation must survive, so
+                // the 4-char alphanumeric validation the CODE box wears is dropped.
+                nameIn.characterValidation = InputField.CharacterValidation.None;
                 nameIn.text = Net.PlayerName;
                 nameIn.onValueChanged.AddListener(v => Net.PlayerName = v);
 
@@ -3567,6 +3593,18 @@ namespace TrustIssues
                 new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(size.x - 40, size.y - 16));
             var txt = Theme.Label(go.transform, "", 40, Gothic.Bone,
                 new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(size.x - 40, size.y - 16));
+            // The text and the placeholder STRETCH inside the box instead of carrying
+            // a fixed size. On a skinned screen the box is built at zero size and then
+            // stretched into its painted slot, which left both labels sized (-40,-16) —
+            // an inside-out rect that draws nothing, so every letter you typed in the
+            // multiplayer lobby was invisible. Stretching keeps them right in both the
+            // code-built layout and the painted one.
+            foreach (var t in new[] { ph, txt })
+            {
+                var trt = t.rectTransform;
+                trt.anchorMin = Vector2.zero; trt.anchorMax = Vector2.one;
+                trt.offsetMin = new Vector2(20, 8); trt.offsetMax = new Vector2(-20, -8);
+            }
             if (Theme.MenuFont != null) { ph.font = Theme.MenuFont; txt.font = Theme.MenuFont; }
 
             var input = go.AddComponent<InputField>();
@@ -3878,6 +3916,23 @@ namespace TrustIssues
         }
 
         public void DevOpenBestiary() => ShowCodex();
+
+        // Open the race lobby with something typed into both boxes, so a screenshot
+        // run can prove the letters are actually visible in the painted slots.
+        public void DevOpenLobby()
+        {
+            ShowVersusLobby();
+            foreach (var f in Object.FindObjectsByType<InputField>(FindObjectsSortMode.None))
+                f.text = f.characterLimit == 4 ? "WXYZ" : "Type Me 42";
+        }
+
+        // Open the castle map with progress faked to a given floor, so a screenshot
+        // run can check that the "you are here" glow actually lands on that seal.
+        public void DevOpenCastle(int unlocked)
+        {
+            PlayerPrefs.SetInt("castle_unlocked", Mathf.Max(0, unlocked));
+            ShowLevelSelect();
+        }
 
         void BeginRun(int levelIndex)
         {
