@@ -295,28 +295,6 @@ namespace TrustIssues
     }
 
     /// <summary>
-    /// The stone fill that seals a completed stage's doorway behind you. Solid —
-    /// banked stages are committed, exactly like Level Devil's discrete screens —
-    /// but the collider only arms once the player is clearly past it, so the
-    /// wall can never materialise inside (or shove) the body crossing it.
-    /// </summary>
-    public class StageSeal : MonoBehaviour
-    {
-        Transform _player;
-        BoxCollider2D _col;
-        public void Arm(Transform player, BoxCollider2D col) { _player = player; _col = col; }
-        void Update()
-        {
-            if (_col == null) { enabled = false; return; }
-            if (_player == null || _player.position.x > transform.position.x + 1.0f)
-            {
-                _col.enabled = true;
-                enabled = false;
-            }
-        }
-    }
-
-    /// <summary>
     /// A vertically-bobbing stone slab — "sometimes the floor below you moved".
     /// Kinematic so the physics engine carries the player properly while it
     /// rises. Rides across gaps too wide to jump; under a crypt press it becomes
@@ -359,10 +337,12 @@ namespace TrustIssues
     /// The genre insight this serves: a trap is an object you learn to dodge
     /// once, but a RULE breaks a promise the room was built on, and that's what
     /// keeps players guessing past the first few floors. Each room owns one
-    /// rule; this watches which room the player is standing in, locks the
-    /// camera to that room (so chambers read as SCREENS, not a corridor with
-    /// pillars — the complaint from the last playtest), runs the active rule,
-    /// and draws the room-progress dots.
+    /// rule; this watches which room the player is standing in, runs the
+    /// active rule once they've crossed its trigger line, and draws the
+    /// room-progress dots. The camera no longer locks per chamber — an
+    /// earlier version froze it into a static shot per room, which read as a
+    /// chain of separate levels instead of one hall you're running down, so
+    /// it now just keeps scrolling with the player like every other floor.
     ///
     /// Built and owned by GameRoot.BuildLevel; torn down with the level root,
     /// and the whole level rebuilds on death, so every rule resets for free.
@@ -429,9 +409,11 @@ namespace TrustIssues
             foreach (var g in level.Gates) BuildGate(g);
             foreach (var s in level.ShiftSpikes) BuildShiftSpike(s.x, s.y);
             BuildDots();
-            BuildCurtains();
-            // Frame the spawn room before the first rendered frame, so the level
-            // never flashes the old wide corridor zoom for an instant.
+            // One drape over the whole run, not one per room: it hides the open
+            // sky above the vault (the ceiling is made of per-room slabs, but the
+            // camera now sees several of them at once) without walling off
+            // rooms the player hasn't reached yet.
+            BuildTopCurtain(_rooms[0].MinX, _rooms[_rooms.Count - 1].MaxX);
             int start = RoomAt(player.position.x);
             if (start >= 0) EnterRoom(start);
         }
@@ -505,24 +487,10 @@ namespace TrustIssues
             }
             // Crossing forward BANKS the stage you just finished (no-op on
             // respawn re-entry or the first room) — chime + shake live in
-            // GameRoot.BankStage, so respawn seal rebuilds stay silent.
+            // GameRoot.BankStage. No camera lock and no wall behind you any
+            // more; banking's only job left is picking the respawn point.
             if (GameRoot.I != null) GameRoot.I.BankStage(idx);
             int banked = GameRoot.I != null ? GameRoot.I.StageIndex : 0;
-            SealUpTo(banked);
-            // Lock the camera to this chamber: crossing a doorway is a screen
-            // transition, not a scroll. This is what makes five rooms FEEL like
-            // five rooms instead of one corridor with pillars in it.
-            if (GameRoot.I != null) GameRoot.I.FocusRoom(r.MinX, r.MaxX);
-            // Slide the darkness up to this room's walls.
-            if (_curtainL != null) _curtainL.transform.position = new Vector3(r.MinX - 17f, 0.35f, 0f);
-            if (_curtainR != null) _curtainR.transform.position = new Vector3(r.MaxX + 17f, 0.35f, 0f);
-            // The stage camera is far taller than the room, so ~4 units of open SKY
-            // sat above the stone ceiling — you were looking at the night sky from
-            // inside a sealed castle hall, which is exactly the "above the ceiling
-            // looks bad" complaint. Cap it with the same darkness that swallows the
-            // sides, so a hall reads as being deep inside a building.
-            if (_curtainT != null)
-                _curtainT.transform.position = new Vector3((r.MinX + r.MaxX) / 2f, B.CeilY + 5.6f, 0f);
             // Dots: banked stages fill GOLD and stay filled (the Level Devil
             // readout — progress you cannot lose), the live stage is bright
             // white, the future is dim.
@@ -540,31 +508,6 @@ namespace TrustIssues
             // title, where the artwork puts them — printing them here as well drew
             // the line twice, one over the other.
             if (GameRoot.I != null) GameRoot.I.RefreshHud();
-        }
-
-        // Seal every doorway behind the highest stage reached: banked stages are
-        // committed. Rebuilt from scratch after each death (the level root is
-        // destroyed), so this also restores the walls on respawn.
-        readonly HashSet<int> _sealed = new();
-        void SealUpTo(int banked)
-        {
-            for (int j = 1; j <= banked && j < _rooms.Count; j++)
-            {
-                if (!_sealed.Add(j)) continue;
-                float x = _rooms[j].MinX;
-                var go = new GameObject("StageSeal");
-                go.transform.SetParent(_levelRoot, false);
-                go.transform.position = new Vector3(x, -1.9f, 0f);
-                var sr = go.AddComponent<SpriteRenderer>();
-                sr.sprite = Theme.StoneTile;
-                sr.drawMode = SpriteDrawMode.Tiled;
-                sr.size = new Vector2(0.6f, 1.6f);   // fills the doorway gap exactly (floor top to lintel)
-                sr.sortingOrder = 1;
-                var col = go.AddComponent<BoxCollider2D>();
-                col.size = new Vector2(0.6f, 1.6f);
-                col.enabled = false;                  // arms once the player is clear — never inside them
-                go.AddComponent<StageSeal>().Arm(_player, col);
-            }
         }
 
         void OnRuleFired(RoomSpec room)
@@ -846,27 +789,20 @@ namespace TrustIssues
             gz.SetGlyph(parts.ToArray());
         }
 
-        // Everything outside the active chamber drowns in darkness: two huge
-        // near-black drapes flanking the room, repositioned at each doorway.
-        // This is what turns "a corridor you can see three rooms of" into ONE
-        // SCREEN PER ROOM — and it's thematically free, because an unlit castle
-        // is exactly what this castle is. (The flat gray "arch" frames tried
-        // first looked like goalposts — playtest: "you added some type of
-        // doors… that does not look good" — so the doorways are now framed by
-        // light instead of geometry.)
-        GameObject _curtainL, _curtainR, _curtainT;
-        void BuildCurtains()
+        // A single masonry drape over the WHOLE run, capping the open sky above
+        // the vault. Each room still builds its own ceiling slab, so from
+        // directly underneath the hall already reads as roofed — this only
+        // matters where the camera can see past a slab's edge into empty air.
+        // Rooms used to each get their own left/right drapes too, repositioned
+        // at every doorway to blot out neighbouring chambers; that's gone along
+        // with the per-room camera lock — the player can now see straight down
+        // the hall, which is the whole point of it being one continuous run.
+        GameObject _curtainT;
+        void BuildTopCurtain(float minX, float maxX)
         {
-            // They are STONE now, not black. The masking job is unchanged — these
-            // still seal the chamber so you can never see into the next room — but a
-            // flat void filled the top quarter of the screen and both margins, in a
-            // game whose artwork frames every hall in masonry right up to the edge.
-            // A wall hides just as much as a void and looks like a castle doing it.
-            _curtainL = Curtain("CurtainL", 34f, 16f, true);
-            _curtainR = Curtain("CurtainR", 34f, 16f, true);
-            // Wide enough to cover the widest stage at any aspect ratio; tall enough
-            // that nothing shows between the ceiling and the top of frame.
-            _curtainT = Curtain("CurtainT", 90f, 10f, false);
+            float w = (maxX - minX) + 20f;   // margin past both ends of the run
+            _curtainT = Curtain("CurtainT", w, 10f, false);
+            _curtainT.transform.position = new Vector3((minX + maxX) / 2f, B.CeilY + 5.6f, 0f);
         }
 
         // One masonry drape. `side` walls get a lit vertical face on both edges (only

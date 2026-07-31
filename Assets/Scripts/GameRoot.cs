@@ -3434,6 +3434,11 @@ namespace TrustIssues
                     : $"← → / A D move   •   {Controls.Name(Controls.Jump)} jump   •   hold {Controls.Name(Controls.Fly)} to glide" + extra + "   •   R restart   •   trust nothing",
                     Memory.IsFirstSession ? 6f : 2.5f);   // first-timers get time to actually read it
             }
+            else
+                // The standing bargain, restated every time a Castle floor opens
+                // from the map (used to only show on an auto-chained floor, so
+                // tapping a floor from the map never mentioned it at all).
+                ShowHint("BONUS: under 5 deaths on this floor → +5 shards", 2f);
         }
 
         void StartDaily()
@@ -4127,7 +4132,6 @@ namespace TrustIssues
             _recT.Clear(); _recP.Clear(); _recTimer = 0f;   // fresh recording for this attempt
             _level = CurrentLevel();
             _camMin = _level.CamMinX; _camMax = _level.CamMaxX;
-            _roomCamSize = 0f;   // corridor zoom until a RoomDirector focuses a room
             _levelRoot = new GameObject("Level").transform;
 
             // Floor extents — right edge feeds the near-miss narrator, both edges
@@ -5692,8 +5696,7 @@ namespace TrustIssues
             if (_player == null) return;
             if (InBossRoom) { PositionBossCam(); return; }
             float x = Mathf.Clamp(_player.transform.position.x, _camMin, _camMax);
-            _rig.SetFrame(x, _roomCamSize > 0f ? RoomCamY : CamY,
-                          _roomCamSize > 0f ? _roomCamSize : NormalCamSize);
+            _rig.SetFrame(x, CamY, NormalCamSize);
         }
 
         // Boss arenas pull the camera WAY back and lock it on the room centre, so the
@@ -5715,9 +5718,7 @@ namespace TrustIssues
             {
                 if (InBossRoom) { PositionBossCam(); return; }   // locked, no follow
                 float x = Mathf.Clamp(_player.transform.position.x, _camMin, _camMax);
-                _rig.SetFrame(Mathf.Lerp(_rig.FrameX, x, 10f * Time.unscaledDeltaTime),
-                              _roomCamSize > 0f ? RoomCamY : CamY,
-                              _roomCamSize > 0f ? _roomCamSize : NormalCamSize);
+                _rig.SetFrame(Mathf.Lerp(_rig.FrameX, x, 10f * Time.unscaledDeltaTime), CamY, NormalCamSize);
             }
         }
 
@@ -5887,27 +5888,11 @@ namespace TrustIssues
         }
 
         // ==================== rooms ====================
-
-        // Frame ONE full stage as the whole screen, Level Devil style: a STATIC
-        // shot in which the entire stage is visible at once — every saw, every
-        // gap, the door — while multiple hazards run simultaneously inside it.
-        //
-        // The previous version zoomed INTO ~7-unit chambers, which the playtest
-        // rightly torched: "I can see very little at a time… one singular trap
-        // is an entire stage." A stage is now ~20-27 units wide and the camera
-        // fits ALL of it; the darkness curtains still swallow whatever the
-        // aspect ratio shows beyond the stage walls.
-        float _roomCamSize;         // 0 = not in a staged level; use the normal zoom
-        const float RoomCamY = 0.35f;
-        public void FocusRoom(float minX, float maxX)
-        {
-            float aspect = _cam != null ? _cam.aspect : 1.78f;
-            // Fit the stage's full WIDTH (plus a small margin); never tighter
-            // than the classic platforming zoom's height so the frame always
-            // shows floor to ceiling comfortably.
-            _roomCamSize = Mathf.Max(4.2f, ((maxX - minX) / 2f + 0.7f) / aspect);
-            _camMin = _camMax = (minX + maxX) / 2f;   // static — no scrolling inside a stage
-        }
+        // Roomed floors used to get a locked, zoomed-out camera per chamber
+        // (Level Devil style — one static shot per stage). That's gone: the
+        // camera now just follows the player down the whole run like every
+        // other floor (see SnapCamera/LateUpdate), which is what makes a
+        // roomed level feel continuous instead of a chain of separate screens.
 
         public void RoomToast(string msg) { if (_toast != null) StartCoroutine(FlashToast(msg)); }
 
@@ -6443,14 +6428,18 @@ namespace TrustIssues
                 }
                 return;
             }
-            // Curated
+            // Curated — a floor win no longer chains straight into the next one.
+            // Auto-advancing meant a "cleared it" moment and a "here's a harder
+            // one" moment happened in the same breath, so neither registered.
+            // The player is dropped back on the Castle map and has to tap the
+            // newly-unlocked seal themselves — the beat where the win lands.
             if (_levelIndex + 1 < Levels.Count)
             {
                 _levelIndex++;
                 PlayerPrefs.SetInt("ti_level", _levelIndex);
                 UnlockCastle(_levelIndex);     // beating a floor unlocks the next
                 PlayerPrefs.Save();
-                StartCoroutine(NextLevelFlash());
+                StartCoroutine(FloorClearedFlash());
             }
             else { UnlockCastle(Levels.Count - 1); Badges.Award("castle_clear"); TrackRunComplete(); _state = State.Win; Audio.Play("win", 0.7f); StartCoroutine(WinRoutine()); }
         }
@@ -6480,10 +6469,24 @@ namespace TrustIssues
             ResetFloorState();          // new floor — clear section checkpoint + learned traps
             _state = State.Play;
             BuildLevel();
-            // The standing bargain, restated as each Castle floor opens: clean
-            // floors pay extra (the +5 goal chip in ReachExit).
-            if (_mode == Mode.Curated)
-                ShowHint("BONUS: under 5 deaths on this floor → +5 shards", 2f);
+        }
+
+        // Castle only: the floor-clear beat. A short banner instead of the full
+        // WinRoutine result screen (this isn't the end of the run, just one
+        // floor of it), then back to the Castle map — the player has to tap
+        // the seal that just lit up to actually start the next floor.
+        IEnumerator FloorClearedFlash()
+        {
+            _state = State.Win;   // block input during the banner
+            Memory.RunEndedCleanly();   // reached a result beat = not a rage-quit
+            if (_toast != null) _toast.text = $"FLOOR {_levelIndex} CLEARED";
+            Audio.Play("win", 0.6f);
+            yield return new WaitForSecondsRealtime(1.1f);
+            if (_toast != null) _toast.text = "";
+            if (_levelRoot != null) Destroy(_levelRoot.gameObject);
+            _hasCheckpoint = false;
+            ResetFloorState();
+            ShowLevelSelect();
         }
 
         IEnumerator WinRoutine()

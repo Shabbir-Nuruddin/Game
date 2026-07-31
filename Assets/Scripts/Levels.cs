@@ -501,72 +501,33 @@ namespace TrustIssues
         }
 
         // ====================================================================
-        // FLOORS 1–10 — TRUE Level Devil structure (playtest-corrected):
-        // a stage is ONE FULL SCREEN. You see the whole thing the moment you
-        // enter — every saw, every gap, the door — and several mechanics run at
-        // once inside that one picture. 5 stages per floor, ~20-27 units each,
-        // camera static per stage. Every stage's first 3 units are CLEAN (no
-        // hazards) because that's where you respawn. One floor identity colours
-        // its stages; classic platforming density everywhere.
+        // FLOORS 1–10. Each floor is one continuous hall the camera scrolls
+        // down (no per-room screen lock, no walls sealed behind you — that
+        // read as a chain of separate levels rather than one castle). It's
+        // still built out of 5 chambers via b.Room(), ~20-27 units each, each
+        // with its own ceiling and a doorway squeeze into the next — that's
+        // real level geometry, not a stage boundary, and each chamber still
+        // owns the ONE rule it introduces or retires. Floor 1 is the only
+        // exception: it's a trial, not an exam, so it skips rooms entirely.
         // Trees Hate You rule: every death is a punchline — setup, false
         // confidence, reveal. Never two new ideas at once across floors.
         // ====================================================================
 
-        // 1 — TRUST NOTHING. The teaching floor. Analytics (60+ testers) put 407
-        // deaths here — the #1 onboarding wall — because it opened with 3-5
-        // simultaneous hazards per stage and a MANDATORY precision slab-ride, and
-        // the game's single biggest killer is falling in a pit. So floor 1 now
-        // teaches its ONE lie (fake floors) clean, adds one idea per stage, keeps
-        // every gap plainly jumpable, and saves the precision mover-ride for later
-        // floors. Still lethal — just legible.
+        // 1 — TRUST NOTHING. The trial. Analytics (60+ testers) put 407 deaths
+        // here — the #1 onboarding wall — when this ran five stages and a
+        // dozen-plus hazards deep. A first level should be a HANDSHAKE, not an
+        // exam: one lie, taught clean, then one ordinary jump so the run still
+        // asks for a single skill, then the door. Nothing here repeats and
+        // nothing here is a stage — it's one short corridor, over in seconds,
+        // that teaches the game's whole thesis (the floor lies) and nothing else.
         static Level L1()
         {
             var b = new B();
-            // THE TEACHING FLOOR. This used to be the third-hardest floor in the
-            // game (13 traps, 8 of them untelegraphed) and it was the first thing
-            // anyone played — the difficulty x-ray had it scoring worse than floor
-            // 24. The rule now, for every stage on this floor: exactly ONE thing
-            // can kill you, and it gets a whole stage to itself. The rage comes
-            // from the lie, not from three lies stacked in one screen.
-
-            // S1: THE ONE LIE. Nothing to jump, nothing to time — walk right and
-            // the floor stops existing under you. Level Devil's first level is
-            // this and nothing else, and it works because the player learns the
-            // game's entire thesis before being asked for a single skill.
-            b.Room(RoomRule.None);
             b.Plat(7f);
-            b.FakeFloor(2f);
-            b.Plat(8f);
-
-            // S2: the first ASK — one gap and one spike, both in plain sight and
-            // far apart. A stage you can clear first try, placed right after the
-            // stage that proved the game lies, so the player learns it's winnable.
-            b.Room(RoomRule.None);
-            b.Plat(5f); b.Gap(2.2f);
-            float a2 = b.Plat(7f); b.Spike(a2 + 1.5f);
-            b.Plat(5f);
-
-            // S3: the ground bites back — ONE late spike, alone, on a wide
-            // platform, so the death reads as "the spike came up" instead of
-            // "and then I also fell in a pit I couldn't see".
-            b.Room(RoomRule.None);
-            b.Plat(6f); b.Gap(2.2f);
-            float a3 = b.Plat(8f); b.LateSpike(a3);
-            b.Plat(5f);
-
-            // S4: the first MOVING threat, fully visible, with standing room on
-            // both sides so you can watch its cycle before committing to it.
-            b.Room(RoomRule.None);
+            b.FakeFloor(2f);          // THE lie. Walk right and the floor isn't there.
+            float a = b.Plat(10f);
+            b.Spike(a + 3f);          // the one ordinary ask, in plain sight, far from the lie
             b.Plat(6f);
-            float a4 = b.Plat(7f); b.Saw(a4);
-            b.Gap(2.2f); b.Plat(6f);
-
-            // S5: the exam — the lie and the spike together, but spaced so they
-            // are two separate problems rather than one unreadable pinch.
-            b.Room(RoomRule.None, 0.4f, true);
-            b.Plat(5f); b.FakeFloor(2f);
-            float a5 = b.Plat(7f); b.Spike(a5 + 2f);
-            b.Gap(2.2f); b.Plat(6f);
             return b.Finish();
         }
 
