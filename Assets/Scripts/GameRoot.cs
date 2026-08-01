@@ -1485,15 +1485,15 @@ namespace TrustIssues
             // Difficulty selector — tap to cycle Casual → Normal → Nightmare.
             MakeDifficultyChip(root, new Vector2(0, 76), new Vector2(400, 48));
 
-            // Four mode buttons, demoted to a compact 2×2 grid under PLAY —
-            // same callbacks and behavior, just no longer the first decision a
+            // Mode buttons, demoted to a compact grid under PLAY — same
+            // callbacks and behavior, just no longer the first decision a
             // brand-new player is forced to make.
-            // ENDLESS NIGHT was cut from the menu: it was an infinite score chase
-            // with nothing to earn and no reason to keep climbing, and a fourth
-            // vague option only split attention away from the three modes that do
-            // have a point. The mode's code is untouched (Mode.Endless still works)
-            // so it can come back the moment it has a real goal — this is a menu
-            // decision, not a deletion.
+            //
+            // ENDLESS NIGHT is back. It was pulled because it was an infinite
+            // score chase with nothing to earn and every floor built out of the
+            // same flat corridor — "more of it" was the whole offer. It now
+            // deals sixteen different floor shapes from a shuffled deck with a
+            // boss every tenth floor, which is a reason to keep going down.
             var dim = new Vector2(390, 64);
             Theme.Button(root, "THE CASTLE", new Color(0.28f, 0.24f, 0.32f), Color.white, 28,
                 new Vector2(0.5f, 0.5f), new Vector2(0, 4), new Vector2(600, 68), ShowLevelSelect);
@@ -1501,11 +1501,13 @@ namespace TrustIssues
                 new Vector2(0.5f, 0.5f), new Vector2(-205, -74), dim, StartDaily);
             Theme.Button(root, "MULTIPLAYER", new Color(0.5f, 0.12f, 0.16f), Color.white, 28,
                 new Vector2(0.5f, 0.5f), new Vector2(205, -74), dim, ShowVersusLobby);
-            // BUILD A TRAP takes the slot Endless vacated. It's the one mode that
-            // recruits players on its own: every map someone builds is an
-            // invitation sent to a friend who doesn't own the game yet.
+            Theme.Button(root, "ENDLESS NIGHT", new Color(0.18f, 0.14f, 0.30f), Color.white, 28,
+                new Vector2(0.5f, 0.5f), new Vector2(-205, -148), dim, StartEndless);
+            // BUILD A TRAP is the one mode that recruits players on its own:
+            // every map someone builds is an invitation sent to a friend who
+            // doesn't own the game yet.
             Theme.Button(root, "BUILD A TRAP", new Color(0.32f, 0.08f, 0.4f), Color.white, 28,
-                new Vector2(0.5f, 0.5f), new Vector2(0, -148), new Vector2(600, 62), ShowMapEditor);
+                new Vector2(0.5f, 0.5f), new Vector2(205, -148), dim, ShowMapEditor);
 
             // (NIGHTLY TITHE was granted up top so both layouts share one payout.)
 
@@ -3395,12 +3397,13 @@ namespace TrustIssues
         {
             _modeSelectSource = "play_button";
             if (FreshPlayer) StartGame(0);
-            // "Endless" is intentionally absent: the mode is off the menu, so a
-            // returning player whose last run was Endless resumes into the Castle
-            // instead of being dropped into a mode they can no longer choose.
+            // Endless is back on the menu, so it's routable again. A descent is
+            // never "resumed" — the run IS the score, so the button starts a
+            // fresh one, and the caption below says exactly that.
             else switch (PlayerPrefs.GetString("ti_last_mode", "Curated"))
             {
                 case "Daily":   StartDaily();   break;
+                case "Endless": StartEndless(); break;
                 default:        StartGame(Mathf.Min(CastleUnlocked, Levels.Count - 1)); break;
             }
             _modeSelectSource = "menu";
@@ -3410,11 +3413,13 @@ namespace TrustIssues
         string PlayNowCaption()
         {
             if (FreshPlayer) return "PLAY";
-            // Endless is off the menu, so its caption is gone too — PlayNow() routes
-            // those players to the Castle and the button must not promise otherwise.
             switch (PlayerPrefs.GetString("ti_last_mode", "Curated"))
             {
                 case "Daily":   return "CONTINUE — BLOOD MOON";
+                // Never "continue": an Endless run can't be resumed, and a
+                // button that says otherwise is a lie the player finds out
+                // about one second after pressing it.
+                case "Endless": return "DESCEND AGAIN — ENDLESS NIGHT";
                 default:        return $"CONTINUE — FLOOR {Mathf.Min(CastleUnlocked, Levels.Count - 1) + 1}";
             }
         }
@@ -3465,8 +3470,11 @@ namespace TrustIssues
             TrackModeSelected("Endless", 0);
             _endlessSeed = new System.Random().Next(1, 1000000);
             BeginRun(0);
-            ShowBanner("ENDLESS NIGHT", $"checkpoint every {Diff.CheckpointEvery} floors • you never truly die • how deep can you go?");
-            ShowHint($"Fall and you drop to your last checkpoint with fresh lives.  Jump, then hold {Controls.Name(Controls.Fly)}/FLY to glide.");
+            // The promise the mode is now actually able to keep: the descent
+            // never stops, and it never hands you the same floor twice.
+            ShowBanner("ENDLESS NIGHT",
+                       $"no two floors alike • something waits every {EndlessFloors.BossEvery} • checkpoint every {Diff.CheckpointEvery} • how deep can you go?");
+            ShowHint($"FLOOR 1 — {EndlessFloors.NameFor(1, _endlessSeed)}: {EndlessFloors.TagFor(1, _endlessSeed)}", 3.5f);
         }
 
         // ==================== VERSUS (multiplayer) ====================
@@ -4008,12 +4016,15 @@ namespace TrustIssues
                     AddMidCheckpoint(night);   // a death costs HALF a night, not all of it
                     return night;
                 }
-                // Endless ramp EASED at the mouth (analytics: 101 deaths on its
-                // very first floor — people bounced off the entrance): was idx+2,
-                // so floor 1 opened HARDER than Castle's. Now idx+1, a gentle
-                // spikes-only floor 1 that still climbs +1 forever (paired hazards
-                // from floor 4 on), so the deep run is exactly as brutal as before.
-                case Mode.Endless: return Levels.Generate(_endlessSeed + _levelIndex * 7919, _levelIndex + 1);
+                // Endless no longer comes off the flat-corridor generator, which
+                // built floor 3 and floor 30 out of the same parts and is why a
+                // deep run stopped feeling like it was going anywhere. Every
+                // floor is now one of sixteen SHAPES dealt from a shuffled deck
+                // (see EndlessFloors) — a different rule, a different geometry
+                // and a different hazard vocabulary each time — with a boss
+                // every tenth floor as the landmark. Still deterministic per
+                // (seed, floor), so a death rebuilds the identical floor.
+                case Mode.Endless: return EndlessFloors.Build(_levelIndex + 1, _endlessSeed);
                 // Versus: a shared race track, identical for everyone in the room.
                 // The room code + ROUND number seed it, so each round is a fresh
                 // (still deterministic) layout and the match runs continuously. Kept
@@ -4481,6 +4492,14 @@ namespace TrustIssues
         {
             if (_mode == Mode.Curated) return;   // The Castle has no flight to punish
             if (_mode == Mode.Versus) return;    // a fair race — no hanging-saw gauntlet
+            // Chambered floors already own their air: they have a stone vault
+            // overhead and no glide to deter, so hanging blades at head height
+            // in there is just a hazard the level never asked for (and lethal in
+            // the ones that flip gravity and put you ON the ceiling).
+            // Player-built maps are chambered too and are deliberately left
+            // alone here — changing what a saved map plays like is a separate
+            // decision from what Endless generates.
+            if (_level.Rooms.Count > 0 && _mode != Mode.Custom) return;
             if (_level.Platforms.Count == 0) return;
             float minX = float.MaxValue, maxX = float.MinValue;
             foreach (var p in _level.Platforms)
@@ -6459,9 +6478,17 @@ namespace TrustIssues
         IEnumerator NextLevelFlash()
         {
             _state = State.Win; // block input briefly
+            // Endless names the floor it's dropping you into. The descent never
+            // pauses — there's no map, no menu, no button between floors — so
+            // the NAME is the only thing that tells you the ground rules just
+            // changed, and it's what makes sixteen shapes read as sixteen
+            // shapes instead of "more castle".
             if (_toast != null)
-                _toast.text = _mode == Mode.Endless ? $"FLOOR {_levelIndex + 1}"
+                _toast.text = _mode == Mode.Endless
+                                ? $"FLOOR {_levelIndex + 1}   —   {EndlessFloors.NameFor(_levelIndex + 1, _endlessSeed)}"
                             : _mode == Mode.Daily ? $"NIGHT {_levelIndex + 1}" : $"LEVEL {_levelIndex + 1}";
+            if (_mode == Mode.Endless)
+                ShowHint(EndlessFloors.TagFor(_levelIndex + 1, _endlessSeed), 2.6f);
             yield return new WaitForSecondsRealtime(0.9f);
             if (_toast != null) _toast.text = "";
             Destroy(_levelRoot.gameObject);
