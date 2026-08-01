@@ -21,8 +21,10 @@ namespace TrustIssues
             new Def { id = "boss4", name = "Lord Vanquisher",    hint = "Defeat the final boss" },
             new Def { id = "streak3",  name = "Night Owl",       hint = "3-day Blood Moon streak" },
             new Def { id = "streak7",  name = "Creature of Habit", hint = "7-day Blood Moon streak" },
-            new Def { id = "endless10", name = "Deep Diver",      hint = "Reach Endless floor 10" },
-            new Def { id = "endless20", name = "Abyss Walker",    hint = "Reach Endless floor 20" },
+            // Endless is scored in metres, not floors — the ids are kept as-is
+            // so anyone who already earned these keeps them.
+            new Def { id = "endless10", name = "Deep Diver",      hint = "Get 1000 M down in Endless Night" },
+            new Def { id = "endless20", name = "Abyss Walker",    hint = "Get 2500 M down in Endless Night" },
             new Def { id = "versus_win", name = "Blood Rival",    hint = "Win a Versus race" },
             new Def { id = "die100", name = "Glutton for Punishment", hint = "Die 100 times" },
         };

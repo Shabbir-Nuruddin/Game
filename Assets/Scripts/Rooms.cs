@@ -929,6 +929,10 @@ namespace TrustIssues
         void BuildDots()
         {
             if (_rooms.Count < 2) return;
+            // Endless has no floors to be five-fifths of the way through, and a
+            // row of "here's how much of this bit is left" dots would draw the
+            // seams the mode exists to hide. Depth is its only readout.
+            if (GameRoot.I != null && GameRoot.I.HideStageMarks) return;
             _dotsGO = new GameObject("RoomDots", typeof(RectTransform));
             _dotsGO.transform.SetParent(Theme.Canvas.transform, false);
             var rt = (RectTransform)_dotsGO.transform;

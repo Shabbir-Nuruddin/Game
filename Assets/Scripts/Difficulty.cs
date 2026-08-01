@@ -30,7 +30,7 @@ namespace TrustIssues
           : "the intended challenge — fair but unforgiving";
 
         // ---- Lives / hearts ----
-        // Starting hearts for Blood Moon and each Endless checkpoint segment.
+        // Starting hearts for Blood Moon and for a whole Endless descent.
         public static int StartHearts =>
             Current == Difficulty.Casual ? 8 : Current == Difficulty.Normal ? 5 : 3;
         // Cap on hearts banked from clearing floors.
@@ -59,7 +59,9 @@ namespace TrustIssues
             Current == Difficulty.Casual ? 0 : Current == Difficulty.Normal ? 2 : 3;
 
         // ---- Endless ----
-        // Floors per checkpoint segment (respawn anchor; same on every difficulty).
-        public const int CheckpointEvery = 5;
+        // (Endless used to fall back to a checkpoint every N floors and could
+        // never be lost. It's a distance score now: lives are the budget, the
+        // descent earns them back, and running out ends the run — so there is
+        // no checkpoint constant left to tune.)
     }
 }

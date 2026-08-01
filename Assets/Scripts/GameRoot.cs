@@ -71,8 +71,36 @@ namespace TrustIssues
         string _customCode = "";
         float _customStart;      // realtime the attempt began, for the race clock
         Mode _mode = Mode.Curated;
+        // A fresh number every single time ENDLESS NIGHT is opened, and never
+        // written to disk — that's the whole guarantee that no two descents are
+        // the same descent.
         int _endlessSeed;
         const int DailyLen = 5;
+
+        // ---- ENDLESS: distance, not floors ----------------------------------
+        // Endless has no floor 1 and no floor 40. It has DEPTH — one number that
+        // starts at zero and only ever goes up, which is the only score an
+        // infinite mode can honestly keep. The descent is still built in
+        // segments under the hood (that's how a level gets generated and how a
+        // death respawns you), but the player is never shown one: no numbers, no
+        // names, no "floor cleared". Just metres.
+        //
+        // _segStart[i] is how deep the mouth of segment i is. It's filled in as
+        // the run descends, so falling back to a checkpoint and re-running the
+        // same segments re-uses the same depths instead of double-counting them.
+        readonly System.Collections.Generic.List<float> _segStart = new();
+        float _segDepth;      // depth at the mouth of the segment being played
+        float _deepest;       // deepest this run has EVER been — the score
+        // The record as it stood when this descent began. The live record gets
+        // overwritten the moment the run passes it, so the result screen needs
+        // its own copy to say "you beat your old 1240 M" and mean it.
+        int _bestAtStart;
+        /// <summary>Metres covered this descent. Never goes backwards.</summary>
+        int Depth => Mathf.RoundToInt(_deepest);
+        /// <summary>The deepest this player has ever gone, in metres.</summary>
+        static int BestDepth => PlayerPrefs.GetInt("best_endless_m", 0);
+        /// <summary>Endless hides every "you are here in a level" marker.</summary>
+        public bool HideStageMarks => _mode == Mode.Endless;
 
         // The link that rides along with every share. PLACEHOLDER — point this at
         // the Play Store listing (or the itch/web build) once the game is live and
@@ -1501,7 +1529,10 @@ namespace TrustIssues
                 new Vector2(0.5f, 0.5f), new Vector2(-205, -74), dim, StartDaily);
             Theme.Button(root, "MULTIPLAYER", new Color(0.5f, 0.12f, 0.16f), Color.white, 28,
                 new Vector2(0.5f, 0.5f), new Vector2(205, -74), dim, ShowVersusLobby);
-            Theme.Button(root, "ENDLESS NIGHT", new Color(0.18f, 0.14f, 0.30f), Color.white, 28,
+            // Wearing the record is the entire pitch of a distance mode: the
+            // button doesn't ask you to play, it tells you the number to beat.
+            Theme.Button(root, BestDepth > 0 ? $"ENDLESS NIGHT  {BestDepth} M" : "ENDLESS NIGHT",
+                new Color(0.18f, 0.14f, 0.30f), Color.white, 28,
                 new Vector2(0.5f, 0.5f), new Vector2(-205, -148), dim, StartEndless);
             // BUILD A TRAP is the one mode that recruits players on its own:
             // every map someone builds is an invitation sent to a friend who
@@ -1549,8 +1580,13 @@ namespace TrustIssues
             if (Meta.Streak > 0 && Meta.StreakAlive)
                 notices.Add(($"BLOOD MOON STREAK: {Meta.Streak} DAYS — keep it alive", 27, Theme.Coin));
             if (Curse.Pending != null)
-                notices.Add(($"{Curse.Pending.nick} CURSED YOU from floor {Curse.Pending.floor + 1} of {Curse.Pending.mode}. Break it.",
-                             25, new Color(1f, 0.35f, 0.4f, 0.95f)));
+                // Endless has no floor to name a curse after — it's all one
+                // fall — so a curse from down there is placed by depth, not by
+                // a number the player would never have seen anyway.
+                notices.Add((Curse.Pending.mode == "Endless"
+                        ? $"{Curse.Pending.nick} CURSED YOU from deep in the Endless Night. Break it."
+                        : $"{Curse.Pending.nick} CURSED YOU from floor {Curse.Pending.floor + 1} of {Curse.Pending.mode}. Break it.",
+                    25, new Color(1f, 0.35f, 0.4f, 0.95f)));
             string greet = Memory.MenuGreeting();
             if (greet != null)
             {
@@ -1825,7 +1861,7 @@ namespace TrustIssues
         void BuildSkinnedLeaderboard(Transform root, GameObject panel, string mode)
         {
             string heading = mode == "daily" ? "BLOOD MOON — TONIGHT (FEWEST DEATHS)"
-                           : mode == "endless" ? "ENDLESS NIGHT — DEEPEST FLOOR"
+                           : mode == "endless" ? "ENDLESS NIGHT — DEEPEST DESCENT"
                                                : "THE CASTLE — FEWEST DEATHS";
             // Painted heading + blurb out, live ones in.
             Skin.Chip(root, 0.24f, 0.205f, 0.76f, 0.240f, BoardInterior);
@@ -1841,7 +1877,7 @@ namespace TrustIssues
             // only ever ranks by ONE number, so the last two are replaced by the single
             // column this mode is actually sorted on.
             Skin.Chip(root, 0.540f, 0.393f, 0.832f, 0.436f, BoardInterior);
-            BoardCell(root, mode == "endless" ? "FLOOR" : "DEATHS", 0.600f, 0.395f, 0.820f, 0.432f, Gothic.Faint);
+            BoardCell(root, mode == "endless" ? "METRES" : "DEATHS", 0.600f, 0.395f, 0.820f, 0.432f, Gothic.Faint);
 
             // The painted table holds three sample rows; eight live ones fit the same
             // band once they're set at the real line height.
@@ -3469,12 +3505,15 @@ namespace TrustIssues
             _mode = Mode.Endless;
             TrackModeSelected("Endless", 0);
             _endlessSeed = new System.Random().Next(1, 1000000);
+            _bestAtStart = BestDepth;
             BeginRun(0);
-            // The promise the mode is now actually able to keep: the descent
-            // never stops, and it never hands you the same floor twice.
-            ShowBanner("ENDLESS NIGHT",
-                       $"no two floors alike • something waits every {EndlessFloors.BossEvery} • checkpoint every {Diff.CheckpointEvery} • how deep can you go?");
-            ShowHint($"FLOOR 1 — {EndlessFloors.NameFor(1, _endlessSeed)}: {EndlessFloors.TagFor(1, _endlessSeed)}", 3.5f);
+            // The promise, stated in the mode's own units. No floors, no levels,
+            // no end — one number that only goes down, and a castle that is
+            // rebuilt from scratch the moment you press this button again.
+            ShowBanner("ENDLESS NIGHT", BestDepth > 0
+                ? $"how far down can you get? • your deepest: {BestDepth} M"
+                : "how far down can you get?");
+            ShowHint($"{Diff.StartHearts} lives — every stretch you clear earns one back. Run out and the descent is over.", 4f);
         }
 
         // ==================== VERSUS (multiplayer) ====================
@@ -3967,6 +4006,11 @@ namespace TrustIssues
             }
             _hasCheckpoint = false;
             _newBest = false;
+            // A new descent starts at the surface, with no memory of how deep
+            // the last one's segments were (this run's are different segments).
+            _segStart.Clear();
+            _segDepth = 0f;
+            _deepest = 0f;
             ResetFloorState();
             // Castle deaths are a LIFETIME tally that persists across menu visits
             // and sessions; Endless/Blood Moon deaths are per-run (for the score).
@@ -4153,6 +4197,7 @@ namespace TrustIssues
                 _levelEndX = Mathf.Max(_levelEndX, p.pos.x + p.size.x / 2f);
                 _levelStartX = Mathf.Min(_levelStartX, p.pos.x - p.size.x / 2f);
             }
+            if (_mode == Mode.Endless) MarkDepth();
 
             ThemeBackdrop();   // pick the backdrop by mode + progress (distinct per mode)
 
@@ -4406,6 +4451,67 @@ namespace TrustIssues
         int _stageIndex;
         public int StageIndex => _stageIndex;
 
+        // ==================== ENDLESS: how deep are we ====================
+
+        /// <summary>
+        /// Work out how deep the mouth of the segment now being built is, and
+        /// remember it. Segments are deterministic per (seed, index), so a
+        /// segment always has the same length — which is what lets a run fall
+        /// back to a checkpoint, re-descend, and arrive at exactly the depth it
+        /// was at before instead of counting those metres twice.
+        /// </summary>
+        void MarkDepth()
+        {
+            while (_segStart.Count <= _levelIndex)
+                _segStart.Add(_segStart.Count == 0 ? 0f : _segStart[_segStart.Count - 1]);
+            _segDepth = _segStart[_levelIndex];
+            _deepest = Mathf.Max(_deepest, _segDepth);
+        }
+
+        /// <summary>
+        /// Write the deepest point this descent has reached to disk, if it beats
+        /// what's already there. The old "best_endless" key counted FLOORS and
+        /// is left alone — Skins.cs still reads it so a player who unlocked the
+        /// mist skin under the old scoring keeps it.
+        /// </summary>
+        void BankDepthRecord()
+        {
+            if (Depth <= BestDepth) return;
+            PlayerPrefs.SetInt("best_endless_m", Depth);
+            PlayerPrefs.Save();
+            _newBest = true;
+        }
+
+        /// <summary>Bank this segment's full length as the next one's mouth.</summary>
+        void AdvanceDepth()
+        {
+            float span = Mathf.Max(0f, _levelEndX - _level.Spawn.x);
+            float next = _segDepth + span;
+            while (_segStart.Count <= _levelIndex + 1) _segStart.Add(next);
+            _segStart[_levelIndex + 1] = Mathf.Max(_segStart[_levelIndex + 1], next);
+            _deepest = Mathf.Max(_deepest, next);
+        }
+
+        /// <summary>
+        /// The live readout while running. Depth only ever climbs: dying and
+        /// respawning behind yourself must never take metres back off the
+        /// counter — you were there, and the run is scored on the deepest point
+        /// it reached, not on where the body ended up.
+        /// </summary>
+        void TrackDepth()
+        {
+            if (_mode != Mode.Endless || _player == null || _level == null) return;
+            float here = _segDepth + Mathf.Max(0f, _player.transform.position.x - _level.Spawn.x);
+            if (here <= _deepest) return;
+            int was = Depth;
+            _deepest = here;
+            // Redraw only when the metre count actually ticks over — the HUD
+            // line is rebuilt from string interpolation, and doing that every
+            // frame is exactly the kind of per-frame garbage that costs the
+            // phone build its 60fps.
+            if (Depth != was) UpdateHud();
+        }
+
         // Called by RoomDirector when the player crosses into room `idx`.
         // Only forward progress banks; re-entering on respawn is a no-op.
         public void BankStage(int idx)
@@ -4548,16 +4654,34 @@ namespace TrustIssues
             }
             // The artwork's own top line: the floor in blood red, the place it's in
             // in candle gold, then the tally that never stops climbing.
-            string place = _mode == Mode.Endless ? $"FLOOR {_levelIndex + 1}"
-                         : _mode == Mode.Daily ? $"NIGHT {_levelIndex + 1}/{DailyLen}"
-                         : _mode == Mode.Versus ? $"RACE {Net.RoomCode}"
-                         : $"FLOOR {_levelIndex + 1}   <color=#{gold}>•   {WorldNames[WorldOf(_levelIndex)]}</color>";
+            //
+            // Endless doesn't get a floor number, because Endless doesn't have
+            // floors — it has DEPTH. One number, counting up, with the deepest
+            // you have ever been sitting next to it in gold as the thing to
+            // beat. That's the entire scoreboard of an infinite mode.
+            string place;
+            if (_mode == Mode.Endless)
+            {
+                // Measured against the record as it stood when the run STARTED,
+                // so once you pass it the HUD keeps saying NEW RECORD instead of
+                // silently re-targeting the number you are currently setting.
+                place = $"{Depth} M";
+                if (_bestAtStart > 0)
+                    place += Depth > _bestAtStart ? $"   <color=#{gold}>•   NEW RECORD</color>"
+                                                  : $"   <color=#{gold}>•   BEST {_bestAtStart} M</color>";
+            }
+            else place = _mode == Mode.Daily ? $"NIGHT {_levelIndex + 1}/{DailyLen}"
+                       : _mode == Mode.Versus ? $"RACE {Net.RoomCode}"
+                       : $"FLOOR {_levelIndex + 1}   <color=#{gold}>•   {WorldNames[WorldOf(_levelIndex)]}</color>";
             _hud.text = place + "     DEATHS " + _deaths;
 
             // …and the stage counter beneath it, which the HUD had nowhere to say
-            // even though every roomed floor is scored in stages.
+            // even though every roomed floor is scored in stages. Endless hides
+            // it: "STAGE 2 / 5" is a floor with a number on it wearing a
+            // different hat, and it would give away the seams the whole mode is
+            // built to hide.
             if (_stageText == null) return;
-            int stages = _level != null ? _level.Rooms.Count : 0;
+            int stages = _level != null && _mode != Mode.Endless ? _level.Rooms.Count : 0;
             _stageText.text = stages > 1 ? $"STAGE {Mathf.Min(_stageIndex + 1, stages)} / {stages}" : "";
         }
 
@@ -5833,6 +5957,10 @@ namespace TrustIssues
                 }
             }
 
+            // Endless is scored in metres, so the metres have to be counted
+            // every frame the player is actually moving through the world.
+            if (_state == State.Play && !_dying) TrackDepth();
+
             if (_state == State.Play && _player != null && !_dying &&
                 _player.transform.position.y < -9f)
                 Die("Gravity wins again.");
@@ -6161,36 +6289,22 @@ namespace TrustIssues
             CinematicPunch(deathPos, 0.18f, 0.3f);   // 2.5D: a quick lean toward the kill
             // NEAR-INSTANT retry — the heart of the "just one more try" loop.
             yield return new WaitForSecondsRealtime(0.18f);
+            // Endless used to be unloseable: out of lives just dropped you back
+            // to a checkpoint with a fresh pool, forever. That makes a distance
+            // score meaningless — anyone patient enough could grind to any
+            // number — and it means the death screen, which is where the whole
+            // mode pays out ("this is how deep you got, and nobody has ever gone
+            // deeper"), never appeared at all. The descent now ENDS when the
+            // lives run out. Clearing ground earns them back, so a good run
+            // funds itself. The floor that killed you is left STANDING behind
+            // the result screen — being shown your distance over an empty black
+            // void reads as a crash, not an ending.
+            if (_hearts == 0 && _mode != Mode.Daily) { RunOver(); yield break; }
             Destroy(_levelRoot.gameObject);
-            if (_hearts == 0)
-            {
-                // Endless never hard-ends on lives — drop back to the last checkpoint
-                // segment with a fresh pool and keep going. Blood Moon now AUTO-RESTARTS
-                // from night 1 (no trip to the menu to re-pick it — the #1 friction
-                // complaint); every other heart mode still ends on a result screen.
-                if (_mode == Mode.Endless) EndlessCheckpointRespawn();
-                else if (_mode == Mode.Daily) BloodMoonRestart();
-                else RunOver();
-            }
+            // Blood Moon auto-restarts from night 1 (no trip to the menu to
+            // re-pick it — the #1 friction complaint).
+            if (_hearts == 0) BloodMoonRestart();
             else BuildLevel();
-        }
-
-        // Endless: out of lives → bank best depth, fall back to the start of the
-        // current checkpoint segment, refill hearts, and continue. The run only ever
-        // ends when the player chooses "END RUN" from the pause menu.
-        void EndlessCheckpointRespawn()
-        {
-            if (_levelIndex > PlayerPrefs.GetInt("best_endless", 0))
-            { PlayerPrefs.SetInt("best_endless", _levelIndex); PlayerPrefs.Save(); }
-            int seg = (_levelIndex / Diff.CheckpointEvery) * Diff.CheckpointEvery;
-            _levelIndex = seg;
-            _hearts = Diff.StartHearts;
-            _hasCheckpoint = false;
-            ResetFloorState();
-            Audio.Play("levelup", 0.5f);
-            ShowBanner("CHECKPOINT HOLDS",
-                       $"back to floor {seg + 1} • {Diff.StartHearts} fresh lives • the night goes on");
-            BuildLevel();
         }
 
         // Blood Moon: out of lives → loop straight back to night 1 with a fresh
@@ -6304,12 +6418,14 @@ namespace TrustIssues
         {
             Memory.RunEndedCleanly();   // reached a result screen = not a rage-quit
             _state = State.Win;
-            if (_mode == Mode.Endless && _levelIndex > PlayerPrefs.GetInt("best_endless", 0))
-            { PlayerPrefs.SetInt("best_endless", _levelIndex); PlayerPrefs.Save(); _newBest = true; }
+            bool endless = _mode == Mode.Endless;
+            int depth = Depth, prevBest = _bestAtStart;
+            if (endless) BankDepthRecord();
             Analytics.Track("run_end", new System.Collections.Generic.Dictionary<string, object>
             {
                 { "mode", ModeName },
                 { "final_level_index", _levelIndex },
+                { "distance_m", depth },
                 { "total_deaths", _deaths },
                 { "reason", "out_of_lives" },
             });
@@ -6317,19 +6433,62 @@ namespace TrustIssues
 
             var panel = Overlay(new Color(0.05f, 0f, 0.02f, 0.85f), out var root);
             ResultTitle(root, "YOU PERISHED", 200f, 84);
-            string reached = _mode == Mode.Endless ? $"reached floor {_levelIndex + 1}"
-                                                    : $"fell on night {_levelIndex + 1}/{DailyLen}";
+            // The one number the whole mode is about, as big as the game can say
+            // it. Not "floor 12" — twelve of what? — but how far down you got.
+            string reached = endless ? $"{depth} M DOWN"
+                                     : $"fell on night {_levelIndex + 1}/{DailyLen}";
             Gothic.Line(root, reached + $"   ·   {_deaths} deaths", 46, Gothic.Bone,
                 new Vector2(0, 90), new Vector2(1400, 70));
+            if (endless)
+                Gothic.Line(root, depth > prevBest && prevBest > 0
+                                ? $"your deepest ever — you beat {prevBest} M"
+                                : prevBest > 0 ? $"your deepest ever is {prevBest} M"
+                                               : "your first descent",
+                    28, Theme.Coin, new Vector2(0, 46), new Vector2(1400, 40));
 
-            string lbMode = _mode == Mode.Endless ? "endless" : "daily";
-            Leaderboard.Submit(lbMode, _mode == Mode.Endless ? _levelIndex + 1 : _deaths);
-            string brag = _mode == Mode.Endless
-                ? $"I reached FLOOR {_levelIndex + 1} of Endless Night in Trust Issues \U0001F987 — beat that"
+            string lbMode = endless ? "endless" : "daily";
+            Leaderboard.Submit(lbMode, endless ? depth : _deaths);
+            // …and then ask the world how that stacks up. The answer lands a
+            // moment later (it's a network call) into a line held open for it.
+            if (endless) ShowWorldStanding(root, depth);
+            string brag = endless
+                ? $"I got {depth} M down into Endless Night in Trust Issues \U0001F987 — beat that"
                 : $"I fell on night {_levelIndex + 1} of tonight's Blood Moon \U0001F987";
             if (_mode == Mode.Daily && Rumor.Discovered)
                 brag += $" — and I proved the rumor: \"{Rumor.CrypticLine}\"";
             ResultFooter(root, panel, brag, lbMode);
+        }
+
+        /// <summary>
+        /// "Has anyone ever gone deeper than this?" — the question an infinite
+        /// mode lives or dies on, answered on the screen where it's asked
+        /// instead of behind a LEADERBOARD button nobody presses. Best-effort:
+        /// the board is a network call that can fail, so the line simply stays
+        /// empty rather than blocking or apologising.
+        /// </summary>
+        void ShowWorldStanding(Transform root, int depth)
+        {
+            var line = Gothic.Line(root, "", 30, Gothic.Bone, new Vector2(0, 8), new Vector2(1500, 44));
+            Leaderboard.Fetch("endless", "all", entries =>
+            {
+                if (line == null) return;
+                int deeper = 0, top = 0;
+                foreach (var e in entries)
+                {
+                    if (e.value > top) top = e.value;
+                    if (e.value > depth) deeper++;
+                }
+                if (entries.Count == 0) return;                 // board not reachable — say nothing
+                if (deeper == 0)
+                {
+                    line.text = "NOBODY HAS EVER GONE THIS DEEP";
+                    line.color = Theme.Coin;
+                }
+                else if (deeper == 1)
+                    line.text = $"one soul has gone deeper — {top} M";
+                else
+                    line.text = $"{deeper} have gone deeper — the deepest reached {top} M";
+            });
         }
 
         // ==================== level progression / win ====================
@@ -6419,18 +6578,22 @@ namespace TrustIssues
 
             if (_mode == Mode.Endless)
             {
+                // Bank this segment's length as depth BEFORE stepping to the
+                // next one, so the metres are credited against the segment that
+                // was actually run.
+                float before = _deepest;
+                AdvanceDepth();
                 _levelIndex++;
-                if (_levelIndex > PlayerPrefs.GetInt("best_endless", 0))
-                { PlayerPrefs.SetInt("best_endless", _levelIndex); PlayerPrefs.Save(); _newBest = true; }
-                if (_levelIndex + 1 >= 10) Badges.Award("endless10");
-                if (_levelIndex + 1 >= 20) Badges.Award("endless20");
-                // Crossing a checkpoint boundary banks a new safe fall-back floor.
-                if (_levelIndex % Diff.CheckpointEvery == 0)
-                {
-                    Badges.Award("endless" + _levelIndex);   // milestone badge (endless5/10/15/…)
-                    ShowBanner($"CHECKPOINT — FLOOR {_levelIndex + 1}",
-                               "you'll respawn here if you fall • keep climbing");
-                }
+                BankDepthRecord();
+                if (_deepest >= 1000f) Badges.Award("endless10");
+                if (_deepest >= 2500f) Badges.Award("endless20");
+                // The only milestone an endless mode can honestly mark: another
+                // 500 metres of dark. It fires on a DEPTH the player watched
+                // tick past on their own HUD, not on a floor they never knew
+                // they were on.
+                int wasKm = Mathf.FloorToInt(before / 500f), nowKm = Mathf.FloorToInt(_deepest / 500f);
+                if (nowKm > wasKm)
+                    ShowBanner($"{nowKm * 500} M DOWN", "and the castle still hasn't run out");
                 StartCoroutine(NextLevelFlash());
                 return;
             }
@@ -6478,18 +6641,19 @@ namespace TrustIssues
         IEnumerator NextLevelFlash()
         {
             _state = State.Win; // block input briefly
-            // Endless names the floor it's dropping you into. The descent never
-            // pauses — there's no map, no menu, no button between floors — so
-            // the NAME is the only thing that tells you the ground rules just
-            // changed, and it's what makes sixteen shapes read as sixteen
-            // shapes instead of "more castle".
-            if (_toast != null)
-                _toast.text = _mode == Mode.Endless
-                                ? $"FLOOR {_levelIndex + 1}   —   {EndlessFloors.NameFor(_levelIndex + 1, _endlessSeed)}"
-                            : _mode == Mode.Daily ? $"NIGHT {_levelIndex + 1}" : $"LEVEL {_levelIndex + 1}";
+            // Endless says NOTHING here. No number, no name, no "floor cleared"
+            // — the whole illusion is one unbroken fall, and a card announcing
+            // chapter seven is the fastest way to break it. What the player gets
+            // instead is a whisper of what's ahead, low on the screen, in the
+            // castle's voice: it tells them the ground rules just changed
+            // without ever admitting the ground was rebuilt.
             if (_mode == Mode.Endless)
-                ShowHint(EndlessFloors.TagFor(_levelIndex + 1, _endlessSeed), 2.6f);
-            yield return new WaitForSecondsRealtime(0.9f);
+                ShowHint(EndlessFloors.TagFor(_levelIndex + 1, _endlessSeed), 2.2f);
+            else if (_toast != null)
+                _toast.text = _mode == Mode.Daily ? $"NIGHT {_levelIndex + 1}" : $"LEVEL {_levelIndex + 1}";
+            // …and it barely pauses. The other modes hold the card long enough
+            // to read it; Endless just keeps falling.
+            yield return new WaitForSecondsRealtime(_mode == Mode.Endless ? 0.35f : 0.9f);
             if (_toast != null) _toast.text = "";
             Destroy(_levelRoot.gameObject);
             _hasCheckpoint = false;
@@ -6608,8 +6772,11 @@ namespace TrustIssues
                         cause = Memory.LastKillerName, mode = ModeName,
                     };
                     string link = Curse.BuildLink(d);
-                    string msg = NativeShare.Sanitize(
-                        $"I cursed you in Trust Issues \U0001F987 survive floor {_levelIndex + 1} with {_floorDeaths} deaths or less, or my ghost stays");
+                    // Endless has no floor to name, so the dare is set in the
+                    // only unit it has: get past where I died.
+                    string msg = NativeShare.Sanitize(_mode == Mode.Endless
+                        ? $"I cursed you in Trust Issues \U0001F987 get past {Depth} M in Endless Night with {_floorDeaths} deaths or less, or my ghost stays"
+                        : $"I cursed you in Trust Issues \U0001F987 survive floor {_levelIndex + 1} with {_floorDeaths} deaths or less, or my ghost stays");
                     // Goes through the OS share sheet on phone (WhatsApp, Instagram,
                     // Bluetooth...) rather than silently filling a clipboard.
                     NativeShare.ShareText(msg, link);
@@ -6637,7 +6804,7 @@ namespace TrustIssues
             Gothic.Backdrop(root);
             string scope = mode == "daily" ? "today" : "all";
             string heading = mode == "daily" ? "BLOOD MOON — TONIGHT (FEWEST DEATHS)"
-                           : mode == "endless" ? "ENDLESS NIGHT — DEEPEST FLOOR"
+                           : mode == "endless" ? "ENDLESS NIGHT — DEEPEST DESCENT"
                                                : "THE CASTLE — FEWEST DEATHS";
             Gothic.Heading(root, "LEADERBOARD", heading);
             Gothic.PlateAt(root, new Vector2(0, -30), new Vector2(1080, 560), Gothic.Plate);
