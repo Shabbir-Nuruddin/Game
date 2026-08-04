@@ -527,11 +527,12 @@ namespace TrustIssues
 
         static int EndlessThemeForFloor(int floor)
         {
-            if (floor < 3) return 0;
-            if (floor < 7) return 1;
-            if (floor < 11) return 2;
-            if (floor < 15) return 3;
-            if (floor < 19) return 4;
+            // floor is zero-based: Frozen Wastes begins as the HUD enters Floor 5.
+            if (floor < 4) return 0;
+            if (floor < 8) return 1;
+            if (floor < 12) return 2;
+            if (floor < 16) return 3;
+            if (floor < 20) return 4;
             return 5;
         }
 
@@ -610,7 +611,7 @@ namespace TrustIssues
             }
             if (_endlessBackdrop != null)
             {
-                if (_mode == Mode.Endless) _endlessBackdrop.Show(endlessTheme, 3.0f);
+                if (_mode == Mode.Endless) _endlessBackdrop.Show(endlessTheme, 3.5f);
                 else _endlessBackdrop.Hide(0.35f);
             }
             // Announce a new region as you cross into it (Castle worlds / Endless depths),
@@ -4587,7 +4588,7 @@ namespace TrustIssues
             // The artwork's own top line: the floor in blood red, the place it's in
             // in candle gold, then the tally that never stops climbing.
             string place = _mode == Mode.Endless
-                         ? $"DISTANCE {CurrentEndlessMeters} M   <color=#{gold}>•   BEST {Mathf.Max(CurrentEndlessMeters, PlayerPrefs.GetInt(\"best_endless_distance\", 0))} M</color>"
+                         ? $"DISTANCE {CurrentEndlessMeters} M   <color=#{gold}>•   BEST {Mathf.Max(CurrentEndlessMeters, PlayerPrefs.GetInt("best_endless_distance", 0))} M</color>"
                          : _mode == Mode.Daily ? $"NIGHT {_levelIndex + 1}/{DailyLen}"
                          : _mode == Mode.Versus ? $"RACE {Net.RoomCode}"
                          : $"FLOOR {_levelIndex + 1}   <color=#{gold}>•   {WorldNames[WorldOf(_levelIndex)]}</color>";

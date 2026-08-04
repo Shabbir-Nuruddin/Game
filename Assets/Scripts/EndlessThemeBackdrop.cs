@@ -8,19 +8,18 @@ namespace TrustIssues
     {
         const int Columns = 3;
         const int ThemeCount = 6;
-        // Camera-child backdrop plane. At local Z=20 the 40-degree perspective
-        // camera sees ~14.6 world units vertically; this overscan covers wide and
-        // tall windows without exposing an edge. Orthographic mode is covered too.
-        const float WorldWidth = 27.5f;
-        const float WorldHeight = 15.2f;
+        const float PlaneDistance = 20f;
+        const float CoverOverscan = 1.03f;
         readonly SpriteRenderer[] _layers = new SpriteRenderer[2];
         Sprite[] _themes;
+        Camera _camera;
         Coroutine _fade;
         int _front;
         public int CurrentTheme { get; private set; } = -1;
 
         public void Init(Transform cameraTransform, Parallax parallax)
         {
+            _camera = cameraTransform.GetComponent<Camera>();
             var atlas = Resources.Load<Texture2D>("art/endless_theme_atlas_v2");
             if (atlas == null) return;
             _themes = Slice(atlas);
@@ -32,6 +31,14 @@ namespace TrustIssues
                     new Vector2(0.5f, 0.5f), 100f, 0, SpriteMeshType.FullRect);
                 _themes[0].name = "ForsakenHighlands";
             }
+            var frozen = Resources.Load<Texture2D>("art/frozen_wastes_v1");
+            if (frozen != null)
+            {
+                _themes[1] = Sprite.Create(frozen,
+                    new Rect(0f, 0f, frozen.width, frozen.height),
+                    new Vector2(0.5f, 0.5f), 100f, 0, SpriteMeshType.FullRect);
+                _themes[1].name = "FrozenWastes";
+            }
             for (int i = 0; i < 2; i++)
             {
                 var go = new GameObject("EndlessTheme" + i);
@@ -40,7 +47,7 @@ namespace TrustIssues
                 // later crossfade scale assignment to cancel the perspective scale
                 // and shrink the art into a small rectangle.
                 go.transform.SetParent(cameraTransform, false);
-                go.transform.localPosition = new Vector3(0f, 0f, 20f);
+                go.transform.localPosition = new Vector3(0f, 0f, PlaneDistance);
                 var sr = go.AddComponent<SpriteRenderer>();
                 // In front of every legacy castle/parallax layer (-28..-12), but
                 // still safely behind platforms and gameplay. At -13 the fog layer
@@ -50,7 +57,10 @@ namespace TrustIssues
                 _layers[i] = sr;
                 SetSprite(sr, _themes[0]);
             }
+            FitLayersToCamera();
         }
+
+        void LateUpdate() => FitLayersToCamera();
 
         public void Show(int theme, float duration)
         {
@@ -87,11 +97,28 @@ namespace TrustIssues
             return result;
         }
 
-        static void SetSprite(SpriteRenderer sr, Sprite sprite)
+        void SetSprite(SpriteRenderer sr, Sprite sprite)
         {
             sr.sprite = sprite;
-            Vector2 size = sprite.bounds.size;
-            sr.transform.localScale = new Vector3(WorldWidth / size.x, WorldHeight / size.y, 1f);
+            FitLayerToCamera(sr);
+        }
+
+        void FitLayersToCamera()
+        {
+            if (_camera == null) return;
+            for (int i = 0; i < _layers.Length; i++) FitLayerToCamera(_layers[i]);
+        }
+
+        void FitLayerToCamera(SpriteRenderer sr)
+        {
+            if (_camera == null || sr == null || sr.sprite == null) return;
+            float viewHeight = _camera.orthographic
+                ? _camera.orthographicSize * 2f
+                : 2f * PlaneDistance * Mathf.Tan(_camera.fieldOfView * 0.5f * Mathf.Deg2Rad);
+            float viewWidth = viewHeight * _camera.aspect;
+            Vector2 spriteSize = sr.sprite.bounds.size;
+            float cover = Mathf.Max(viewWidth / spriteSize.x, viewHeight / spriteSize.y) * CoverOverscan;
+            sr.transform.localScale = new Vector3(cover, cover, 1f);
         }
 
         IEnumerator Crossfade(int from, int to, float duration)

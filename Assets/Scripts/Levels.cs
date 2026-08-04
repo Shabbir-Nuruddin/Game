@@ -487,11 +487,11 @@ namespace TrustIssues
         // warp rune (rage teleport), and the reactive ceiling drops (Faller /
         // Chandelier) — pairing a drop with another hazard forces you to stop
         // right under it, which is what made the night-3 "falling box" unfair.
-        static bool Soloist(TrapType t) =>
+        internal static bool Soloist(TrapType t) =>
             t == TrapType.Crusher || t == TrapType.WarpBack ||
             t == TrapType.Faller || t == TrapType.Chandelier;
 
-        static void PlaceHazard(B b, TrapType t, float p)
+        internal static void PlaceHazard(B b, TrapType t, float p)
         {
             switch (t)
             {
