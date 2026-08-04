@@ -8,6 +8,20 @@ You already have Unity 6 installed and this folder open. If not: Unity Hub →
 **Add** → **Add project from disk** → choose
 `C:\Users\Shabbir\Desktop\Github\Game`, then open it.
 
+### Photon PUN 2 on Unity 6.5
+
+After importing Photon PUN 2, Unity 6.5 may report `CS0619` in
+`PhotonHandler.cs` because `GetInstanceID()` is no longer supported. Close Unity,
+then double-click `tools\fix-photon-unity65.cmd`, or run this once from
+PowerShell in the project folder:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tools\fix-photon-unity65.ps1
+```
+
+Reopen Unity and allow it to recompile. The script is safe to run again after a
+Photon re-import or update.
+
 ## Step 2 — Press Play
 
 1. The game **builds itself on Play** — no GameObject to create, nothing to wire
