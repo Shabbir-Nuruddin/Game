@@ -90,7 +90,7 @@ namespace TrustIssues
         public static string Lore(TrapType t) => t switch
         {
             TrapType.SpikeStatic => "Always visible, always lethal. Just jump it — the game is being honest for once.",
-            TrapType.LateSpike   => "Looks like clear ground, then erupts the instant you land. Keep moving; never trust a perfect platform.",
+            TrapType.LateSpike   => "A hidden sensor makes it erupt just ahead of you. Watch the ground: stop or jump as soon as the blade appears.",
             TrapType.GrowSpike   => "Grows lethal and shrinks safe on a loop. It's red when it can kill — cross while it's dim and low.",
             TrapType.ArrowRain   => "Spikes drop from the ceiling on a timer. Watch the rhythm, then sprint through the gap.",
             TrapType.FakeFloor   => "The most inviting platform collapses a beat after you stand on it. It shudders first — that's your warning.",

@@ -4587,7 +4587,7 @@ namespace TrustIssues
             // The artwork's own top line: the floor in blood red, the place it's in
             // in candle gold, then the tally that never stops climbing.
             string place = _mode == Mode.Endless
-                         ? $"DISTANCE {CurrentEndlessMeters} M   <color=#{gold}>•   BEST {Mathf.Max(CurrentEndlessMeters, PlayerPrefs.GetInt(\"best_endless_distance\", 0))} M</color>"
+                         ? $"DISTANCE {CurrentEndlessMeters} M   <color=#{gold}>•   BEST {Mathf.Max(CurrentEndlessMeters, PlayerPrefs.GetInt("best_endless_distance", 0))} M</color>"
                          : _mode == Mode.Daily ? $"NIGHT {_levelIndex + 1}/{DailyLen}"
                          : _mode == Mode.Versus ? $"RACE {Net.RoomCode}"
                          : $"FLOOR {_levelIndex + 1}   <color=#{gold}>•   {WorldNames[WorldOf(_levelIndex)]}</color>";

@@ -6,7 +6,7 @@ namespace TrustIssues
     public enum TrapType
     {
         FakeFloor,  // looks solid, collapses a moment after you stand on it
-        LateSpike,  // spikes rise up the instant you arrive
+        LateSpike,  // proximity-sensed spikes rise visibly just before you arrive
         Crusher,    // a block slams down if you go for the high bait
         FakeExit,   // the obvious bright door kills you
         RealExit,   // the unassuming spot that actually wins
@@ -67,11 +67,31 @@ namespace TrustIssues
         float _growBottomY;   // platform surface the spike erupts from
         float _growFullH;     // full world height when raised
 
+        // A late spike is an ambush, not an invisible collision. Its trigger sits
+        // ahead of the buried spike so a full-speed player gets roughly a third of
+        // a second of warning; the tall trigger also catches a player who jumps.
+        // The spike itself stays at this component's transform position.
+        const float LateSpikeSensorLead = 2.15f;
+        const float LateSpikeSensorWidth = 1.10f;
+        const float LateSpikeSensorHeight = 5.00f;
+        const float LateSpikeRiseTime = 0.24f;
+        const float LateSpikeLethalAt = 0.72f;
+
         void Start()
         {
             _sr = GetComponent<SpriteRenderer>();
             _col = GetComponent<BoxCollider2D>();
             _origin = transform.position;
+
+            if (type == TrapType.LateSpike && _col != null)
+            {
+                // Levels progress left-to-right. Moving the SENSOR left makes the
+                // hazard reveal ahead of the player while its visual still erupts
+                // at _origin. A taller sensor prevents jumping from bypassing the
+                // reveal and then meeting a spike that was never shown.
+                _col.offset = new Vector2(-LateSpikeSensorLead, 1.20f);
+                _col.size = new Vector2(LateSpikeSensorWidth, LateSpikeSensorHeight);
+            }
             // GrowSpike and FlameJet both erupt UP from the floor, so they share the
             // base-anchor maths (otherwise they'd shrink toward their own centre).
             if (type == TrapType.GrowSpike || type == TrapType.FlameJet)
@@ -307,7 +327,7 @@ namespace TrustIssues
             switch (type)
             {
                 case TrapType.LateSpike:
-                    if (_armed) StartCoroutine(RaiseSpike(other));
+                    TryRaiseLateSpike(other, pc);
                     break;
                 case TrapType.Crusher:
                     if (_armed) StartCoroutine(Crush());
@@ -348,6 +368,31 @@ namespace TrustIssues
                     if (_armed) { _armed = false; GameRoot.I?.SetCheckpoint(transform.position); }
                     break;
             }
+        }
+
+        void OnTriggerStay2D(Collider2D other)
+        {
+            // If the player entered the sensor while backtracking or standing
+            // still, arm it as soon as they turn toward the still-ahead spike.
+            // This also makes very slow approaches deterministic: the warning is
+            // based on distance, never on whether one physics-enter event happened.
+            if (type != TrapType.LateSpike || !_armed) return;
+            var pc = other.GetComponent<PlayerController>();
+            if (pc != null) TryRaiseLateSpike(other, pc);
+        }
+
+        void TryRaiseLateSpike(Collider2D player, PlayerController pc)
+        {
+            if (!_armed) return;
+
+            // Never reveal behind the player. Castle/Blood Moon routes advance to
+            // the right, so a player who has already crossed the hazard can safely
+            // backtrack without causing a spike to pop up behind their feet.
+            if (pc.transform.position.x >= transform.position.x - 0.25f) return;
+            var rb = player.attachedRigidbody;
+            if (rb != null && rb.linearVelocity.x < -0.05f) return;
+
+            StartCoroutine(RaiseSpike());
         }
 
         // A dart flies in from the right the instant you step on the sensor.
@@ -428,9 +473,11 @@ namespace TrustIssues
             }
         }
 
-        // Spikes hidden under the platform shoot up the instant you arrive.
-        // They kill on contact (via KillZone), so JUMPING OVER them survives.
-        IEnumerator RaiseSpike(Collider2D player)
+        // The forward sensor reveals this spike before the player reaches it. It
+        // rises harmlessly at first, then becomes lethal once most of the blade is
+        // visibly above ground. Continuing forward kills; stopping or jumping on
+        // reaction survives.
+        IEnumerator RaiseSpike()
         {
             _armed = false;
             GameRoot.I?.TrapFired(type, transform.position);   // clear the ambush = CALLED IT
@@ -442,11 +489,13 @@ namespace TrustIssues
                 : Theme.Box("Spikes", transform.parent, pos, new Vector2(0.7f, 0.9f), Theme.Danger, 3);
             // Blood red either way — the painted iron is multiplied onto it (see SpikeRed).
             if (sp != null) go.GetComponent<SpriteRenderer>().color = painted != null ? SpikeRed : Theme.Danger;
-            var kz = go.AddComponent<KillZone>();
-            kz.msg = "Impaled.";
             var col = go.AddComponent<BoxCollider2D>();
             col.isTrigger = true;
             col.size *= 0.8f; // reliable spike hitbox
+            col.enabled = false; // readable warning first; danger only after emergence
+            var kz = go.AddComponent<KillZone>();
+            kz.msg = "Impaled.";
+            kz.trapTag = (int)TrapType.LateSpike;
             _spike = go.transform;
 
             // Ease-out with a small overshoot-and-settle: the spike PUNCHES up,
@@ -455,17 +504,18 @@ namespace TrustIssues
             // good") — the overshoot is what sells impact at this sprite size.
             float e = 0f; Vector3 from = _spike.position;
             Vector3 to = from + Vector3.up * 0.95f;
-            const float T = 0.16f;
             GameRoot.I?.ShakeCam(0.1f, 0.07f);
-            while (e < T)
+            while (e < LateSpikeRiseTime)
             {
                 e += Time.deltaTime;
-                float k = Mathf.Clamp01(e / T);
+                float k = Mathf.Clamp01(e / LateSpikeRiseTime);
                 float ease = 1f + 1.7f * Mathf.Pow(k - 1f, 3f) + 0.7f * Mathf.Pow(k - 1f, 2f); // back-out
                 _spike.position = Vector3.LerpUnclamped(from, to, ease);
+                if (!col.enabled && k >= LateSpikeLethalAt) col.enabled = true;
                 yield return null;
             }
             _spike.position = to;
+            col.enabled = true;
         }
 
         // A crusher block slams down the moment you reach for the bait coins.
