@@ -39,12 +39,8 @@ namespace TrustIssues
                           unlocked = () => PlayerPrefs.GetInt("castle_unlocked", 0) >= 4 },
             new SkinDef { id = "spectre", name = "The Spectre",    tint = Theme.Hex("8FD4FF"),
                           ability = "Mist Double-Jump", airJumps = 1,
-                          unlockHint = "Get 1000 M down in Endless Night",
-                          // Endless switched from counting floors to counting
-                          // metres; the old floor record still counts so nobody
-                          // loses a skin they already earned.
-                          unlocked = () => PlayerPrefs.GetInt("best_endless_m", 0) >= 1000
-                                        || PlayerPrefs.GetInt("best_endless", 0) >= 9 },
+                          unlockHint = "Reach Endless floor 10",
+                          unlocked = () => PlayerPrefs.GetInt("best_endless", 0) >= 9 },
             new SkinDef { id = "golden",  name = "Golden Cursed",  tint = Theme.Hex("F2C84B"),
                           ability = "High Leaper (+jump)", jumpMul = 1.1f,
                           unlockHint = "Keep a 7-day Blood Moon streak",

@@ -49,7 +49,7 @@ namespace TrustIssues
     }
 }
 
-#if PHOTON_UNITY_NETWORKING
+#if PHOTON_UNITY_NETWORKING && TRUST_ISSUES_PHOTON_INSTALLED
 namespace TrustIssues
 {
     using Photon.Pun;

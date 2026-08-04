@@ -473,14 +473,11 @@ namespace TrustIssues
         // warp rune (rage teleport), and the reactive ceiling drops (Faller /
         // Chandelier) — pairing a drop with another hazard forces you to stop
         // right under it, which is what made the night-3 "falling box" unfair.
-        // (internal, not private: the Endless floor factory in Endless.cs lays
-        // hazards through these same two helpers, so a rule learned here — never
-        // pair a crusher with a jump — holds on generated floors too.)
-        internal static bool Soloist(TrapType t) =>
+        static bool Soloist(TrapType t) =>
             t == TrapType.Crusher || t == TrapType.WarpBack ||
             t == TrapType.Faller || t == TrapType.Chandelier;
 
-        internal static void PlaceHazard(B b, TrapType t, float p)
+        static void PlaceHazard(B b, TrapType t, float p)
         {
             switch (t)
             {
@@ -499,10 +496,6 @@ namespace TrustIssues
                 case TrapType.Chandelier: b.Chandelier(p); break;
                 case TrapType.HolyWater: b.HolyWater(p); break;
                 case TrapType.BatSwoop: b.Bat(p); break;
-                // Springs were falling through to the default and silently
-                // becoming spikes. Nothing in the old pools asked for one, but a
-                // switch that quietly builds the wrong trap is a trap of its own.
-                case TrapType.Spring: b.Spring(p); break;
                 default: b.Spike(p); break;
             }
         }

@@ -71,36 +71,8 @@ namespace TrustIssues
         string _customCode = "";
         float _customStart;      // realtime the attempt began, for the race clock
         Mode _mode = Mode.Curated;
-        // A fresh number every single time ENDLESS NIGHT is opened, and never
-        // written to disk — that's the whole guarantee that no two descents are
-        // the same descent.
         int _endlessSeed;
         const int DailyLen = 5;
-
-        // ---- ENDLESS: distance, not floors ----------------------------------
-        // Endless has no floor 1 and no floor 40. It has DEPTH — one number that
-        // starts at zero and only ever goes up, which is the only score an
-        // infinite mode can honestly keep. The descent is still built in
-        // segments under the hood (that's how a level gets generated and how a
-        // death respawns you), but the player is never shown one: no numbers, no
-        // names, no "floor cleared". Just metres.
-        //
-        // _segStart[i] is how deep the mouth of segment i is. It's filled in as
-        // the run descends, so falling back to a checkpoint and re-running the
-        // same segments re-uses the same depths instead of double-counting them.
-        readonly System.Collections.Generic.List<float> _segStart = new();
-        float _segDepth;      // depth at the mouth of the segment being played
-        float _deepest;       // deepest this run has EVER been — the score
-        // The record as it stood when this descent began. The live record gets
-        // overwritten the moment the run passes it, so the result screen needs
-        // its own copy to say "you beat your old 1240 M" and mean it.
-        int _bestAtStart;
-        /// <summary>Metres covered this descent. Never goes backwards.</summary>
-        int Depth => Mathf.RoundToInt(_deepest);
-        /// <summary>The deepest this player has ever gone, in metres.</summary>
-        static int BestDepth => PlayerPrefs.GetInt("best_endless_m", 0);
-        /// <summary>Endless hides every "you are here in a level" marker.</summary>
-        public bool HideStageMarks => _mode == Mode.Endless;
 
         // The link that rides along with every share. PLACEHOLDER — point this at
         // the Play Store listing (or the itch/web build) once the game is live and
@@ -137,6 +109,7 @@ namespace TrustIssues
         Text _hud, _toast;
         GameObject _menuPanel, _pausePanel, _touchPanel, _rotatePanel;
         Parallax _parallax;
+        EndlessThemeBackdrop _endlessBackdrop;
 
         // ---- multiplayer (Versus race) ----
         readonly System.Collections.Generic.Dictionary<int, Ghost> _ghosts = new();
@@ -314,6 +287,12 @@ namespace TrustIssues
                 var root = new GameObject("Parallax");
                 _parallax = root.AddComponent<Parallax>();
                 _parallax.Init(_cam.transform);
+                // This must be created before any of the backdrop branches return.
+                // The painted castle plate is present in production builds and used
+                // to return before EndlessThemeBackdrop existed, leaving Endless on
+                // the red castle artwork forever.
+                _endlessBackdrop = root.AddComponent<EndlessThemeBackdrop>();
+                _endlessBackdrop.Init(_cam.transform, _parallax);
 
                 // The imported backdrop art is a BLUE mountain range, and a multiply
                 // tint can't take blue out of it — every attempt just came out a darker
@@ -371,6 +350,7 @@ namespace TrustIssues
                 // no castle in it. In the painting the air is CLEAR: the depth comes
                 // from the layers being different brightnesses, not from smoke.
                 AddParallax(v ? "bgv_fog" : "bg_fog",       v ? Dim(0.55f) : Theme.Hex("3A1622"), 0.4f,  -12, 0.55f, 0.09f);
+
                 return;
             }
 
@@ -530,6 +510,22 @@ namespace TrustIssues
         // cold blue → ember → violet → green → teal → gold → crimson).
         static readonly int[] VersusThemes = { 8, 4, 1, 7, 5, 2, 6, 3, 0 };
 
+        static readonly string[] EndlessThemeNames =
+        {
+            "FORSAKEN HIGHLANDS", "FROZEN WASTES", "CURSED CATHEDRAL",
+            "INFERNAL DEPTHS", "SHADOW REALM", "OBLIVION NIGHT"
+        };
+
+        static int EndlessThemeForFloor(int floor)
+        {
+            if (floor < 3) return 0;
+            if (floor < 7) return 1;
+            if (floor < 11) return 2;
+            if (floor < 15) return 3;
+            if (floor < 19) return 4;
+            return 5;
+        }
+
         // How visible the castle parallax is per theme — faded to a distant ruin in the
         // open "void" modes (Endless) so they don't read as "the same castle" as Castle.
         static readonly float[] ThemeCastleVis =
@@ -577,6 +573,7 @@ namespace TrustIssues
         void ThemeBackdrop()
         {
             int idx;
+            int endlessTheme = -1;
             switch (_mode)
             {
                 case Mode.Daily:   idx = 4; break;                         // Blood Moon
@@ -589,13 +586,31 @@ namespace TrustIssues
                 case Mode.Endless: idx = 5 + (_levelIndex / 10) % 3; break;// Abyss → Void → Inferno
                 default:           idx = WorldOf(_levelIndex); break;      // Castle worlds
             }
-            bool changed = idx != _curTheme;
+            if (_mode == Mode.Endless)
+            {
+                endlessTheme = EndlessThemeForFloor(_levelIndex);
+            }
+            bool changed = idx != _curTheme ||
+                (_mode == Mode.Endless && _endlessBackdrop != null &&
+                 _endlessBackdrop.CurrentTheme != endlessTheme);
             ApplyTheme(idx);
+            if (_mode == Mode.Endless)
+            {
+                if (_washSr != null) { var c = _washSr.color; c.a = 0f; _washSr.color = c; }
+                if (_moonSr != null) { var c = _moonSr.color; c.a = 0f; _moonSr.color = c; }
+            }
+            if (_endlessBackdrop != null)
+            {
+                if (_mode == Mode.Endless) _endlessBackdrop.Show(endlessTheme, 3.0f);
+                else _endlessBackdrop.Hide(0.35f);
+            }
             // Announce a new region as you cross into it (Castle worlds / Endless depths),
             // but not on the first floor, on a death-respawn, or inside a boss arena.
             if (changed && _state == State.Play && _levelIndex > 0 && !InBossRoom &&
                 (_mode == Mode.Curated || _mode == Mode.Endless))
-                ShowBanner($"ENTERING {ThemeNames[idx]}", "the world shifts around you");
+                ShowBanner(_mode == Mode.Endless
+                    ? $"ENTERING {EndlessThemeNames[endlessTheme]}"
+                    : $"ENTERING {ThemeNames[idx]}", "the world shifts around you");
         }
 
         // Recolour the sky, parallax layers and ambient motes for a theme.
@@ -1513,15 +1528,15 @@ namespace TrustIssues
             // Difficulty selector — tap to cycle Casual → Normal → Nightmare.
             MakeDifficultyChip(root, new Vector2(0, 76), new Vector2(400, 48));
 
-            // Mode buttons, demoted to a compact grid under PLAY — same
-            // callbacks and behavior, just no longer the first decision a
+            // Four mode buttons, demoted to a compact 2×2 grid under PLAY —
+            // same callbacks and behavior, just no longer the first decision a
             // brand-new player is forced to make.
-            //
-            // ENDLESS NIGHT is back. It was pulled because it was an infinite
-            // score chase with nothing to earn and every floor built out of the
-            // same flat corridor — "more of it" was the whole offer. It now
-            // deals sixteen different floor shapes from a shuffled deck with a
-            // boss every tenth floor, which is a reason to keep going down.
+            // ENDLESS NIGHT was cut from the menu: it was an infinite score chase
+            // with nothing to earn and no reason to keep climbing, and a fourth
+            // vague option only split attention away from the three modes that do
+            // have a point. The mode's code is untouched (Mode.Endless still works)
+            // so it can come back the moment it has a real goal — this is a menu
+            // decision, not a deletion.
             var dim = new Vector2(390, 64);
             Theme.Button(root, "THE CASTLE", new Color(0.28f, 0.24f, 0.32f), Color.white, 28,
                 new Vector2(0.5f, 0.5f), new Vector2(0, 4), new Vector2(600, 68), ShowLevelSelect);
@@ -1529,16 +1544,11 @@ namespace TrustIssues
                 new Vector2(0.5f, 0.5f), new Vector2(-205, -74), dim, StartDaily);
             Theme.Button(root, "MULTIPLAYER", new Color(0.5f, 0.12f, 0.16f), Color.white, 28,
                 new Vector2(0.5f, 0.5f), new Vector2(205, -74), dim, ShowVersusLobby);
-            // Wearing the record is the entire pitch of a distance mode: the
-            // button doesn't ask you to play, it tells you the number to beat.
-            Theme.Button(root, BestDepth > 0 ? $"ENDLESS NIGHT  {BestDepth} M" : "ENDLESS NIGHT",
-                new Color(0.18f, 0.14f, 0.30f), Color.white, 28,
-                new Vector2(0.5f, 0.5f), new Vector2(-205, -148), dim, StartEndless);
-            // BUILD A TRAP is the one mode that recruits players on its own:
-            // every map someone builds is an invitation sent to a friend who
-            // doesn't own the game yet.
+            // BUILD A TRAP takes the slot Endless vacated. It's the one mode that
+            // recruits players on its own: every map someone builds is an
+            // invitation sent to a friend who doesn't own the game yet.
             Theme.Button(root, "BUILD A TRAP", new Color(0.32f, 0.08f, 0.4f), Color.white, 28,
-                new Vector2(0.5f, 0.5f), new Vector2(205, -148), dim, ShowMapEditor);
+                new Vector2(0.5f, 0.5f), new Vector2(0, -148), new Vector2(600, 62), ShowMapEditor);
 
             // (NIGHTLY TITHE was granted up top so both layouts share one payout.)
 
@@ -1580,13 +1590,8 @@ namespace TrustIssues
             if (Meta.Streak > 0 && Meta.StreakAlive)
                 notices.Add(($"BLOOD MOON STREAK: {Meta.Streak} DAYS — keep it alive", 27, Theme.Coin));
             if (Curse.Pending != null)
-                // Endless has no floor to name a curse after — it's all one
-                // fall — so a curse from down there is placed by depth, not by
-                // a number the player would never have seen anyway.
-                notices.Add((Curse.Pending.mode == "Endless"
-                        ? $"{Curse.Pending.nick} CURSED YOU from deep in the Endless Night. Break it."
-                        : $"{Curse.Pending.nick} CURSED YOU from floor {Curse.Pending.floor + 1} of {Curse.Pending.mode}. Break it.",
-                    25, new Color(1f, 0.35f, 0.4f, 0.95f)));
+                notices.Add(($"{Curse.Pending.nick} CURSED YOU from floor {Curse.Pending.floor + 1} of {Curse.Pending.mode}. Break it.",
+                             25, new Color(1f, 0.35f, 0.4f, 0.95f)));
             string greet = Memory.MenuGreeting();
             if (greet != null)
             {
@@ -1861,7 +1866,7 @@ namespace TrustIssues
         void BuildSkinnedLeaderboard(Transform root, GameObject panel, string mode)
         {
             string heading = mode == "daily" ? "BLOOD MOON — TONIGHT (FEWEST DEATHS)"
-                           : mode == "endless" ? "ENDLESS NIGHT — DEEPEST DESCENT"
+                           : mode == "endless" ? "ENDLESS NIGHT — DEEPEST FLOOR"
                                                : "THE CASTLE — FEWEST DEATHS";
             // Painted heading + blurb out, live ones in.
             Skin.Chip(root, 0.24f, 0.205f, 0.76f, 0.240f, BoardInterior);
@@ -1877,7 +1882,7 @@ namespace TrustIssues
             // only ever ranks by ONE number, so the last two are replaced by the single
             // column this mode is actually sorted on.
             Skin.Chip(root, 0.540f, 0.393f, 0.832f, 0.436f, BoardInterior);
-            BoardCell(root, mode == "endless" ? "METRES" : "DEATHS", 0.600f, 0.395f, 0.820f, 0.432f, Gothic.Faint);
+            BoardCell(root, mode == "endless" ? "FLOOR" : "DEATHS", 0.600f, 0.395f, 0.820f, 0.432f, Gothic.Faint);
 
             // The painted table holds three sample rows; eight live ones fit the same
             // band once they're set at the real line height.
@@ -3433,13 +3438,12 @@ namespace TrustIssues
         {
             _modeSelectSource = "play_button";
             if (FreshPlayer) StartGame(0);
-            // Endless is back on the menu, so it's routable again. A descent is
-            // never "resumed" — the run IS the score, so the button starts a
-            // fresh one, and the caption below says exactly that.
+            // "Endless" is intentionally absent: the mode is off the menu, so a
+            // returning player whose last run was Endless resumes into the Castle
+            // instead of being dropped into a mode they can no longer choose.
             else switch (PlayerPrefs.GetString("ti_last_mode", "Curated"))
             {
                 case "Daily":   StartDaily();   break;
-                case "Endless": StartEndless(); break;
                 default:        StartGame(Mathf.Min(CastleUnlocked, Levels.Count - 1)); break;
             }
             _modeSelectSource = "menu";
@@ -3449,13 +3453,11 @@ namespace TrustIssues
         string PlayNowCaption()
         {
             if (FreshPlayer) return "PLAY";
+            // Endless is off the menu, so its caption is gone too — PlayNow() routes
+            // those players to the Castle and the button must not promise otherwise.
             switch (PlayerPrefs.GetString("ti_last_mode", "Curated"))
             {
                 case "Daily":   return "CONTINUE — BLOOD MOON";
-                // Never "continue": an Endless run can't be resumed, and a
-                // button that says otherwise is a lie the player finds out
-                // about one second after pressing it.
-                case "Endless": return "DESCEND AGAIN — ENDLESS NIGHT";
                 default:        return $"CONTINUE — FLOOR {Mathf.Min(CastleUnlocked, Levels.Count - 1) + 1}";
             }
         }
@@ -3505,15 +3507,9 @@ namespace TrustIssues
             _mode = Mode.Endless;
             TrackModeSelected("Endless", 0);
             _endlessSeed = new System.Random().Next(1, 1000000);
-            _bestAtStart = BestDepth;
             BeginRun(0);
-            // The promise, stated in the mode's own units. No floors, no levels,
-            // no end — one number that only goes down, and a castle that is
-            // rebuilt from scratch the moment you press this button again.
-            ShowBanner("ENDLESS NIGHT", BestDepth > 0
-                ? $"how far down can you get? • your deepest: {BestDepth} M"
-                : "how far down can you get?");
-            ShowHint($"{Diff.StartHearts} lives — every stretch you clear earns one back. Run out and the descent is over.", 4f);
+            ShowBanner("ENDLESS NIGHT", $"checkpoint every {Diff.CheckpointEvery} floors • you never truly die • how deep can you go?");
+            ShowHint($"Fall and you drop to your last checkpoint with fresh lives.  Jump, then hold {Controls.Name(Controls.Fly)}/FLY to glide.");
         }
 
         // ==================== VERSUS (multiplayer) ====================
@@ -4006,11 +4002,6 @@ namespace TrustIssues
             }
             _hasCheckpoint = false;
             _newBest = false;
-            // A new descent starts at the surface, with no memory of how deep
-            // the last one's segments were (this run's are different segments).
-            _segStart.Clear();
-            _segDepth = 0f;
-            _deepest = 0f;
             ResetFloorState();
             // Castle deaths are a LIFETIME tally that persists across menu visits
             // and sessions; Endless/Blood Moon deaths are per-run (for the score).
@@ -4060,15 +4051,13 @@ namespace TrustIssues
                     AddMidCheckpoint(night);   // a death costs HALF a night, not all of it
                     return night;
                 }
-                // Endless no longer comes off the flat-corridor generator, which
-                // built floor 3 and floor 30 out of the same parts and is why a
-                // deep run stopped feeling like it was going anywhere. Every
-                // floor is now one of sixteen SHAPES dealt from a shuffled deck
-                // (see EndlessFloors) — a different rule, a different geometry
-                // and a different hazard vocabulary each time — with a boss
-                // every tenth floor as the landmark. Still deterministic per
-                // (seed, floor), so a death rebuilds the identical floor.
-                case Mode.Endless: return EndlessFloors.Build(_levelIndex + 1, _endlessSeed);
+                // Endless ramp EASED at the mouth (analytics: 101 deaths on its
+                // very first floor — people bounced off the entrance): was idx+2,
+                // so floor 1 opened HARDER than Castle's. Now idx+1, a gentle
+                // spikes-only floor 1 that still climbs +1 forever (paired hazards
+                // from floor 4 on), so the deep run is exactly as brutal as before.
+                case Mode.Endless: return Levels.Generate(
+                    _endlessSeed + _levelIndex * 7919, _levelIndex + 1);
                 // Versus: a shared race track, identical for everyone in the room.
                 // The room code + ROUND number seed it, so each round is a fresh
                 // (still deterministic) layout and the match runs continuously. Kept
@@ -4197,7 +4186,6 @@ namespace TrustIssues
                 _levelEndX = Mathf.Max(_levelEndX, p.pos.x + p.size.x / 2f);
                 _levelStartX = Mathf.Min(_levelStartX, p.pos.x - p.size.x / 2f);
             }
-            if (_mode == Mode.Endless) MarkDepth();
 
             ThemeBackdrop();   // pick the backdrop by mode + progress (distinct per mode)
 
@@ -4230,7 +4218,7 @@ namespace TrustIssues
                 BuildPortals(pp);
             _rumorFloorUsed = false;
             BuildReactiveTraps();   // the "Trust Issues" learned traps from past deaths
-            PlaceLanterns();        // gothic ambience — chained lanterns off the vault
+            PlaceLanterns();
             BuildAerialHazards();
             if (_mode == Mode.Daily && _levelIndex == 1 && Rumor.HiddenDoor)
                 BuildHiddenDoor();  // tonight's rumor (2): the ghost door of night 2
@@ -4309,19 +4297,6 @@ namespace TrustIssues
 
         // A small gold crown + glow over the player's nemesis trap (the one that has
         // killed them the most). The castle knows who your bully is — and says so.
-        void CrownNemesis(Vector2 pos)
-        {
-            var band = Theme.Box("NemCrown", _levelRoot, pos, new Vector2(0.34f, 0.12f),
-                new Color(1f, 0.8f, 0.25f, 0.9f), 4);
-            Theme.Box("NemCrownSpike", _levelRoot, pos + new Vector2(-0.10f, 0.10f),
-                new Vector2(0.08f, 0.14f), new Color(1f, 0.8f, 0.25f, 0.9f), 4);
-            Theme.Box("NemCrownSpike", _levelRoot, pos + new Vector2(0f, 0.13f),
-                new Vector2(0.08f, 0.2f), new Color(1f, 0.85f, 0.3f, 0.95f), 4);
-            Theme.Box("NemCrownSpike", _levelRoot, pos + new Vector2(0.10f, 0.10f),
-                new Vector2(0.08f, 0.14f), new Color(1f, 0.8f, 0.25f, 0.9f), 4);
-            var fp = band.AddComponent<FaintPulse>(); fp.min = 0.6f; fp.max = 1f; fp.speed = 4f;
-        }
-
         // TONIGHT'S RUMOR (2): a ghost door hides just behind where night 2 begins.
         // Walking into it is a RealExit — straight to the next night — and proof.
         void BuildHiddenDoor()
@@ -4451,67 +4426,6 @@ namespace TrustIssues
         int _stageIndex;
         public int StageIndex => _stageIndex;
 
-        // ==================== ENDLESS: how deep are we ====================
-
-        /// <summary>
-        /// Work out how deep the mouth of the segment now being built is, and
-        /// remember it. Segments are deterministic per (seed, index), so a
-        /// segment always has the same length — which is what lets a run fall
-        /// back to a checkpoint, re-descend, and arrive at exactly the depth it
-        /// was at before instead of counting those metres twice.
-        /// </summary>
-        void MarkDepth()
-        {
-            while (_segStart.Count <= _levelIndex)
-                _segStart.Add(_segStart.Count == 0 ? 0f : _segStart[_segStart.Count - 1]);
-            _segDepth = _segStart[_levelIndex];
-            _deepest = Mathf.Max(_deepest, _segDepth);
-        }
-
-        /// <summary>
-        /// Write the deepest point this descent has reached to disk, if it beats
-        /// what's already there. The old "best_endless" key counted FLOORS and
-        /// is left alone — Skins.cs still reads it so a player who unlocked the
-        /// mist skin under the old scoring keeps it.
-        /// </summary>
-        void BankDepthRecord()
-        {
-            if (Depth <= BestDepth) return;
-            PlayerPrefs.SetInt("best_endless_m", Depth);
-            PlayerPrefs.Save();
-            _newBest = true;
-        }
-
-        /// <summary>Bank this segment's full length as the next one's mouth.</summary>
-        void AdvanceDepth()
-        {
-            float span = Mathf.Max(0f, _levelEndX - _level.Spawn.x);
-            float next = _segDepth + span;
-            while (_segStart.Count <= _levelIndex + 1) _segStart.Add(next);
-            _segStart[_levelIndex + 1] = Mathf.Max(_segStart[_levelIndex + 1], next);
-            _deepest = Mathf.Max(_deepest, next);
-        }
-
-        /// <summary>
-        /// The live readout while running. Depth only ever climbs: dying and
-        /// respawning behind yourself must never take metres back off the
-        /// counter — you were there, and the run is scored on the deepest point
-        /// it reached, not on where the body ended up.
-        /// </summary>
-        void TrackDepth()
-        {
-            if (_mode != Mode.Endless || _player == null || _level == null) return;
-            float here = _segDepth + Mathf.Max(0f, _player.transform.position.x - _level.Spawn.x);
-            if (here <= _deepest) return;
-            int was = Depth;
-            _deepest = here;
-            // Redraw only when the metre count actually ticks over — the HUD
-            // line is rebuilt from string interpolation, and doing that every
-            // frame is exactly the kind of per-frame garbage that costs the
-            // phone build its 60fps.
-            if (Depth != was) UpdateHud();
-        }
-
         // Called by RoomDirector when the player crosses into room `idx`.
         // Only forward progress banks; re-entering on respawn is a no-op.
         public void BankStage(int idx)
@@ -4547,12 +4461,19 @@ namespace TrustIssues
                 csr.drawMode = SpriteDrawMode.Tiled;
                 csr.size = new Vector2(0.16f, CeilY - top);
                 csr.sortingOrder = 0;
+                if (_mode == Mode.Endless)
+                    csr.color = new Color(0.20f, 0.25f, 0.31f, 0.95f);
 
                 // The pool of candlelight first, so everything else sits inside it.
                 var glow = Theme.SpriteBox("LanternGlow", _levelRoot, new Vector3(x, LampY, 0f),
                     new Vector2(3.0f, 3.0f), Theme.Moon, 0);
-                glow.GetComponent<SpriteRenderer>().color = new Color(1f, 0.52f, 0.18f, 0.16f);
-                var fp = glow.AddComponent<FaintPulse>(); fp.min = 0.09f; fp.max = 0.20f; fp.speed = 5f;
+                glow.GetComponent<SpriteRenderer>().color = _mode == Mode.Endless
+                    ? new Color(1f, 0.62f, 0.24f, 0.12f)
+                    : new Color(1f, 0.52f, 0.18f, 0.16f);
+                var fp = glow.AddComponent<FaintPulse>();
+                fp.min = _mode == Mode.Endless ? 0.07f : 0.09f;
+                fp.max = _mode == Mode.Endless ? 0.14f : 0.20f;
+                fp.speed = _mode == Mode.Endless ? 3.2f : 5f;
 
                 // The flame inside the glass, then the cage over the top of it.
                 if (frames != null && frames.Length > 0)
@@ -4561,8 +4482,11 @@ namespace TrustIssues
                         new Vector2(0.42f, 0.52f), frames[0], 1);
                     fire.AddComponent<LoopAnim>().Init(frames, 10f);
                 }
-                Theme.SpriteBox("Lantern", _levelRoot, new Vector3(x, LampY + 0.06f, 0f),
-                    new Vector2(0.62f, 0.94f), Gothic.LanternCage, 2);
+                var lantern = Theme.SpriteBox("Lantern", _levelRoot, new Vector3(x, LampY + 0.06f, 0f),
+                    _mode == Mode.Endless ? new Vector2(0.70f, 1.02f) : new Vector2(0.62f, 0.94f),
+                    Gothic.LanternCage, 2);
+                if (_mode == Mode.Endless)
+                    lantern.GetComponent<SpriteRenderer>().color = new Color(0.72f, 0.80f, 0.88f, 1f);
             }
         }
 
@@ -4598,14 +4522,6 @@ namespace TrustIssues
         {
             if (_mode == Mode.Curated) return;   // The Castle has no flight to punish
             if (_mode == Mode.Versus) return;    // a fair race — no hanging-saw gauntlet
-            // Chambered floors already own their air: they have a stone vault
-            // overhead and no glide to deter, so hanging blades at head height
-            // in there is just a hazard the level never asked for (and lethal in
-            // the ones that flip gravity and put you ON the ceiling).
-            // Player-built maps are chambered too and are deliberately left
-            // alone here — changing what a saved map plays like is a separate
-            // decision from what Endless generates.
-            if (_level.Rooms.Count > 0 && _mode != Mode.Custom) return;
             if (_level.Platforms.Count == 0) return;
             float minX = float.MaxValue, maxX = float.MinValue;
             foreach (var p in _level.Platforms)
@@ -4654,34 +4570,16 @@ namespace TrustIssues
             }
             // The artwork's own top line: the floor in blood red, the place it's in
             // in candle gold, then the tally that never stops climbing.
-            //
-            // Endless doesn't get a floor number, because Endless doesn't have
-            // floors — it has DEPTH. One number, counting up, with the deepest
-            // you have ever been sitting next to it in gold as the thing to
-            // beat. That's the entire scoreboard of an infinite mode.
-            string place;
-            if (_mode == Mode.Endless)
-            {
-                // Measured against the record as it stood when the run STARTED,
-                // so once you pass it the HUD keeps saying NEW RECORD instead of
-                // silently re-targeting the number you are currently setting.
-                place = $"{Depth} M";
-                if (_bestAtStart > 0)
-                    place += Depth > _bestAtStart ? $"   <color=#{gold}>•   NEW RECORD</color>"
-                                                  : $"   <color=#{gold}>•   BEST {_bestAtStart} M</color>";
-            }
-            else place = _mode == Mode.Daily ? $"NIGHT {_levelIndex + 1}/{DailyLen}"
-                       : _mode == Mode.Versus ? $"RACE {Net.RoomCode}"
-                       : $"FLOOR {_levelIndex + 1}   <color=#{gold}>•   {WorldNames[WorldOf(_levelIndex)]}</color>";
+            string place = _mode == Mode.Endless ? $"FLOOR {_levelIndex + 1}"
+                         : _mode == Mode.Daily ? $"NIGHT {_levelIndex + 1}/{DailyLen}"
+                         : _mode == Mode.Versus ? $"RACE {Net.RoomCode}"
+                         : $"FLOOR {_levelIndex + 1}   <color=#{gold}>•   {WorldNames[WorldOf(_levelIndex)]}</color>";
             _hud.text = place + "     DEATHS " + _deaths;
 
             // …and the stage counter beneath it, which the HUD had nowhere to say
-            // even though every roomed floor is scored in stages. Endless hides
-            // it: "STAGE 2 / 5" is a floor with a number on it wearing a
-            // different hat, and it would give away the seams the whole mode is
-            // built to hide.
+            // even though every roomed floor is scored in stages.
             if (_stageText == null) return;
-            int stages = _level != null && _mode != Mode.Endless ? _level.Rooms.Count : 0;
+            int stages = _level != null ? _level.Rooms.Count : 0;
             _stageText.text = stages > 1 ? $"STAGE {Mathf.Min(_stageIndex + 1, stages)} / {stages}" : "";
         }
 
@@ -4869,7 +4767,10 @@ namespace TrustIssues
             // Halved, because in the artwork the LEDGES are the dark thing in the
             // room and the ceiling is the lit one; the tile is now bright enough
             // that a floor taking it neat would out-glare the walls.
-            sr.color = FloorStone;
+            bool highlandsStone = _mode == Mode.Endless;
+            sr.color = highlandsStone
+                ? new Color(0.22f, 0.28f, 0.36f, 1f)
+                : FloorStone;
             var col = go.AddComponent<BoxCollider2D>();
             col.size = size;
             // 2.5D: stacked darker copies behind the face read as extruded stone
@@ -4900,9 +4801,11 @@ namespace TrustIssues
             // On a huge boss-arena floor a full-width bright red line looked messy, so
             // wide floors get a much subtler, darker, thinner lip.
             bool wide = size.x > 15f;
-            Color lipCol = wide ? new Color(Theme.PlatEdge.r * 0.5f, Theme.PlatEdge.g * 0.4f, Theme.PlatEdge.b * 0.4f, 0.5f)
-                                : Theme.PlatEdge;
-            float lipH = wide ? 0.07f : 0.12f;
+            Color lipCol = highlandsStone
+                ? new Color(0.48f, 0.58f, 0.70f, wide ? 0.52f : 0.82f)
+                : wide ? new Color(Theme.PlatEdge.r * 0.5f, Theme.PlatEdge.g * 0.4f, Theme.PlatEdge.b * 0.4f, 0.5f)
+                       : Theme.PlatEdge;
+            float lipH = highlandsStone ? (wide ? 0.06f : 0.09f) : (wide ? 0.07f : 0.12f);
             var edge = Theme.Box("Edge", go.transform, pos + new Vector2(0, size.y / 2f - 0.06f),
                 new Vector2(size.x, lipH), lipCol, 2);
             edge.transform.localPosition = new Vector3(0, size.y / 2f - 0.06f, 0);
@@ -4914,7 +4817,9 @@ namespace TrustIssues
             if (!wide)
             {
                 var lit = Theme.Box("LitEdge", go.transform, Vector2.zero,
-                    new Vector2(size.x, 0.05f), new Color(0.62f, 0.56f, 0.60f, 0.5f), 2);
+                    new Vector2(size.x, 0.05f), highlandsStone
+                        ? new Color(0.62f, 0.72f, 0.82f, 0.48f)
+                        : new Color(0.62f, 0.56f, 0.60f, 0.5f), 2);
                 lit.transform.localPosition = new Vector3(0, size.y / 2f - 0.135f, 0);
             }
 
@@ -4922,7 +4827,7 @@ namespace TrustIssues
             // artwork. Seeded from the platform's own position so a given floor always
             // drips the same way — a level that reshuffled its gore each retry would
             // read as flicker on a screen you're staring at for fifty attempts.
-            if (!wide && size.x >= 1.6f)
+            if (!wide && size.x >= 1.6f && !highlandsStone)
             {
                 var rng = new System.Random(Mathf.RoundToInt(pos.x * 73.3f + pos.y * 19.7f));
                 int drips = Mathf.Clamp(Mathf.RoundToInt(size.x / 2.6f), 1, 5);
@@ -4937,6 +4842,31 @@ namespace TrustIssues
                     var bead = Theme.Box("Bead", go.transform, Vector2.zero,
                         new Vector2(0.14f, 0.13f), new Color(0.55f, 0.06f, 0.10f, 0.9f), 2);
                     bead.transform.localPosition = new Vector3(dx, size.y / 2f - 0.10f - len, 0);
+                }
+            }
+
+            // Forsaken Highlands: cold ruined masonry with roots and broken support
+            // fragments. Decorative children only; collider and trap identity above
+            // remain byte-for-byte unchanged.
+            if (highlandsStone && !wide && size.x >= 1.6f)
+            {
+                var rng = new System.Random(Mathf.RoundToInt(pos.x * 73.3f + pos.y * 19.7f));
+                int roots = Mathf.Clamp(Mathf.RoundToInt(size.x / 3.2f), 1, 4);
+                for (int i = 0; i < roots; i++)
+                {
+                    float dx = (float)(rng.NextDouble() - 0.5) * (size.x - 0.5f);
+                    float len = 0.25f + (float)rng.NextDouble() * 0.55f;
+                    var root = Theme.Box("Root", go.transform, Vector2.zero,
+                        new Vector2(0.055f, len), new Color(0.08f, 0.11f, 0.10f, 0.92f), 2);
+                    root.transform.localPosition = new Vector3(dx, -size.y / 2f - len / 2f + 0.06f, 0f);
+                }
+                int supports = Mathf.Max(1, Mathf.FloorToInt(size.x / 4.5f));
+                for (int i = 0; i < supports; i++)
+                {
+                    float sx = -size.x * 0.32f + (i + 0.5f) * (size.x * 0.64f / supports);
+                    var block = Theme.Box("BrokenSupport", go.transform, Vector2.zero,
+                        new Vector2(0.48f, 0.30f), new Color(0.12f, 0.16f, 0.21f, 1f), 1);
+                    block.transform.localPosition = new Vector3(sx, -size.y / 2f - 0.13f, 0f);
                 }
             }
 
@@ -4959,9 +4889,6 @@ namespace TrustIssues
         {
             // Nemesis crowning: the trap type that's killed you most wears a small
             // gold crown — the castle knows exactly who your bully is.
-            if (_mode != Mode.Versus && Memory.Nemesis == (int)t.type)
-                CrownNemesis(t.pos + new Vector2(0f, t.size.y / 2f + 0.42f));
-
             switch (t.type)
             {
                 case TrapType.FakeFloor:
@@ -5957,10 +5884,6 @@ namespace TrustIssues
                 }
             }
 
-            // Endless is scored in metres, so the metres have to be counted
-            // every frame the player is actually moving through the world.
-            if (_state == State.Play && !_dying) TrackDepth();
-
             if (_state == State.Play && _player != null && !_dying &&
                 _player.transform.position.y < -9f)
                 Die("Gravity wins again.");
@@ -6289,22 +6212,36 @@ namespace TrustIssues
             CinematicPunch(deathPos, 0.18f, 0.3f);   // 2.5D: a quick lean toward the kill
             // NEAR-INSTANT retry — the heart of the "just one more try" loop.
             yield return new WaitForSecondsRealtime(0.18f);
-            // Endless used to be unloseable: out of lives just dropped you back
-            // to a checkpoint with a fresh pool, forever. That makes a distance
-            // score meaningless — anyone patient enough could grind to any
-            // number — and it means the death screen, which is where the whole
-            // mode pays out ("this is how deep you got, and nobody has ever gone
-            // deeper"), never appeared at all. The descent now ENDS when the
-            // lives run out. Clearing ground earns them back, so a good run
-            // funds itself. The floor that killed you is left STANDING behind
-            // the result screen — being shown your distance over an empty black
-            // void reads as a crash, not an ending.
-            if (_hearts == 0 && _mode != Mode.Daily) { RunOver(); yield break; }
             Destroy(_levelRoot.gameObject);
-            // Blood Moon auto-restarts from night 1 (no trip to the menu to
-            // re-pick it — the #1 friction complaint).
-            if (_hearts == 0) BloodMoonRestart();
+            if (_hearts == 0)
+            {
+                // Endless never hard-ends on lives — drop back to the last checkpoint
+                // segment with a fresh pool and keep going. Blood Moon now AUTO-RESTARTS
+                // from night 1 (no trip to the menu to re-pick it — the #1 friction
+                // complaint); every other heart mode still ends on a result screen.
+                if (_mode == Mode.Endless) EndlessCheckpointRespawn();
+                else if (_mode == Mode.Daily) BloodMoonRestart();
+                else RunOver();
+            }
             else BuildLevel();
+        }
+
+        // Endless: out of lives → bank best depth, fall back to the start of the
+        // current checkpoint segment, refill hearts, and continue. The run only ever
+        // ends when the player chooses "END RUN" from the pause menu.
+        void EndlessCheckpointRespawn()
+        {
+            if (_levelIndex > PlayerPrefs.GetInt("best_endless", 0))
+            { PlayerPrefs.SetInt("best_endless", _levelIndex); PlayerPrefs.Save(); }
+            int seg = (_levelIndex / Diff.CheckpointEvery) * Diff.CheckpointEvery;
+            _levelIndex = seg;
+            _hearts = Diff.StartHearts;
+            _hasCheckpoint = false;
+            ResetFloorState();
+            Audio.Play("levelup", 0.5f);
+            ShowBanner("CHECKPOINT HOLDS",
+                       $"back to floor {seg + 1} • {Diff.StartHearts} fresh lives • the night goes on");
+            BuildLevel();
         }
 
         // Blood Moon: out of lives → loop straight back to night 1 with a fresh
@@ -6418,14 +6355,12 @@ namespace TrustIssues
         {
             Memory.RunEndedCleanly();   // reached a result screen = not a rage-quit
             _state = State.Win;
-            bool endless = _mode == Mode.Endless;
-            int depth = Depth, prevBest = _bestAtStart;
-            if (endless) BankDepthRecord();
+            if (_mode == Mode.Endless && _levelIndex > PlayerPrefs.GetInt("best_endless", 0))
+            { PlayerPrefs.SetInt("best_endless", _levelIndex); PlayerPrefs.Save(); _newBest = true; }
             Analytics.Track("run_end", new System.Collections.Generic.Dictionary<string, object>
             {
                 { "mode", ModeName },
                 { "final_level_index", _levelIndex },
-                { "distance_m", depth },
                 { "total_deaths", _deaths },
                 { "reason", "out_of_lives" },
             });
@@ -6433,62 +6368,19 @@ namespace TrustIssues
 
             var panel = Overlay(new Color(0.05f, 0f, 0.02f, 0.85f), out var root);
             ResultTitle(root, "YOU PERISHED", 200f, 84);
-            // The one number the whole mode is about, as big as the game can say
-            // it. Not "floor 12" — twelve of what? — but how far down you got.
-            string reached = endless ? $"{depth} M DOWN"
-                                     : $"fell on night {_levelIndex + 1}/{DailyLen}";
+            string reached = _mode == Mode.Endless ? $"reached floor {_levelIndex + 1}"
+                                                    : $"fell on night {_levelIndex + 1}/{DailyLen}";
             Gothic.Line(root, reached + $"   ·   {_deaths} deaths", 46, Gothic.Bone,
                 new Vector2(0, 90), new Vector2(1400, 70));
-            if (endless)
-                Gothic.Line(root, depth > prevBest && prevBest > 0
-                                ? $"your deepest ever — you beat {prevBest} M"
-                                : prevBest > 0 ? $"your deepest ever is {prevBest} M"
-                                               : "your first descent",
-                    28, Theme.Coin, new Vector2(0, 46), new Vector2(1400, 40));
 
-            string lbMode = endless ? "endless" : "daily";
-            Leaderboard.Submit(lbMode, endless ? depth : _deaths);
-            // …and then ask the world how that stacks up. The answer lands a
-            // moment later (it's a network call) into a line held open for it.
-            if (endless) ShowWorldStanding(root, depth);
-            string brag = endless
-                ? $"I got {depth} M down into Endless Night in Trust Issues \U0001F987 — beat that"
+            string lbMode = _mode == Mode.Endless ? "endless" : "daily";
+            Leaderboard.Submit(lbMode, _mode == Mode.Endless ? _levelIndex + 1 : _deaths);
+            string brag = _mode == Mode.Endless
+                ? $"I reached FLOOR {_levelIndex + 1} of Endless Night in Trust Issues \U0001F987 — beat that"
                 : $"I fell on night {_levelIndex + 1} of tonight's Blood Moon \U0001F987";
             if (_mode == Mode.Daily && Rumor.Discovered)
                 brag += $" — and I proved the rumor: \"{Rumor.CrypticLine}\"";
             ResultFooter(root, panel, brag, lbMode);
-        }
-
-        /// <summary>
-        /// "Has anyone ever gone deeper than this?" — the question an infinite
-        /// mode lives or dies on, answered on the screen where it's asked
-        /// instead of behind a LEADERBOARD button nobody presses. Best-effort:
-        /// the board is a network call that can fail, so the line simply stays
-        /// empty rather than blocking or apologising.
-        /// </summary>
-        void ShowWorldStanding(Transform root, int depth)
-        {
-            var line = Gothic.Line(root, "", 30, Gothic.Bone, new Vector2(0, 8), new Vector2(1500, 44));
-            Leaderboard.Fetch("endless", "all", entries =>
-            {
-                if (line == null) return;
-                int deeper = 0, top = 0;
-                foreach (var e in entries)
-                {
-                    if (e.value > top) top = e.value;
-                    if (e.value > depth) deeper++;
-                }
-                if (entries.Count == 0) return;                 // board not reachable — say nothing
-                if (deeper == 0)
-                {
-                    line.text = "NOBODY HAS EVER GONE THIS DEEP";
-                    line.color = Theme.Coin;
-                }
-                else if (deeper == 1)
-                    line.text = $"one soul has gone deeper — {top} M";
-                else
-                    line.text = $"{deeper} have gone deeper — the deepest reached {top} M";
-            });
         }
 
         // ==================== level progression / win ====================
@@ -6578,22 +6470,18 @@ namespace TrustIssues
 
             if (_mode == Mode.Endless)
             {
-                // Bank this segment's length as depth BEFORE stepping to the
-                // next one, so the metres are credited against the segment that
-                // was actually run.
-                float before = _deepest;
-                AdvanceDepth();
                 _levelIndex++;
-                BankDepthRecord();
-                if (_deepest >= 1000f) Badges.Award("endless10");
-                if (_deepest >= 2500f) Badges.Award("endless20");
-                // The only milestone an endless mode can honestly mark: another
-                // 500 metres of dark. It fires on a DEPTH the player watched
-                // tick past on their own HUD, not on a floor they never knew
-                // they were on.
-                int wasKm = Mathf.FloorToInt(before / 500f), nowKm = Mathf.FloorToInt(_deepest / 500f);
-                if (nowKm > wasKm)
-                    ShowBanner($"{nowKm * 500} M DOWN", "and the castle still hasn't run out");
+                if (_levelIndex > PlayerPrefs.GetInt("best_endless", 0))
+                { PlayerPrefs.SetInt("best_endless", _levelIndex); PlayerPrefs.Save(); _newBest = true; }
+                if (_levelIndex + 1 >= 10) Badges.Award("endless10");
+                if (_levelIndex + 1 >= 20) Badges.Award("endless20");
+                // Crossing a checkpoint boundary banks a new safe fall-back floor.
+                if (_levelIndex % Diff.CheckpointEvery == 0)
+                {
+                    Badges.Award("endless" + _levelIndex);   // milestone badge (endless5/10/15/…)
+                    ShowBanner($"CHECKPOINT — FLOOR {_levelIndex + 1}",
+                               "you'll respawn here if you fall • keep climbing");
+                }
                 StartCoroutine(NextLevelFlash());
                 return;
             }
@@ -6641,19 +6529,10 @@ namespace TrustIssues
         IEnumerator NextLevelFlash()
         {
             _state = State.Win; // block input briefly
-            // Endless says NOTHING here. No number, no name, no "floor cleared"
-            // — the whole illusion is one unbroken fall, and a card announcing
-            // chapter seven is the fastest way to break it. What the player gets
-            // instead is a whisper of what's ahead, low on the screen, in the
-            // castle's voice: it tells them the ground rules just changed
-            // without ever admitting the ground was rebuilt.
-            if (_mode == Mode.Endless)
-                ShowHint(EndlessFloors.TagFor(_levelIndex + 1, _endlessSeed), 2.2f);
-            else if (_toast != null)
-                _toast.text = _mode == Mode.Daily ? $"NIGHT {_levelIndex + 1}" : $"LEVEL {_levelIndex + 1}";
-            // …and it barely pauses. The other modes hold the card long enough
-            // to read it; Endless just keeps falling.
-            yield return new WaitForSecondsRealtime(_mode == Mode.Endless ? 0.35f : 0.9f);
+            if (_toast != null)
+                _toast.text = _mode == Mode.Endless ? $"FLOOR {_levelIndex + 1}"
+                            : _mode == Mode.Daily ? $"NIGHT {_levelIndex + 1}" : $"LEVEL {_levelIndex + 1}";
+            yield return new WaitForSecondsRealtime(0.9f);
             if (_toast != null) _toast.text = "";
             Destroy(_levelRoot.gameObject);
             _hasCheckpoint = false;
@@ -6772,11 +6651,8 @@ namespace TrustIssues
                         cause = Memory.LastKillerName, mode = ModeName,
                     };
                     string link = Curse.BuildLink(d);
-                    // Endless has no floor to name, so the dare is set in the
-                    // only unit it has: get past where I died.
-                    string msg = NativeShare.Sanitize(_mode == Mode.Endless
-                        ? $"I cursed you in Trust Issues \U0001F987 get past {Depth} M in Endless Night with {_floorDeaths} deaths or less, or my ghost stays"
-                        : $"I cursed you in Trust Issues \U0001F987 survive floor {_levelIndex + 1} with {_floorDeaths} deaths or less, or my ghost stays");
+                    string msg = NativeShare.Sanitize(
+                        $"I cursed you in Trust Issues \U0001F987 survive floor {_levelIndex + 1} with {_floorDeaths} deaths or less, or my ghost stays");
                     // Goes through the OS share sheet on phone (WhatsApp, Instagram,
                     // Bluetooth...) rather than silently filling a clipboard.
                     NativeShare.ShareText(msg, link);
@@ -6804,7 +6680,7 @@ namespace TrustIssues
             Gothic.Backdrop(root);
             string scope = mode == "daily" ? "today" : "all";
             string heading = mode == "daily" ? "BLOOD MOON — TONIGHT (FEWEST DEATHS)"
-                           : mode == "endless" ? "ENDLESS NIGHT — DEEPEST DESCENT"
+                           : mode == "endless" ? "ENDLESS NIGHT — DEEPEST FLOOR"
                                                : "THE CASTLE — FEWEST DEATHS";
             Gothic.Heading(root, "LEADERBOARD", heading);
             Gothic.PlateAt(root, new Vector2(0, -30), new Vector2(1080, 560), Gothic.Plate);

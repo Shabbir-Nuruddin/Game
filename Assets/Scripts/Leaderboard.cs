@@ -16,9 +16,7 @@ namespace TrustIssues
     ///        body: { "mode":"daily|endless|castle", "nick":"Heir-123",
     ///                "value": 12, "day": 20260621 }
     ///        - daily/castle: value = deaths (LOWER is better)
-    ///        - endless:      value = METRES descended (HIGHER is better).
-    ///          This was "floor reached" before Endless dropped floors entirely;
-    ///          old rows are small numbers and simply sink to the bottom.
+    ///        - endless:      value = floor reached (HIGHER is better)
     ///        store the BEST value per (nick, mode[, day]).
     ///   GET  {Host}/leaderboard?mode=daily&scope=today|all  -> { "entries":[ {"nick","value"} ... ] }
     ///        sorted best-first, top ~20.
