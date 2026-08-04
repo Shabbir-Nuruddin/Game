@@ -113,8 +113,10 @@ ground).
   everyone plays the SAME layout tonight, and "Tonight's Rumor" hides one
   secret rule (e.g. "the saws lie tonight" — every saw is harmless) that
   the game only whispers cryptically; proving it is the shareable moment.
-- **Endless Night** — infinite procedurally-escalating floors, checkpointed,
-  for a pure high-score chase.
+- **Endless Night** — one continuous procedurally escalating run scored by
+  distance. Optional elevated risk paths award revive tokens; spending one
+  rewinds the player roughly 2.5 metres to recently validated safe ground.
+  Without a token, death banks a shareable distance high score.
 - **Multiplayer (Versus)** — live head-to-head races down the same
   procedural track via Photon, with sabotage buttons to troll your rival
   mid-race and a running match score.

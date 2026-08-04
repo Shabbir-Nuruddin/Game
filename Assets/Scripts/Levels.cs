@@ -381,7 +381,7 @@ namespace TrustIssues
         // Uses the same B builder, so every generated level is guaranteed
         // beatable (jumpable gaps, one spaced hazard per platform). Difficulty
         // grows the hazard variety and length.
-        public static Level Generate(int seed, int difficulty, bool race = false)
+        public static Level Generate(int seed, int difficulty, bool race = false, int endlessRhythm = -1)
         {
             var rng = new System.Random(seed);
             difficulty = Mathf.Max(0, difficulty);
@@ -395,13 +395,21 @@ namespace TrustIssues
             // that can only be cleared by jumping then holding glide.
             bool reverseUsed = false, lastWasLong = false;
 
-            int segments = Mathf.Clamp(5 + difficulty, 5, 11);
+            // Endless rotates five pacing profiles (balanced, sprint, glide,
+            // gauntlet, breather). Difficulty still rises, but cadence changes so
+            // the mode does not become one repeated procedural sentence.
+            int style = endlessRhythm < 0 ? 0 : endlessRhythm % 5;
+            int segments = endlessRhythm < 0 ? Mathf.Clamp(5 + difficulty, 5, 11)
+                : new[] { 8, 6, 9, 11, 7 }[style];
             for (int i = 0; i < segments; i++)
             {
                 // A wide GLIDE gap: too far for a plain jump, crossable with bat form.
-                bool longGap = difficulty >= 3 && !lastWasLong && rng.Next(100) < 22;
+                int glideChance = endlessRhythm < 0 ? 22 : new[] { 18, 8, 42, 22, 12 }[style];
+                int fakeChance = endlessRhythm < 0 ? 18 + difficulty * 3
+                    : new[] { 20, 12, 18, 32, 8 }[style] + difficulty;
+                bool longGap = difficulty >= 3 && !lastWasLong && rng.Next(100) < glideChance;
                 if (longGap) { b.Gap(6.0f + (float)rng.NextDouble() * 0.7f); lastWasLong = true; }
-                else if (difficulty >= 1 && rng.Next(100) < 18 + difficulty * 3) { b.FakeFloor(2f); lastWasLong = false; }
+                else if (difficulty >= 1 && rng.Next(100) < fakeChance) { b.FakeFloor(2f); lastWasLong = false; }
                 else { b.Gap(2.4f + (float)rng.NextDouble() * 0.5f); lastWasLong = false; }
 
                 // A wider platform after a glide gap = a fair landing + meter refill.
@@ -415,7 +423,8 @@ namespace TrustIssues
                 // slams you), while almost every other hazard demands you JUMP OVER
                 // it. Combine the two and the platform is physically impossible.
                 // We also keep the rage-teleport (WarpBack) solo.
-                if (difficulty >= 4 && !Soloist(first) && rng.Next(100) < 30)
+                int pairChance = endlessRhythm < 0 ? 30 : new[] { 24, 18, 28, 42, 12 }[style];
+                if (difficulty >= 4 && !Soloist(first) && rng.Next(100) < pairChance)
                 {
                     var second = NextHazard(pool, rng, ref reverseUsed);
                     if (!Soloist(second))
@@ -423,7 +432,12 @@ namespace TrustIssues
                 }
             }
             b.Gap(2.4f);
-            return b.Finish();
+            var generated = b.Finish();
+            // Endless chunks are implementation detail, not levels. Remove the
+            // coffin gate; GameRoot advances automatically on the final safe pad.
+            if (endlessRhythm >= 0)
+                generated.Traps.RemoveAll(t => t.type == TrapType.RealExit);
+            return generated;
         }
 
         // Pick a hazard, but allow at most ONE inverted-controls trap per level —

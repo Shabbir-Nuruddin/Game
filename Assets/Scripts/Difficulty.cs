@@ -58,8 +58,5 @@ namespace TrustIssues
         public static int ReactiveTrapCap =>
             Current == Difficulty.Casual ? 0 : Current == Difficulty.Normal ? 2 : 3;
 
-        // ---- Endless ----
-        // Floors per checkpoint segment (respawn anchor; same on every difficulty).
-        public const int CheckpointEvery = 5;
     }
 }
