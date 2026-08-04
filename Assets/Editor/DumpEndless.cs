@@ -7,8 +7,8 @@ using TrustIssues;
 
 // Editor-only: the ENDLESS AUDIT.
 //
-// Endless floors are generated, so "is floor 37 beatable?" has no author to
-// ask. This walks a few hundred of them across several run seeds and checks the
+// Endless chunks are generated, so "is 4km still beatable?" has no author to
+// ask. This walks a few hundred hidden chunks across several run seeds and checks the
 // things a human playtester would only find by dying:
 //
 //   • UNCROSSABLE GAP — a hole wider than a plain jump (5.5u; chambered floors
@@ -20,11 +20,11 @@ using TrustIssues;
 //   • AN OVERLONG PRESS ROOM — the vault spans the whole chamber and reaches
 //     head height about four seconds after it fires. A press chamber longer
 //     than ~22 units can't be run in time.
-//   • SHAPE REPEATS — the deck is supposed to deal all sixteen before any of
-//     them comes back. Any repeat inside a window of sixteen is a shuffle bug.
+//   • VISIBLE EXIT — chunk seams must never leak a coffin/floor ending into the
+//     continuous distance run.
 //
 // It also prints the difficulty score (same maths as the Castle X-Ray) so the
-// ramp can be tuned against the ~4-5 deaths per floor target.
+// ramp and five pacing rhythms can be tuned against the target death rate.
 //
 //   Unity.exe -batchmode -quit -projectPath . \
 //     -executeMethod DumpEndless.Dump -logFile endless.log
@@ -32,8 +32,9 @@ using TrustIssues;
 // Writes Builds/endless.csv and logs a summary.
 public static class DumpEndless
 {
-    const int Floors = 64;                                  // how deep to audit
+    const int Chunks = 64;                                  // how deep to audit
     static readonly int[] Seeds = { 12345, 777, 999999, 42, 31337 };
+    static readonly string[] Rhythms = { "balanced", "sprint", "glide", "gauntlet", "breather" };
     // A chambered floor suppresses the bat glide and the double-jump, so a plain
     // running jump (~5.5u) is all you have. An open-sky floor keeps the wings,
     // and a jump held into a glide carries about 12u — which is the whole point
@@ -51,46 +52,17 @@ public static class DumpEndless
     public static void Dump()
     {
         var csv = new StringBuilder();
-        csv.AppendLine("seed,floor,shape,rooms,traps,untelegraphed,widest_gap,aid,score,problem");
+        csv.AppendLine("seed,chunk,rhythm,rooms,traps,untelegraphed,widest_gap,aid,score,problem");
         var problems = new List<string>();
-        var shapeUse = new Dictionary<string, int>();
         var summary = new StringBuilder();
 
         foreach (int seed in Seeds)
         {
-            var recent = new List<string>();
-            for (int f = 1; f <= Floors; f++)
+            for (int f = 0; f < Chunks; f++)
             {
-                string shape = EndlessFloors.NameFor(f, seed);
-                if (!shapeUse.ContainsKey(shape)) shapeUse[shape] = 0;
-                shapeUse[shape]++;
-
-                if (!EndlessFloors.IsBossFloor(f))
-                {
-                    // The deck promises no shape comes back inside five dealt
-                    // floors. Near the surface only a handful of shapes are
-                    // unlocked at all, so that promise starts once the whole
-                    // deck is in play (floor 11 up).
-                    if (f > 13 && recent.Contains(shape))
-                        problems.Add($"seed {seed} floor {f}: shape '{shape}' repeated inside 5");
-                    // The one rule that holds at EVERY depth, surface included:
-                    // the floor you're walking into is never the floor you just
-                    // walked out of, nor the one before that.
-                    else if (recent.Count > 0 &&
-                             (shape == recent[recent.Count - 1] ||
-                              (recent.Count > 1 && shape == recent[recent.Count - 2])))
-                        problems.Add($"seed {seed} floor {f}: shape '{shape}' repeated back to back");
-                    recent.Add(shape);
-                    if (recent.Count > 4) recent.RemoveAt(0);
-                }
-
-                var lvl = EndlessFloors.Build(f, seed);
-                if (lvl == null) { problems.Add($"seed {seed} floor {f}: null level"); continue; }
-                if (lvl.BossTier > 0)
-                {
-                    csv.AppendLine($"{seed},{f},{shape},0,0,0,0,boss,0,");
-                    continue;
-                }
+                string rhythm = Rhythms[f % Rhythms.Length];
+                var lvl = Levels.Generate(seed + f * 7919, Mathf.Min(7, 1 + f / 2), false, f);
+                if (lvl == null) { problems.Add($"seed {seed} chunk {f}: null level"); continue; }
 
                 int traps = 0, untel = 0;
                 foreach (var t in lvl.Traps)
@@ -101,6 +73,8 @@ public static class DumpEndless
                 }
 
                 var problem = new List<string>();
+                if (lvl.Traps.Exists(t => t.type == TrapType.RealExit))
+                    problem.Add("VISIBLE EXIT");
                 float widest = WidestHole(lvl, out string aid);
                 float reach = lvl.PrecisionPlatforming ? PrecisionReach : GlideReach;
                 if (widest > reach + 0.15f && aid == "none")
@@ -113,17 +87,14 @@ public static class DumpEndless
                     if (r.Rule == RoomRule.Press && r.MaxX - r.MinX > 22f)
                         problem.Add($"PRESS ROOM {r.MaxX - r.MinX:F0}u");
                 }
-                if (lvl.Rooms.Count == 0 && !ExitReachable(lvl))
-                    problem.Add("NO EXIT");
-
                 float score = (traps - untel) * 0.33f + untel * 1.0f
                             + (widest >= reach - 0.8f && aid == "none" ? 0.5f : 0f);
                 string p = string.Join(" | ", problem);
-                csv.AppendLine($"{seed},{f},{shape},{lvl.Rooms.Count},{traps},{untel},{widest:F2},{aid},{score:F2},{p}");
-                if (problem.Count > 0) problems.Add($"seed {seed} floor {f} ({shape}): {p}");
+                csv.AppendLine($"{seed},{f},{rhythm},{lvl.Rooms.Count},{traps},{untel},{widest:F2},{aid},{score:F2},{p}");
+                if (problem.Count > 0) problems.Add($"seed {seed} chunk {f} ({rhythm}): {p}");
 
-                if (seed == Seeds[0] && f <= 24)
-                    summary.AppendLine($"{f,3} | {shape,-22} | rooms {lvl.Rooms.Count} | traps {traps,2} " +
+                if (seed == Seeds[0] && f < 24)
+                    summary.AppendLine($"{f,3} | {rhythm,-10} | rooms {lvl.Rooms.Count} | traps {traps,2} " +
                                        $"| blind {untel,2} | gap {widest,5:F1} ({aid}) | score {score,5:F1}");
             }
         }
@@ -131,13 +102,9 @@ public static class DumpEndless
         Directory.CreateDirectory("Builds");
         File.WriteAllText("Builds/endless.csv", csv.ToString());
 
-        var shapes = new StringBuilder();
-        foreach (var kv in shapeUse) shapes.AppendLine($"  {kv.Key,-24} {kv.Value}");
-
         Debug.Log("ENDLESS_FIRST_24\n" + summary);
-        Debug.Log("ENDLESS_SHAPE_SPREAD\n" + shapes);
         Debug.Log(problems.Count == 0
-            ? $"ENDLESS_AUDIT_OK — {Seeds.Length * Floors} floors, no impossible geometry"
+            ? $"ENDLESS_AUDIT_OK — {Seeds.Length * Chunks} chunks, no impossible geometry or visible exits"
             : $"ENDLESS_AUDIT_PROBLEMS ({problems.Count})\n" + string.Join("\n", problems.ToArray()));
         Debug.Log("ENDLESS_DONE -> Builds/endless.csv");
     }
@@ -199,9 +166,4 @@ public static class DumpEndless
         return widest;
     }
 
-    static bool ExitReachable(Level lvl)
-    {
-        foreach (var t in lvl.Traps) if (t.type == TrapType.RealExit) return true;
-        return false;
-    }
 }

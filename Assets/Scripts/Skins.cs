@@ -39,8 +39,9 @@ namespace TrustIssues
                           unlocked = () => PlayerPrefs.GetInt("castle_unlocked", 0) >= 4 },
             new SkinDef { id = "spectre", name = "The Spectre",    tint = Theme.Hex("8FD4FF"),
                           ability = "Mist Double-Jump", airJumps = 1,
-                          unlockHint = "Reach Endless floor 10",
-                          unlocked = () => PlayerPrefs.GetInt("best_endless", 0) >= 9 },
+                          unlockHint = "Survive 500m in Endless Night",
+                          unlocked = () => PlayerPrefs.GetInt("best_endless_distance", 0) >= 500 ||
+                                           PlayerPrefs.GetInt("best_endless", 0) >= 9 },
             new SkinDef { id = "golden",  name = "Golden Cursed",  tint = Theme.Hex("F2C84B"),
                           ability = "High Leaper (+jump)", jumpMul = 1.1f,
                           unlockHint = "Keep a 7-day Blood Moon streak",
