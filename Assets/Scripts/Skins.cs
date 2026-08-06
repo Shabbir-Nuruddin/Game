@@ -15,8 +15,8 @@ namespace TrustIssues
         public string id, name, unlockHint;
         public bool pinkman;                 // use the Pink-Man set instead of the vampire
         public Color tint = Color.white;
+        public int price;                    // Legacy field retained for save compatibility.
         public System.Func<bool> unlocked;   // null => always unlocked
-        public int price;                    // > 0 => buyable with blood shards in the Crypt Shop
 
         // Signature trait/ability — turns each skin into a playstyle. STRICTLY
         // mobility/utility, never invulnerability — you can never phase through a
@@ -44,34 +44,29 @@ namespace TrustIssues
                                            PlayerPrefs.GetInt("best_endless", 0) >= 9 },
             new SkinDef { id = "golden",  name = "Golden Cursed",  tint = Theme.Hex("F2C84B"),
                           ability = "High Leaper (+jump)", jumpMul = 1.1f,
-                          unlockHint = "Keep a 7-day Blood Moon streak",
-                          unlocked = () => Meta.Streak >= 7 },
+                          unlockHint = "Reach Blood Moon Night 3",
+                          unlocked = () => Meta.Streak >= 3 },
             new SkinDef { id = "shadow",  name = "Shadowbound",    tint = Theme.Hex("4A3A5A"),
                           ability = "Twin Dash (K) + speed", dash = true, moveMul = 1.1f,
                           unlockHint = "Die 100 times (you've earned the dark)",
                           unlocked = () => PlayerPrefs.GetInt("castle_deaths", 0) >= 100 },
             new SkinDef { id = "pink",    name = "Pink Menace",    pinkman = true, tint = Color.white,
                           ability = "Fleet-Footed (+speed)", moveMul = 1.18f,
-                          unlockHint = "Defeat the first boss",
-                          unlocked = () => Badges.Has("boss1") },
+                          unlockHint = "Reach Castle Floor 15",
+                          unlocked = () => PlayerPrefs.GetInt("castle_unlocked", 0) >= 14 },
             new SkinDef { id = "ash",     name = "Ashen Slayer",   tint = Theme.Hex("FF8A3D"),
                           ability = "Dash + Double-Jump", dash = true, airJumps = 1,
-                          unlockHint = "Defeat all four bosses",
-                          unlocked = () => Badges.Has("boss4") },
-            // ---- Crypt Shop skins: bought with blood shards, deliberately plain
-            // stats ("Balanced") — purchased power would break cosmetics-only.
+                          unlockHint = "Reach Endless Nights Floor 15",
+                          unlocked = () => PlayerPrefs.GetInt("best_endless", 0) >= 14 },
             new SkinDef { id = "bone",    name = "Bone Pale",      tint = Theme.Hex("D8D8E8"),
-                          ability = "Balanced — pure style", price = 300,
-                          unlockHint = "300 shards in the Crypt Shop",
-                          unlocked = () => false },   // ownership check in IsUnlocked
-            new SkinDef { id = "nosferatu", name = "Nosferatu",    tint = Theme.Hex("9FBF8F"),
-                          ability = "Balanced — pure style", price = 450,
-                          unlockHint = "450 shards in the Crypt Shop",
-                          unlocked = () => false },
-            new SkinDef { id = "royal",   name = "Royal Blood",    pinkman = true, tint = Theme.Hex("B03A8C"),
-                          ability = "Balanced — pure style", price = 600,
-                          unlockHint = "600 shards in the Crypt Shop",
-                          unlocked = () => false },
+                          ability = "Balanced", unlockHint = "Discover 10 Bestiary Entries",
+                          unlocked = () => Codex.KnownCount() >= 10 },
+            new SkinDef { id = "nosferatu", name = "Nosferatu",    tint = Theme.Hex("4FB7A4"),
+                          ability = "Balanced", unlockHint = "Reach Castle Floor 30",
+                          unlocked = () => PlayerPrefs.GetInt("castle_unlocked", 0) >= 29 },
+            new SkinDef { id = "royal",   name = "Royal Blood",    pinkman = true, tint = Theme.Hex("C62032"),
+                          ability = "Balanced", unlockHint = "Reach Endless Nights Floor 25",
+                          unlocked = () => PlayerPrefs.GetInt("best_endless", 0) >= 24 },
         };
 
         // A SpriteRenderer multiplies its colour onto the art, so a fully-saturated
@@ -82,9 +77,7 @@ namespace TrustIssues
         // live player and the Wardrobe preview so they always match.
         public static Color Shade(SkinDef s) => Color.Lerp(Color.white, s.tint, 0.5f);
 
-        // Achievement lambda OR bought in the Crypt Shop (own_skin_* pref).
-        public static bool IsUnlocked(SkinDef s) =>
-            s.unlocked == null || s.unlocked() || PlayerPrefs.GetInt("own_skin_" + s.id, 0) == 1;
+        public static bool IsUnlocked(SkinDef s) => s.unlocked == null || s.unlocked();
 
         public static SkinDef Get(string id) => All.Find(s => s.id == id) ?? All[0];
 

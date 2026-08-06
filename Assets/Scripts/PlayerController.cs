@@ -108,7 +108,7 @@ namespace TrustIssues
         // STEADY HANDS charm shortens every control-reversal curse. Applied at the
         // single point every source funnels through (traps and the Reverse room
         // rule alike), so no caller can forget it.
-        public void SetReversed(float duration) { _reverseTimer = duration * Charms.ReverseMultiplier; }
+        public void SetReversed(float duration) { _reverseTimer = duration; }
 
         // Read by GameRoot for section-checkpoints + reactive-trap tracking.
         public bool IsGrounded => _grounded;
@@ -297,7 +297,7 @@ namespace TrustIssues
             _flying = flyHeld && flightMeter > 0f && !_grounded; // must be airborne (no ground hover)
             // TATTERED WING charm drains the flight meter slower, so a glide simply
             // lasts longer — it buys reach, never new abilities.
-            if (_flying) flightMeter = Mathf.Max(0f, flightMeter - (flyDrain / Charms.GlideMultiplier) * Time.deltaTime);
+            if (_flying) flightMeter = Mathf.Max(0f, flightMeter - flyDrain * Time.deltaTime);
             else if (_grounded) flightMeter = Mathf.Min(1f, flightMeter + flyRefill * Time.deltaTime);
 
             // Reverse-controls troll: flip horizontal input for a few seconds.

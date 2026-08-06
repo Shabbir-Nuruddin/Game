@@ -1501,14 +1501,11 @@ namespace TrustIssues
             // read a balance that already includes today's payout.
             int tithe = Currency.GrantDailyIfDue();
 
-            // HYBRID SKIN: if the exact main-menu artwork is present (Resources/ui/
-            // menu_bg), paint it and lay only live text + tap-zones on top. Otherwise
-            // fall through to the code-built menu below, unchanged.
-            if (Skin.Background(root, "menu_bg") != null)
+            // Production menu: HD artwork supplies the gothic scenery and empty
+            // ornamental plates; BuildMainMenuV2 adds every interactive label live.
+            if (Skin.Background(root, "menu_bg_v2") != null)
             {
-                // Art paints the whole screen (incl. the bottom notice line), so we
-                // add only tap-zones — no live text/notices that would double up.
-                BuildSkinnedMenu(root, tithe);
+                BuildMainMenuV2(root);
                 TrackMenuShown();
                 return;
             }
@@ -1517,13 +1514,14 @@ namespace TrustIssues
             // Parented under the menu panel, so it's torn down automatically with
             // every screen transition — no leak into gameplay.
             BuildMenuScene(root);
+            Gothic.FrameOnly(root, 18f);
 
             // Title — blood red with a near-black shadow, sat up near the top so the
             // button stack has room beneath it.
-            var titleShadow = Theme.Label(root, Theme.Title, 96, Theme.Ink,
+            var titleShadow = Theme.Label(root, Theme.Title, 108, Theme.Ink,
                 new Vector2(0.5f, 0.5f), new Vector2(6, 356), new Vector2(1700, 220));
             titleShadow.font = Theme.TitleFont;
-            var title = Theme.Label(root, Theme.Title, 96, Theme.Player,
+            var title = Theme.Label(root, Theme.Title, 108, Theme.Player,
                 new Vector2(0.5f, 0.5f), new Vector2(0, 362), new Vector2(1700, 220));
             title.font = Theme.TitleFont;
             StartCoroutine(Pulse(title.transform));
@@ -1531,52 +1529,95 @@ namespace TrustIssues
             // THE button. One click into the game — new players go straight to
             // floor 1, returners resume. Pulses like the title so the eye lands
             // on it first; the mode grid below is for players who want to choose.
-            var play = Theme.Button(root, PlayNowCaption(), new Color(0.62f, 0.10f, 0.14f), Color.white,
-                52, new Vector2(0.5f, 0.5f), new Vector2(0, 168), new Vector2(640, 118), PlayNow);
+            var play = Gothic.Button(root, $"CONTINUE — FLOOR {Mathf.Max(1, CastleUnlocked + 1)}",
+                new Vector2(0, 174), new Vector2(760, 108), PlayNow, true, 45);
             StartCoroutine(Pulse(play.transform));
 
             // Difficulty selector — tap to cycle Casual → Normal → Nightmare.
-            MakeDifficultyChip(root, new Vector2(0, 76), new Vector2(400, 48));
+            MakeDifficultyChip(root, new Vector2(0, 91), new Vector2(460, 52));
 
             // Mode buttons, demoted to a compact grid under PLAY so a brand-new
             // player still has one obvious first action. Endless is present in the
             // fallback menu as well as the painted production menu.
-            var dim = new Vector2(390, 64);
-            Theme.Button(root, "THE CASTLE", new Color(0.28f, 0.24f, 0.32f), Color.white, 28,
-                new Vector2(0.5f, 0.5f), new Vector2(-205, 4), dim, ShowLevelSelect);
-            Theme.Button(root, "BLOOD MOON", new Color(0.6f, 0.08f, 0.12f), Color.white, 28,
-                new Vector2(0.5f, 0.5f), new Vector2(205, 4), dim, StartDaily);
-            Theme.Button(root, "ENDLESS NIGHT", new Color(0.20f, 0.12f, 0.34f), Color.white, 28,
-                new Vector2(0.5f, 0.5f), new Vector2(-205, -74), dim, StartEndless);
-            Theme.Button(root, "MULTIPLAYER", new Color(0.5f, 0.12f, 0.16f), Color.white, 28,
-                new Vector2(0.5f, 0.5f), new Vector2(205, -74), dim, ShowVersusLobby);
-            Theme.Button(root, "BUILD A TRAP", new Color(0.32f, 0.08f, 0.4f), Color.white, 28,
-                new Vector2(0.5f, 0.5f), new Vector2(0, -148), new Vector2(600, 62), ShowMapEditor);
+            var dim = new Vector2(410, 70);
+            Gothic.Button(root, "BLOOD MOON", new Vector2(-215, 18), dim, StartDaily, false, 29);
+            Gothic.Button(root, "THE CASTLE", new Vector2(215, 18), dim, ShowLevelSelect, false, 29);
+            Gothic.Button(root, "ENDLESS NIGHTS", new Vector2(-215, -62), dim, StartEndless, true, 28);
+            Gothic.Button(root, "MULTIPLAYER", new Vector2(215, -62), dim, ShowVersusLobby, false, 28);
 
             // (NIGHTLY TITHE was granted up top so both layouts share one payout.)
 
-            // Secondary row — Shop / Wardrobe / Bestiary / Settings / Leaderboard.
-            // The SHOP leads and wears gold with a live balance: it's the standing
-            // ad for the death economy ("your deaths bought you something").
+            // Secondary row — Wardrobe / Bestiary / Settings / Leaderboard.
             // Five buttons at 260 wide on a 260 pitch were EDGE-TO-EDGE with zero
             // gap, and Theme.Label sets horizontalOverflow=Overflow — so the long
             // captions ("BESTIARY 12/30", "LEADERBOARD") spilled straight over their
             // neighbours. Narrower buttons on the same pitch give every caption a
             // gutter to overflow into.
-            var sdim = new Vector2(244, 60);
-            Theme.Button(root, $"SHOP  {Currency.Balance}", new Color(0.5f, 0.38f, 0.1f, 0.4f), Theme.Coin, 25,
-                new Vector2(0.5f, 0.5f), new Vector2(-520, -262), sdim, ShowShop);
-            Theme.Button(root, "WARDROBE", new Color(1, 1, 1, 0.12f), new Color(1, 1, 1, 0.85f), 25,
-                new Vector2(0.5f, 0.5f), new Vector2(-260, -262), sdim, ShowWardrobe);
-            Theme.Button(root, $"BESTIARY {Codex.KnownCount()}/{Codex.Total}", new Color(1, 1, 1, 0.12f), new Color(1, 1, 1, 0.85f), 22,
-                new Vector2(0.5f, 0.5f), new Vector2(0, -262), sdim, ShowCodex);
-            Theme.Button(root, "SETTINGS", new Color(1, 1, 1, 0.12f), new Color(1, 1, 1, 0.85f), 25,
-                new Vector2(0.5f, 0.5f), new Vector2(260, -262), sdim, ShowSettings);
-            Theme.Button(root, "LEADERBOARD", new Color(1, 1, 1, 0.12f), new Color(1, 1, 1, 0.85f), 22,
-                new Vector2(0.5f, 0.5f), new Vector2(520, -262), sdim, () => ShowLeaderboard("daily"));
+            var sdim = new Vector2(285, 64);
+            Gothic.Button(root, "WARDROBE", new Vector2(-450, -190), sdim, ShowWardrobe, false, 23);
+            Gothic.Button(root, $"BESTIARY {Codex.KnownCount()}/{Codex.Total}", new Vector2(-150, -190), sdim, ShowCodex, false, 20);
+            Gothic.Button(root, "SETTINGS", new Vector2(150, -190), sdim, ShowSettings, false, 23);
+            Gothic.Button(root, "LEADERBOARD", new Vector2(450, -190), sdim, () => ShowLeaderboard("daily"), false, 20);
 
             BuildMenuNotices(root, tithe);
             TrackMenuShown();
+        }
+
+        void BuildMainMenuV2(Transform root)
+        {
+            Text continueText = Skin.LiveText(root, $"CONTINUE — FLOOR {Mathf.Max(1, CastleUnlocked + 1)}",
+                0.275f, 0.302f, 0.725f, 0.391f, 45, Gothic.Bone);
+            if (Theme.MenuFont != null) continueText.font = Theme.MenuFont;
+            continueText.fontStyle = FontStyle.Bold;
+            Skin.Fit(continueText, 45, 24);
+            Skin.Zone(root, 0.265f, 0.285f, 0.735f, 0.405f, PlayNow, "continue");
+
+            Text difficultyText = Skin.LiveText(root, MenuDifficultyCaption(), 0.345f, 0.426f, 0.655f, 0.484f,
+                28, Gothic.Bone);
+            if (Theme.MenuFont != null) difficultyText.font = Theme.MenuFont;
+            Skin.Fit(difficultyText, 28, 15);
+            Skin.Zone(root, 0.335f, 0.405f, 0.665f, 0.482f, () =>
+            {
+                Diff.Current = (Difficulty)(((int)Diff.Current + 1) % 3);
+                if (!Audio.Muted) Audio.Play("click", 0.6f);
+                difficultyText.text = MenuDifficultyCaption();
+            }, "difficulty");
+
+            MenuLabel(root, "BLOOD MOON", 0.318f, 0.523f, 0.484f, 0.568f, 30);
+            MenuLabel(root, "THE CASTLE", 0.575f, 0.523f, 0.742f, 0.568f, 30);
+            MenuLabel(root, "ENDLESS NIGHTS", 0.318f, 0.630f, 0.484f, 0.678f, 28);
+            MenuLabel(root, "MULTIPLAYER", 0.575f, 0.630f, 0.742f, 0.678f, 29);
+
+            Skin.Zone(root, 0.248f, 0.492f, 0.493f, 0.589f, StartDaily, "bloodmoon");
+            Skin.Zone(root, 0.505f, 0.492f, 0.752f, 0.589f, ShowLevelSelect, "castle");
+            Skin.Zone(root, 0.248f, 0.600f, 0.493f, 0.703f, StartEndless, "endless");
+            Skin.Zone(root, 0.505f, 0.600f, 0.752f, 0.703f, ShowVersusLobby, "multiplayer");
+
+            Skin.Zone(root, 0.125f, 0.718f, 0.315f, 0.827f, ShowWardrobe, "wardrobe");
+            Skin.Zone(root, 0.315f, 0.718f, 0.520f, 0.827f, ShowCodex, "bestiary");
+            Skin.Zone(root, 0.520f, 0.718f, 0.690f, 0.827f, ShowSettings, "settings");
+            Skin.Zone(root, 0.690f, 0.718f, 0.875f, 0.827f, () => ShowLeaderboard("daily"), "leaderboard");
+
+            MenuLabel(root, "WARDROBE", 0.195f, 0.754f, 0.310f, 0.804f, 23);
+            MenuLabel(root, $"BESTIARY {Codex.KnownCount()}/{Codex.Total}", 0.382f, 0.754f, 0.515f, 0.804f, 21);
+            MenuLabel(root, "SETTINGS", 0.580f, 0.754f, 0.685f, 0.804f, 23);
+            MenuLabel(root, "LEADERBOARD", 0.745f, 0.754f, 0.865f, 0.804f, 21);
+
+            string status = Meta.Streak > 0 && Meta.StreakAlive
+                ? $"BLOOD MOON STREAK: {Meta.Streak} DAYS — THE CASTLE REMEMBERS."
+                : "THE CASTLE IS WAITING. TRUST NO ONE.";
+            var statusText = Skin.LiveText(root, status, 0.235f, 0.846f, 0.765f, 0.903f,
+                24, Theme.Exit);
+            if (Theme.MenuFont != null) statusText.font = Theme.MenuFont;
+            Skin.Fit(statusText, 24, 13);
+        }
+
+        Text MenuLabel(Transform root, string text, float x0, float top0, float x1, float top1, int size)
+        {
+            var label = Skin.LiveText(root, text, x0, top0, x1, top1, size, Gothic.Bone);
+            if (Theme.MenuFont != null) label.font = Theme.MenuFont;
+            label.fontStyle = FontStyle.Bold;
+            return Skin.Fit(label, size, Mathf.Max(12, size / 2));
         }
 
         // ---- Bottom notice stack -------------------------------------------
@@ -1628,14 +1669,6 @@ namespace TrustIssues
 
         void BuildSkinnedMenu(Transform root, int tithe)
         {
-            // LIVE SHARD BALANCE over where the artwork said "SHOP 65". The baked
-            // digits were erased from menu_bg (they sat on a near-flat panel), so we
-            // drop ONLY the live number in their place — no box, "SHOP" untouched — in
-            // the menu serif (Cinzel) so it matches the painted label and just changes.
-            var shopNum = Skin.LiveText(root, $"{Currency.Balance}", 0.191f, 0.748f, 0.27f, 0.790f,
-                36, Theme.Coin, align: TextAnchor.MiddleLeft);
-            if (Theme.MenuFont != null) shopNum.font = Theme.MenuFont;
-
             // ---- CONTINUE — FLOOR N ------------------------------------------
             // The painting says "CONTINUE — FLOOR 1" forever. Clear 12 floors and the
             // menu still promised floor 1, and the biggest button on the screen was
@@ -1687,8 +1720,7 @@ namespace TrustIssues
             if (Theme.MenuFont != null) codexNum.font = Theme.MenuFont;
             Skin.Fit(codexNum, 27, 14);
 
-            // Bottom bar — five cells across the lower frame.
-            Skin.Zone(root, 0.055f, 0.70f, 0.225f, 0.795f, ShowShop,     "shop");
+            // Bottom bar. The former shop cell is deliberately inert.
             Skin.Zone(root, 0.235f, 0.70f, 0.395f, 0.795f, ShowWardrobe, "wardrobe");
             Skin.Zone(root, 0.405f, 0.70f, 0.605f, 0.795f, ShowCodex,    "bestiary");
             Skin.Zone(root, 0.615f, 0.70f, 0.755f, 0.795f, ShowSettings, "settings");
@@ -1854,8 +1886,7 @@ namespace TrustIssues
 
                 Skin.Zone(root, cx - 0.0545f, top, cx + 0.0545f, bot,
                     unlocked ? (System.Action)(() => { Skins.Equip(sid); Destroy(panel); ShowWardrobe(); })
-                    : sdef.price > 0 ? (System.Action)(() => { Destroy(panel); ShowShop(); })
-                                     : (System.Action)(() => ShowHint(sdef.unlockHint)), "skin_" + sid);
+                             : (System.Action)(() => ShowHint(sdef.unlockHint)), "skin_" + sid);
             }
             Skin.Zone(root, 0.43f, 0.905f, 0.57f, 0.975f, () => { Destroy(panel); ShowMenu(); }, "back");
         }
@@ -2469,6 +2500,14 @@ namespace TrustIssues
         // .VideoPlayer rendering to a RawImage here without touching the layout.
         void BuildMenuScene(Transform root)
         {
+            // A real layered environment rather than one flattened menu screenshot.
+            // Every plane has its own depth, tint and subtle motion.
+            MenuSceneLayer(root, "Sky", "bg_sky", new Color(0.30f, 0.08f, 0.13f, 0.95f), 2f, 0.11f);
+            MenuSceneLayer(root, "FarRuins", "bg_far", new Color(0.32f, 0.12f, 0.16f, 0.88f), 4f, 0.16f);
+            MenuSceneLayer(root, "Castle", "bg_castle", new Color(0.42f, 0.16f, 0.18f, 0.96f), 7f, 0.20f);
+            MenuSceneLayer(root, "MidRuins", "bg_mid", new Color(0.28f, 0.10f, 0.14f, 0.96f), 10f, 0.25f);
+            MenuSceneLayer(root, "Foreground", "bg_near", new Color(0.18f, 0.055f, 0.08f, 1f), 14f, 0.30f);
+
             // Blood moon, upper area, with a slow scale pulse (reuses Pulse).
             var moon = new GameObject("Moon", typeof(RectTransform));
             moon.transform.SetParent(root, false);
@@ -2522,6 +2561,33 @@ namespace TrustIssues
             lrt.anchorMin = Vector2.zero; lrt.anchorMax = Vector2.one;
             lrt.offsetMin = lrt.offsetMax = Vector2.zero;
             StartCoroutine(MenuLightning(lImg));
+        }
+
+        void MenuSceneLayer(Transform root, string objectName, string spriteName, Color tint,
+            float drift, float speed)
+        {
+            var sprite = Assets.Sprite(spriteName);
+            if (sprite == null) return;
+            var go = new GameObject(objectName, typeof(RectTransform));
+            go.transform.SetParent(root, false);
+            var image = go.AddComponent<Image>();
+            image.sprite = sprite; image.color = tint; image.raycastTarget = false;
+            var rt = image.rectTransform;
+            rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
+            rt.offsetMin = new Vector2(-45, -24); rt.offsetMax = new Vector2(45, 24);
+            StartCoroutine(MenuLayerDrift(rt, drift, speed));
+        }
+
+        IEnumerator MenuLayerDrift(RectTransform rt, float distance, float speed)
+        {
+            float phase = Random.value * Mathf.PI * 2f;
+            while (rt != null)
+            {
+                float x = Mathf.Sin(Time.unscaledTime * speed + phase) * distance;
+                float y = Mathf.Cos(Time.unscaledTime * speed * 0.63f + phase) * distance * 0.18f;
+                rt.anchoredPosition = new Vector2(x, y);
+                yield return null;
+            }
         }
 
         // Fog band: scroll left, wrapping by its own width so two copies tile.
@@ -5353,7 +5419,7 @@ namespace TrustIssues
                 b.transform.localPosition = new Vector3(0f, baseNudge - (footY - baseNudge) * (vk - 1f), 0f);
                 bodySr = b.AddComponent<SpriteRenderer>();
                 bodySr.sprite = firstFrame;
-                bodySr.color = Skins.Shade(skin);  // cosmetic skin colour (softened so it keeps detail)
+                bodySr.color = WardrobeCosmetics.PlayerTint(Skins.Shade(skin));
                 bodySr.sortingOrder = 5;
                 float h = firstFrame.bounds.size.y;
                 float s = (h > 0.0001f ? 1.35f / h : 1f) * vk;
@@ -5381,7 +5447,7 @@ namespace TrustIssues
             _player.jumpMul = skin.jumpMul;
             _player.dashEnabled = skin.dash;
             _player.extraAirJumps = precision ? 0 : skin.airJumps;
-            Shop.AttachTrail(go);   // equipped cosmetic wake (pure Fx, no gameplay)
+            WardrobeCosmetics.AttachAura(go);
             _playerVisual = vis;
             if (bodySr != null)
             {
@@ -6205,22 +6271,6 @@ namespace TrustIssues
         {
             if (_state != State.Play || _dying) return;
 
-            // GRAVE WARD charm: eat the first death on this floor entirely. Checked
-            // before ANY death bookkeeping runs, so a warded hit costs no death, no
-            // heart and no analytics event — it simply didn't happen. Once per
-            // floor, and it never fires in a live race (a free life would make the
-            // race unfair to the other player).
-            if (_mode != Mode.Versus && Charms.ConsumeWard())
-            {
-                Audio.Play("levelup", 0.5f);
-                FlashRed();
-                ShakeCam(0.35f, 0.35f);
-                if (_player != null) StartCoroutine(Juice.Shake(_cam.transform, 0.3f, 0.2f));
-                RoomToast("THE WARD BREAKS - it only saves you once a floor.");
-                _dying = false;
-                return;
-            }
-
             _dying = true;
             _deaths++;
             // A short rumble on death — on a phone the screen shake alone is easy to
@@ -6260,7 +6310,7 @@ namespace TrustIssues
             // Versus stays clean — it's a live race.
             if (_mode != Mode.Versus)
                 Echo.Report(ModeName, _levelIndex, _mode == Mode.Daily ? DailySeed() : 0,
-                            deathPos, (msg ?? "unknown") + Shop.TauntSuffix());
+                            deathPos, msg ?? "unknown");
             if (_mode == Mode.Curated)
             {
                 PlayerPrefs.SetInt("castle_deaths", _deaths); PlayerPrefs.Save(); // persist lifetime tally
@@ -6312,17 +6362,6 @@ namespace TrustIssues
             // Every 10th death, dangle the next unlock — the moment a bored player
             // quits is exactly when the shop should whisper. Rides the hint bar so
             // the roast toast (and the instant retry) stay untouched.
-            if (_deaths % 10 == 0 && _mode != Mode.Versus)
-            {
-                var nxt = Shop.NextUnlock();
-                if (nxt != null)
-                {
-                    int need = Shop.UnlockPrice(nxt) - Currency.Balance;
-                    ShowHint(need > 0
-                        ? $"{need} more shards until {Shop.UnlockName(nxt)} — the Crypt Shop waits"
-                        : $"You can afford {Shop.UnlockName(nxt)}. The Crypt Shop waits.", 2.2f);
-                }
-            }
             StartCoroutine(DieRoutine(roast));
         }
 
@@ -6343,7 +6382,6 @@ namespace TrustIssues
                 Fx.Explosion(deathPos, 1.7f);     // a quick blast under the gore
                 GoreBurst(deathPos);
                 BloodSplash(deathPos);
-                Shop.PlayDeathFx(deathPos);       // equipped cosmetic death effect, layered on top
                 _player.PlayDeath();
                 _player.Freeze();
             }
@@ -6763,17 +6801,6 @@ namespace TrustIssues
             if (nb != null)
                 Gothic.Line(root, "NEW BADGE UNLOCKED — " + nb.name, 26, Gothic.Bone,
                     new Vector2(0, -54), new Vector2(1200, 44));
-            // The "next unlock" teaser: every result screen names the goal your
-            // shards are working toward — the research-backed anti-boredom line.
-            var nxt = Shop.NextUnlock();
-            if (nxt != null)
-            {
-                int bal = Currency.Balance, price = Shop.UnlockPrice(nxt);
-                Gothic.Line(root, bal >= price
-                        ? $"{bal} BLOOD SHARDS — {Shop.UnlockName(nxt)} is affordable NOW"
-                        : $"{bal} BLOOD SHARDS — {price - bal} more until {Shop.UnlockName(nxt)}",
-                    20, Theme.Coin, new Vector2(0, -89), new Vector2(1400, 26));
-            }
             // Broke a friend's curse this run? The brag carries the receipt.
             if (Curse.LastBroken != null)
                 brag += $" and I broke {Curse.LastBroken.nick}'s curse";
@@ -6855,6 +6882,9 @@ namespace TrustIssues
             var c = new Vector2(0.5f, 0.5f);
             var panel = Overlay(new Color(0.04f, 0.02f, 0.06f, 0.92f), out var root);
             _onBack = () => { Destroy(panel); ShowMenu(); };
+            BuildWardrobeTabs(root, panel);
+            return;
+#pragma warning disable CS0162
             if (Skin.Background(root, "wardrobe_bg") != null) { BuildSkinnedWardrobe(root, panel); return; }
             Theme.Label(root, "WARDROBE", 70, Theme.Player, c, new Vector2(0, 420), new Vector2(1400, 120)).font = Theme.TitleFont;
             Theme.Label(root, "cosmetic look + a signature mobility trick — never pay-to-win", 28, Theme.Coin, c, new Vector2(0, 348), new Vector2(1400, 50));
@@ -6883,12 +6913,9 @@ namespace TrustIssues
                 // The whole card is one button (Image + Button). We build its contents
                 // ourselves so the sprite, name and ability each get their own line and
                 // never overlap. Empty label text — the children below are the content.
-                // Locked PRICED skins route to the Crypt Shop (that's where they're
-                // bought); other locked skins just restate their achievement hint.
                 var card = Theme.Button(root, "", bg, Color.white, 1, c, pos, new Vector2(320, 236),
                     unlocked ? (System.Action)(() => { Skins.Equip(sid); Destroy(panel); ShowWardrobe(); })
-                    : sdef.price > 0 ? (System.Action)(() => { Destroy(panel); ShowShop(); })
-                                     : (System.Action)(() => ShowHint(sdef.unlockHint)));
+                             : (System.Action)(() => ShowHint(sdef.unlockHint)));
                 var ct = card.transform;
 
                 // Gold ring around the equipped card so the current pick is obvious.
@@ -6942,9 +6969,134 @@ namespace TrustIssues
 
             Theme.Button(root, "‹ BACK", new Color(1, 1, 1, 0.25f), Color.white, 40,
                 new Vector2(0.5f, 0f), new Vector2(0, 40), new Vector2(360, 100), () => { Destroy(panel); ShowMenu(); });
+#pragma warning restore CS0162
         }
 
-        // ==================== the Crypt Shop ====================
+        int _wardrobeTab;
+
+        void BuildWardrobeTabs(Transform root, GameObject panel)
+        {
+            var c = new Vector2(0.5f, 0.5f);
+            // The artwork is deliberately an empty template. Every character, label,
+            // unlock state and tap target below is live Unity UI rather than a baked screenshot.
+            if (Skin.Background(root, "wardrobe_avatar_bg_v3") == null) Gothic.Backdrop(root);
+
+            string[] tabs = { "AVATAR", "AURA", "OUTFIT" };
+            float[] tabX = { 0.306f, 0.500f, 0.694f };
+            for (int i = 0; i < tabs.Length; i++)
+            {
+                int tab = i;
+                float x = tabX[i];
+                Skin.Chip(root, x - 0.095f, 0.166f, x + 0.095f, 0.217f,
+                    i == _wardrobeTab ? new Color(0.30f, 0.025f, 0.035f, 0.96f)
+                                      : new Color(0.025f, 0.018f, 0.018f, 0.94f));
+                var tabText = Skin.LiveText(root, tabs[i], x - 0.085f, 0.170f, x + 0.085f, 0.213f,
+                    28, i == _wardrobeTab ? Theme.Exit : Theme.Coin);
+                if (Theme.MenuFont != null) tabText.font = Theme.MenuFont;
+                tabText.fontStyle = FontStyle.Bold; Skin.Fit(tabText, 28, 15);
+                Skin.Zone(root, x - 0.10f, 0.158f, x + 0.10f, 0.221f,
+                    () => { _wardrobeTab = tab; Destroy(panel); ShowWardrobe(); }, "wardrobe_tab_" + i);
+            }
+
+            var vampFrames = Assets.Grid("vamp_idle_sheet", 64, 3);
+            Sprite vamp = vampFrames != null && vampFrames.Length > 0 ? vampFrames[0] : Assets.Sprite("vamp_idle");
+            var pinkFrames = Assets.Sheet("pinkman_idle", 32);
+            Sprite pink = pinkFrames != null && pinkFrames.Length > 0 ? pinkFrames[0] : vamp;
+            var avatar = Skins.Current;
+            Sprite selectedSprite = avatar.pinkman ? pink : vamp;
+
+            const int cols = 5;
+            const float pitchX = 240f, pitchY = 292f;
+            const float startY = 103f;
+            int count = _wardrobeTab == 0 ? Skins.All.Count
+                      : _wardrobeTab == 1 ? WardrobeCosmetics.Auras.Count
+                                          : WardrobeCosmetics.Outfits.Count;
+            for (int i = 0; i < count; i++)
+            {
+                int row = i / cols, col = i % cols;
+                Vector2 pos = new Vector2((col - 2) * pitchX, startY - row * pitchY);
+                if (_wardrobeTab == 0)
+                {
+                    var def = Skins.All[i]; string id = def.id;
+                    bool unlocked = Skins.IsUnlocked(def), equipped = Skins.CurrentId == id;
+                    WardrobeCard(root, panel, pos, def.name, def.unlockHint, unlocked, equipped,
+                        def.pinkman ? pink : vamp, Skins.Shade(def), Color.clear,
+                        () => { Skins.Equip(id); Destroy(panel); ShowWardrobe(); });
+                }
+                else
+                {
+                    var list = _wardrobeTab == 1 ? WardrobeCosmetics.Auras : WardrobeCosmetics.Outfits;
+                    var def = list[i]; string id = def.id;
+                    bool unlocked = WardrobeCosmetics.IsUnlocked(def);
+                    bool equipped = _wardrobeTab == 1 ? WardrobeCosmetics.CurrentAuraId == id
+                                                     : WardrobeCosmetics.CurrentOutfitId == id;
+                    Color avatarTint = Skins.Shade(avatar);
+                    Color previewTint = _wardrobeTab == 2 && id != "classic"
+                        ? Color.Lerp(avatarTint, def.color, 0.42f) : avatarTint;
+                    Color aura = _wardrobeTab == 1 ? def.color : Color.clear;
+                    System.Action equip = _wardrobeTab == 1
+                        ? (System.Action)(() => WardrobeCosmetics.EquipAura(id))
+                        : (System.Action)(() => WardrobeCosmetics.EquipOutfit(id));
+                    WardrobeCard(root, panel, pos, def.name, def.hint, unlocked, equipped,
+                        selectedSprite, previewTint, aura,
+                        () => { equip(); Destroy(panel); ShowWardrobe(); });
+                }
+            }
+
+            var backText = Skin.LiveText(root, "‹ BACK", 0.425f, 0.900f, 0.575f, 0.956f, 34, Theme.Coin);
+            if (Theme.MenuFont != null) backText.font = Theme.MenuFont;
+            backText.fontStyle = FontStyle.Bold; Skin.Fit(backText, 34, 18);
+            Skin.Zone(root, 0.39f, 0.875f, 0.61f, 0.975f,
+                () => { Destroy(panel); ShowMenu(); }, "back");
+        }
+
+        void WardrobeCard(Transform root, GameObject panel, Vector2 pos, string name, string challenge,
+            bool unlocked, bool equipped, Sprite preview, Color previewTint, Color aura,
+            System.Action equip)
+        {
+            var c = new Vector2(0.5f, 0.5f);
+            var card = Theme.Button(root, "", Color.clear, Color.white, 1, c, pos, new Vector2(225, 280),
+                unlocked ? equip : (System.Action)(() => ShowHint(challenge)));
+            var ct = card.transform;
+            if (equipped)
+            {
+                var ring = new GameObject("EquippedFrame", typeof(RectTransform)).AddComponent<Image>();
+                ring.transform.SetParent(ct, false); ring.sprite = Gothic.Frame; ring.type = Image.Type.Sliced;
+                ring.pixelsPerUnitMultiplier = Gothic.RingFrameMul; ring.color = Theme.Exit; ring.raycastTarget = false;
+                ring.rectTransform.anchorMin = Vector2.zero; ring.rectTransform.anchorMax = Vector2.one;
+                ring.rectTransform.offsetMin = new Vector2(-3, -3); ring.rectTransform.offsetMax = new Vector2(3, 3);
+            }
+            if (aura.a > 0.01f)
+            {
+                var glow = new GameObject("AuraPreview", typeof(RectTransform)).AddComponent<Image>();
+                glow.transform.SetParent(ct, false); glow.sprite = Gothic.Diamond; glow.raycastTarget = false;
+                glow.color = new Color(aura.r, aura.g, aura.b, unlocked ? 0.50f : 0.12f);
+                glow.rectTransform.sizeDelta = new Vector2(145, 145);
+                glow.rectTransform.anchoredPosition = new Vector2(0, 26);
+            }
+            if (preview != null)
+            {
+                var pv = new GameObject("AvatarPreview", typeof(RectTransform)).AddComponent<Image>();
+                pv.transform.SetParent(ct, false); pv.sprite = preview; pv.preserveAspect = true; pv.raycastTarget = false;
+                pv.color = unlocked ? previewTint : new Color(0.035f, 0.03f, 0.045f, 0.96f);
+                pv.rectTransform.sizeDelta = new Vector2(125, 125); pv.rectTransform.anchoredPosition = new Vector2(0, 28);
+            }
+            var nameText = Theme.Label(ct, name.ToUpperInvariant(), 21,
+                unlocked ? Gothic.Bone : new Color(0.5f, 0.45f, 0.48f),
+                c, new Vector2(0, 111), new Vector2(215, 34));
+            if (Theme.MenuFont != null) nameText.font = Theme.MenuFont;
+            nameText.fontStyle = FontStyle.Bold; nameText.raycastTarget = false;
+            string state = equipped ? "EQUIPPED" : unlocked ? "TAP TO EQUIP" : challenge;
+            var line = Theme.Label(ct, state, unlocked ? 16 : 14,
+                equipped ? Theme.Coin : unlocked ? new Color(0.76f, 0.70f, 0.66f) : new Color(0.88f, 0.35f, 0.38f),
+                c, new Vector2(0, -103), new Vector2(205, 58));
+            if (Theme.MenuFont != null) line.font = Theme.MenuFont;
+            line.horizontalOverflow = HorizontalWrapMode.Wrap; line.verticalOverflow = VerticalWrapMode.Truncate;
+            line.raycastTarget = false;
+        }
+
+#if false // Shop feature removed.
+        // ==================== retired shop implementation ====================
         // Where blood shards go: charms, purchasable skins, death effects, trails and
         // gravestone taunts. Laid out to the shop artwork — a heading carrying the two
         // live numbers, three tabs, a 3-across grid of framed cards whose last row is
@@ -7258,6 +7410,7 @@ namespace TrustIssues
                 new Vector2(0, -h * 0.40f), new Vector2(w, 28)), 20, 12);
         }
 
+#endif
         // ==================== pause ====================
         void TogglePause()
         {

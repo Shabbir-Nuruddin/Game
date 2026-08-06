@@ -583,7 +583,7 @@ namespace TrustIssues
             // GUTTERING CANDLE charm scales the whole mask up, which widens the lit
             // hole in its middle — you see more of the room. Scaling UP always keeps
             // the >=2x-diagonal coverage guarantee, so the screen edges stay dark.
-            float s = diag * 2.2f * Charms.DarkVisionMultiplier;
+            float s = diag * 2.2f;
             _darkRT.sizeDelta = new Vector2(s, s);
 
             var cam = Camera.main;
