@@ -58,6 +58,16 @@ public static class DumpDifficulty
         sb.AppendLine("floor,stage,traps,untelegraphed,widest_gap,score");
         var summary = new StringBuilder();
         summary.AppendLine("floor | stages | traps | untel | widest gap | score");
+        // SHAPE, tracked separately from difficulty. A campaign can have forty
+        // floors with forty different ideas in them and still feel like one
+        // long floor, because every one of them is the same length, cut into
+        // the same number of chambers, at the same pace. That's a repetition
+        // the difficulty score cannot see, so it gets its own table.
+        var shape = new StringBuilder();
+        shape.AppendLine("floor | rooms | length | longest room | rules");
+        var roomCounts = new Dictionary<int, int>();
+        var lengthBuckets = new Dictionary<int, int>();
+        var problems = new List<string>();
 
         for (int f = 1; f <= Floors; f++)
         {
@@ -98,11 +108,59 @@ public static class DumpDifficulty
 
             summary.AppendLine($"{f,5} | {stages,6} | {floorTraps,5} | {floorUntel,5} | " +
                                $"{floorWidest,10:F2} | {floorScore,5:F1}");
+
+            // ---- can it actually be played? ----
+            // These floors are hand-laid by the metre, so a mistyped platform
+            // width is a floor nobody can finish, and the only way that used to
+            // surface was a player getting stuck. Same two checks the Endless
+            // audit runs: no hole wider than a jump without something to cross
+            // it on, and solid ground under every chamber's respawn point.
+            float reach = lvl.PrecisionPlatforming ? 5.5f : 12f;
+            float hole = WidestHole(lvl, out bool aided);
+            if (hole > reach + 0.15f && !aided)
+                problems.Add($"floor {f}: UNCROSSABLE {hole:F1}u hole");
+            foreach (var r in lvl.Rooms)
+                if (!Grounded(lvl, r.MinX + 1.3f))
+                    problems.Add($"floor {f}: NO RESPAWN GROUND at {r.MinX + 1.3f:F1}");
+
+            // ---- shape ----
+            float lo = float.MaxValue, hi = float.MinValue, longest = 0f;
+            foreach (var p in lvl.Platforms)
+            {
+                lo = Mathf.Min(lo, p.pos.x - p.size.x / 2f);
+                hi = Mathf.Max(hi, p.pos.x + p.size.x / 2f);
+            }
+            var rules = new List<string>();
+            foreach (var r in lvl.Rooms)
+            {
+                longest = Mathf.Max(longest, r.MaxX - r.MinX);
+                rules.Add(r.Rule.ToString().Substring(0, 2));
+            }
+            float len = hi - lo;
+            int rc = lvl.Rooms.Count;
+            roomCounts[rc] = roomCounts.TryGetValue(rc, out var rn) ? rn + 1 : 1;
+            int bucket = Mathf.FloorToInt(len / 25f) * 25;
+            lengthBuckets[bucket] = lengthBuckets.TryGetValue(bucket, out var ln) ? ln + 1 : 1;
+            shape.AppendLine($"{f,5} | {rc,5} | {len,6:F0} | {longest,12:F0} | {string.Join(" ", rules.ToArray())}");
         }
 
         Directory.CreateDirectory("Builds");
         File.WriteAllText("Builds/difficulty.csv", sb.ToString());
         Debug.Log("DIFFICULTY_XRAY\n" + summary);
+
+        // The variety verdict, in two lines: how many floors share a room count,
+        // and how many share a length. If either is dominated by a single value,
+        // the campaign has one shape wearing forty costumes.
+        var spread = new StringBuilder();
+        spread.Append("rooms per floor: ");
+        foreach (var kv in roomCounts) spread.Append($"{kv.Key}→{kv.Value} floors   ");
+        spread.AppendLine();
+        spread.Append("length (units):  ");
+        foreach (var kv in lengthBuckets) spread.Append($"{kv.Key}-{kv.Key + 24}→{kv.Value}   ");
+        Debug.Log("CASTLE_SHAPE\n" + shape + "\n" + spread);
+        Debug.Log(problems.Count == 0
+            ? "CASTLE_PLAYABLE_OK — every floor crossable, every chamber has respawn ground"
+            : $"CASTLE_PROBLEMS ({problems.Count})\n" + string.Join("\n", problems.ToArray()));
         Debug.Log("DIFFICULTY_DONE -> Builds/difficulty.csv");
     }
 
@@ -143,6 +201,55 @@ public static class DumpDifficulty
             if (gap > widest) widest = gap;
             reach = Mathf.Max(reach, spans[i].y);
         }
+        return widest;
+    }
+
+    /// <summary>
+    /// Every span the player can stand on, left to right. Fake floors count —
+    /// they hold you long enough to cross, and the collapse is the joke, not a
+    /// wall — as do vanishing floors, spectral bridges and bobbing slabs.
+    /// </summary>
+    static List<Vector2> Ground(Level lvl)
+    {
+        var spans = new List<Vector2>();
+        foreach (var p in lvl.Platforms)
+        {
+            if (Mathf.Abs(p.pos.y - (-3f)) > 0.4f) continue;
+            if (p.size.x < 0.8f) continue;
+            spans.Add(new Vector2(p.pos.x - p.size.x / 2f, p.pos.x + p.size.x / 2f));
+        }
+        foreach (var t in lvl.Traps)
+            if (t.type == TrapType.FakeFloor)
+                spans.Add(new Vector2(t.pos.x - t.size.x / 2f, t.pos.x + t.size.x / 2f));
+        foreach (var n in lvl.NightFloors) spans.Add(new Vector2(n.pos.x - n.size.x / 2f, n.pos.x + n.size.x / 2f));
+        foreach (var g in lvl.GhostFloors) spans.Add(new Vector2(g.pos.x - g.size.x / 2f, g.pos.x + g.size.x / 2f));
+        foreach (var m in lvl.Movers) spans.Add(new Vector2(m.x - m.w / 2f, m.x + m.w / 2f));
+        spans.Sort((a, b) => a.x.CompareTo(b.x));
+        return spans;
+    }
+
+    static bool Grounded(Level lvl, float x)
+    {
+        foreach (var s in Ground(lvl)) if (x >= s.x - 0.05f && x <= s.y + 0.05f) return true;
+        return false;
+    }
+
+    /// <summary>The widest hole, and whether a portal or a gravity rune crosses it.</summary>
+    static float WidestHole(Level lvl, out bool aided)
+    {
+        aided = false;
+        var spans = Ground(lvl);
+        if (spans.Count < 2) return 0f;
+        float widest = 0f, l = 0f, r = 0f, reach = spans[0].y;
+        for (int i = 1; i < spans.Count; i++)
+        {
+            float gap = spans[i].x - reach;
+            if (gap > widest) { widest = gap; l = reach; r = spans[i].x; }
+            reach = Mathf.Max(reach, spans[i].y);
+        }
+        foreach (var pp in lvl.Portals)
+            if (Mathf.Min(pp.a.x, pp.b.x) <= l + 0.5f && Mathf.Max(pp.a.x, pp.b.x) >= r - 0.5f) aided = true;
+        if (lvl.HasGravity) aided = true;   // the ceiling is the road
         return widest;
     }
 

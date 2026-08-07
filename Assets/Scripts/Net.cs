@@ -49,7 +49,7 @@ namespace TrustIssues
     }
 }
 
-#if PHOTON_UNITY_NETWORKING && TRUST_ISSUES_PHOTON_INSTALLED
+#if PHOTON_UNITY_NETWORKING
 namespace TrustIssues
 {
     using Photon.Pun;
@@ -86,29 +86,9 @@ namespace TrustIssues
         public static int Seed { get; private set; }
         public static string MyNick => PhotonNetwork.NickName ?? "";
 
-        // A persisted, player-chosen display name shown to the rival in a race.
-        // Falls back to a random Heir tag the first time, so there's always a name.
-        public static string PlayerName
-        {
-            get
-            {
-                var n = PlayerPrefs.GetString("mp_name", "");
-                if (string.IsNullOrEmpty(n))
-                {
-                    n = "Heir-" + UnityEngine.Random.Range(100, 999);
-                    PlayerPrefs.SetString("mp_name", n); PlayerPrefs.Save();
-                }
-                return n;
-            }
-            set
-            {
-                var v = (value ?? "").Trim();
-                if (v.Length > 14) v = v.Substring(0, 14);
-                if (v.Length == 0) return;
-                PlayerPrefs.SetString("mp_name", v); PlayerPrefs.Save();
-                if (PhotonNetwork.IsConnected) PhotonNetwork.NickName = v;   // live-rename if connected
-            }
-        }
+        // Generated from a fixed safe vocabulary: there is no free-text nickname
+        // input to moderate in this first multiplayer release.
+        public static string PlayerName => Meta.Nick;
         public static string NickOf(int actor)
         {
             if (!InRoom) return "Heir";
@@ -330,26 +310,7 @@ namespace TrustIssues
         public static int PlayerCount => 0;
         public static int Seed => 0;
         public static string MyNick => "";
-        public static string PlayerName
-        {
-            get
-            {
-                var n = PlayerPrefs.GetString("mp_name", "");
-                if (string.IsNullOrEmpty(n))
-                {
-                    n = "Heir-" + UnityEngine.Random.Range(100, 999);
-                    PlayerPrefs.SetString("mp_name", n); PlayerPrefs.Save();
-                }
-                return n;
-            }
-            set
-            {
-                var v = (value ?? "").Trim();
-                if (v.Length > 14) v = v.Substring(0, 14);
-                if (v.Length == 0) return;
-                PlayerPrefs.SetString("mp_name", v); PlayerPrefs.Save();
-            }
-        }
+        public static string PlayerName => Meta.Nick;
         public static string NickOf(int actor) => "Heir";
         public static string RivalName() => "RIVAL";
 

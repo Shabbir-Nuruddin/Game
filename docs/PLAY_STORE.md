@@ -1,243 +1,359 @@
-# Publishing Trust Issues to Google Play — the complete run-through
+# Publishing Trust Issues on Google Play
 
-Everything below is in the order you'll actually do it. Anything marked
-**[YOU]** is something I cannot do for you — it needs your Google account, your
-payment card, or a password I must never handle. Everything marked **[DONE]** is
-already set up in the project.
+**Reviewed against the project and Google Play requirements on 6 August 2026.**
 
----
+Google Play rules change. Recheck the linked official pages immediately before
+submitting a release.
 
-## Part 0 — What's already done
+## Current readiness
 
-| Thing | State |
+| Item | Current state |
 | --- | --- |
-| Package name `com.shabbir.trustissues` | **[DONE]** — set in `Assets/Editor/BuildAndroid.cs` |
-| 64-bit (ARM64) + IL2CPP — required by Play | **[DONE]** |
-| Privacy policy text | **[DONE]** — `docs/PRIVACY_POLICY.md`, needs hosting (Part 3) |
-| Analytics opt-out switch (the policy promises one) | **[DONE]** — Settings › ANONYMOUS DATA |
-| Release **.aab** build script | **[DONE]** — `Assets/Editor/BuildRelease.cs` |
-| Store listing copy | **[DONE]** — Part 6 below, ready to paste |
-| Data safety answers | **[DONE]** — Part 7 below, ready to copy |
-| Content rating answers | **[DONE]** — Part 8 below |
-| Upload keystore | **[YOU]** — Part 2 |
-| Google Play developer account ($25) | **[YOU]** — Part 1 |
-| Screenshots + feature graphic | **[YOU]** — Part 5 |
+| Package name `com.shabbir.trustissues` | Ready |
+| Android ARM64 + IL2CPP | Configured |
+| Android App Bundle build | `Assets/Editor/BuildRelease.cs` exists |
+| Privacy Policy | Updated in `docs/PRIVACY_POLICY.md`; must be hosted and linked inside the app |
+| Terms of Use | Drafted in `docs/TERMS_OF_USE.md`; online-feature acceptance is not implemented yet |
+| Data safety draft | Updated below |
+| Content rating draft | Updated below |
+| Analytics opt-out | Exists, but affects analytics only—not leaderboards or death echoes |
+| Ads | No ads are shown; unused Unity Ads package is still bundled |
+| In-app purchases | None; unused Unity Purchasing package is still installed |
+| Target API | Set to Unity “Automatic”; verify the generated bundle targets API 36 for submissions on/after 31 August 2026 |
+| Upload keystore | Developer must create and protect it |
+| Public store assets | Still required |
+| Closed test | May require 12 continuously opted-in testers for 14 days |
 
----
+## Important blockers before production
 
-## Part 1 — Developer account **[YOU]**
+### 1. Put Privacy and Terms links inside the Game
 
-1. Go to <https://play.google.com/console> and sign in with the Google account
-   you want to own this app **forever**. You cannot move an app between accounts
-   later without a lot of pain — use an account you'll keep.
-2. Pay the **one-off $25** registration fee.
-3. Choose account type. As an individual you'll need to verify your identity
-   with a government ID, and **your name and address become publicly visible**
-   on your store listing. If you'd rather that not be public, register as an
-   organisation instead — that needs a registered business and a D-U-N-S number.
-4. Google now requires new personal developer accounts to run a **closed test
-   with at least 12 testers for 14 continuous days** before you can go public.
-   Start collecting those 12 email addresses now — this is usually the single
-   longest delay in the whole process.
+Google requires the Privacy Policy to be accessible inside the app as well as
+in Play Console. Add visible **PRIVACY** and **TERMS** buttons to Settings.
 
-## Part 2 — The upload keystore **[YOU — I must not do this]**
+After GitHub Pages is enabled for the `/docs` folder, use:
 
-This creates a password-protected signing key. I won't generate it or handle the
-password: whoever holds it controls your app's identity, and **if you lose it you
-can never update your app again.**
+- `https://shabbir-nuruddin.github.io/Game/PRIVACY_POLICY.html`
+- `https://shabbir-nuruddin.github.io/Game/TERMS_OF_USE.html`
 
-Run this in a terminal (Java comes with Unity, so `keytool` is already on your
-machine — if `keytool` isn't found, use the one inside
-`C:\Program Files\Unity\Hub\Editor\6000.4.11f1\Editor\Data\PlaybackEngines\AndroidPlayer\OpenJDK\bin`):
+Open both URLs in a private browser window before submitting. The pages must be
+public, active, non-geofenced, non-editable by visitors, and not PDF files.
 
-```bash
+### 2. Fix the nickname/UGC compliance path
+
+Players can type nicknames that appear in multiplayer, leaderboards, and death
+echoes. Google treats visible player submissions as user-generated content
+(UGC). A Terms page and an email address alone are not enough for a public UGC
+feature.
+
+Choose one route before production:
+
+**Simplest route:** remove free-text nicknames and offer only generated or
+pre-approved names such as `Heir-412`. This substantially reduces UGC risk.
+
+**Full UGC route:** before the player uses online features:
+
+- show the Terms/behavior rules and require non-skippable acceptance;
+- add clearly labelled in-app **Report** and **Block** controls;
+- maintain a moderation process and act on reports promptly; and
+- allow removal of reported nicknames/content from the server.
+
+### 3. Make online sharing optional or disclose it prominently
+
+The **ANONYMOUS DATA** switch stops the custom analytics queue, but solo deaths
+can still send a nickname, install ID, death location, and cause to the death-
+echo service. Leaderboard results are also separate.
+
+Before release, add a separate **ONLINE COMMUNITY FEATURES** choice or an
+up-front disclosure. The cleanest implementation is opt-in and should control
+leaderboards, death echoes, and public nicknames together.
+
+### 4. Remove unused SDKs
+
+The project currently includes Unity Ads, Unity Analytics, and Unity Purchasing
+packages even though their services are disabled and the Game does not use
+them. Remove unused packages before the release bundle. This reduces app size,
+SDK-policy risk, and the chance that the Data safety declaration becomes wrong
+after a package update.
+
+### 5. Establish a fixed retention process
+
+The old policy claimed analytics automatically expired after 24 months, but the
+server does not currently enforce that. The updated policy states the current
+behavior honestly. Before launch, adopt and automate a concrete retention rule
+(recommended: delete raw analytics and death echoes after 24 months) and then
+update the policy to match.
+
+## 1. Developer account and verification
+
+1. Create or use a Play Console account at <https://play.google.com/console>.
+2. Select the correct account type:
+   - **Personal** for an individual/hobby developer.
+   - **Organization** for a registered business; a D-U-N-S number is required.
+3. Complete identity, payment-profile, contact-email, and contact-phone
+   verification requested by Play Console.
+4. New personal accounts must verify access to a non-rooted physical Android
+   phone (Android 10 or newer) through the Play Console mobile app.
+5. Enable 2-Step Verification and never share the account password.
+
+Play Console tells you exactly which verified developer details will be public.
+Personal and organization accounts have different display requirements.
+
+## 2. Testing requirement for new personal accounts
+
+If the personal developer account was created after 13 November 2023, production
+access normally requires:
+
+- a closed test;
+- at least **12 testers**;
+- all 12 remaining opted in continuously for at least **14 days**; and
+- a production-access application explaining testing, feedback, and fixes.
+
+Start with internal testing, then begin the closed test only when the build is
+stable enough that testers can keep it installed for the full period.
+
+## 3. Signing and release bundle
+
+New Play apps publish with an Android App Bundle (`.aab`), not the sideload APK.
+
+1. Create an RSA upload key of at least 2048 bits and store it outside Git.
+2. Back up the keystore and passwords in at least two secure locations.
+3. Configure the keystore in Unity Player Publishing Settings.
+4. Enrol in **Play App Signing**. Keep the upload key; Google protects the app
+   signing key.
+5. Build `Builds/TrustIssues.aab` with the release builder.
+6. Confirm each upload has a higher version code than every previous upload.
+
+Example key creation command (run it yourself; never paste the password into a
+chat or commit it):
+
+```powershell
 keytool -genkeypair -v -keystore trustissues.keystore -alias trustissues -keyalg RSA -keysize 2048 -validity 10000
 ```
 
-It will ask you to invent a password and answer a few questions (name, city,
-country — these are not shown to players).
+## 4. Android technical requirements
 
-**Then:**
-- Store `trustissues.keystore` and its password somewhere you will still have in
-  five years — a password manager, plus a second backup. Not just this laptop.
-- **Do not commit it to git.** I've added it to `.gitignore` for you.
-- In Unity: *Edit › Project Settings › Player › Publishing Settings* → tick
-  **Custom Keystore**, browse to the file, enter the passwords, and pick the
-  `trustissues` alias.
+- Use the `.aab` release build, ARM64, and IL2CPP.
+- Target **Android 15 / API 35 or higher** for submissions before 31 August
+  2026.
+- Starting **31 August 2026**, new mobile apps and updates must target **Android
+  16 / API 36 or higher**. Target API 36 now if the installed Unity Android tools
+  support it.
+- Keep the minimum SDK only as high as genuinely needed (currently API 26).
+- Inspect the final merged Android manifest for unnecessary permissions and SDK
+  declarations after building.
+- Test the Play-delivered build through Internal App Sharing or an internal test
+  track—not only a locally installed APK.
+- Verify multiplayer on two different physical phones/networks.
 
-Also opt in to **Play App Signing** when the Console offers it (it's the
-default). Google then holds the real signing key, and your keystore becomes just
-an *upload* key — which means if you ever do lose it, support can reset it. This
-is the safety net; take it.
+## 5. Required store listing material
 
-## Part 3 — Host the privacy policy **[YOU]**
+Prepare:
 
-Play requires a **public URL** — a file on your computer won't do.
+- app name;
+- short description (maximum 80 characters);
+- full description (maximum 4,000 characters);
+- 512 × 512 store icon;
+- 1024 × 500 feature graphic;
+- at least two real phone screenshots (more are recommended);
+- category, tags, support email, and optional support website; and
+- countries/regions, pricing, and distribution selections.
 
-Easiest free option, and it uses the repo you already have:
+Use screenshots from the real current mobile build. Do not present concept art
+as gameplay.
 
-1. Push the repo to GitHub (already done).
-2. GitHub → your repo → **Settings › Pages** → Source: *Deploy from a branch*,
-   branch `main`, folder `/docs`.
-3. Wait ~2 minutes. Your policy is then live at:
-   `https://shabbir-nuruddin.github.io/Game/PRIVACY_POLICY`
-4. Open it and check it loads. That's the URL you paste into the Console.
+### Suggested listing copy
 
-## Part 4 — Build the release bundle
+**Name:** Trust Issues
 
-Play needs an **.aab** (app bundle), not the .apk you've been sideloading.
+**Short description:**
 
-After you've set the keystore in Part 2, run:
-
-```bash
-"C:\Program Files\Unity\Hub\Editor\6000.4.11f1\Editor\Unity.exe" -batchmode -quit -projectPath . -executeMethod TrustIssues.EditorTools.BuildRelease.Build -logFile release.log
-```
-
-Output: `Builds/TrustIssues.aab`
-
-Every update you upload must have a **higher version code** than the last. The
-build script bumps it automatically and prints what it used.
-
-## Part 5 — Assets you must supply **[YOU]**
-
-| Asset | Requirement |
-| --- | --- |
-| App icon | 512 × 512 PNG, 32-bit, no transparency |
-| Feature graphic | 1024 × 500 PNG/JPG — shown at the top of your listing |
-| Phone screenshots | **At least 2**, ideally 8. 16:9 or 9:16, min 320px, max 3840px |
-| Tablet screenshots | Only if you want tablet users to see a proper listing |
-| Short description | 80 characters max |
-| Full description | 4000 characters max |
-
-Copy for the last two is written for you in Part 6.
-
-For screenshots, the game already has a harness that grabs real frames:
-
-```bash
-./Builds/Win/TrustIssues.exe -shot C:\shots -floor 1 -warp 8 -touch -screen-width 1920 -screen-height 1080
-```
-
-## Part 6 — Store listing copy (paste this in)
-
-**App name** (30 chars max):
-```
-Trust Issues
-```
-
-**Short description** (80 chars max):
-```
-A troll platformer that lies to you. The floor is not your friend.
-```
+> A troll platformer where every floor lies—and every death teaches the trick.
 
 **Full description:**
-```
-The castle wants you dead. It is also very funny about it.
 
-Trust Issues is a rage platformer where the level itself is the enemy. Floors
-collapse the moment you trust them. Spikes rise after you land. The bright,
-obvious door is the one that kills you. Every trap is fair the second time —
-and never the first.
+> The castle wants you dead. Worse, it wants you confident first.
+>
+> Trust Issues is a trap-filled platformer where floors collapse, gates betray
+> you, spikes wait for the perfect moment, and the obvious route is usually the
+> wrong one. Every trick is surprising the first time and readable the next.
+>
+> • 40 hand-built Castle floors
+>
+> • Fast retries and stage checkpoints
+>
+> • Blood Moon challenges and an Endless distance run
+>
+> • Boss fights, moving traps, collapsing floors, and cursed rooms
+>
+> • Optional live races with friends
+>
+> • Leaderboards, death echoes, cosmetics, and custom trap challenges
+>
+> • No advertisements and no in-app purchases
+>
+> Built for short sessions, stubborn players, and the friend who said, “That
+> jump looks safe.”
 
-Die and the castle tells you exactly what you did wrong, out loud, with no
-sympathy whatsoever.
+Suggested category: **Games → Arcade**.
 
-• 39 hand-built floors, each one a new lie
-• Every floor is five short stages — death only sends you back to the stage
-  you're on, so you always start again three seconds later
-• A castle that LEARNS. Hesitate on a ledge and it builds something there
-• Blood Moon nights, an Endless descent, and boss fights that each fight
-  differently
-• Race a friend live on the same track
-• Cosmetics only. No pay-to-win, no ads, no in-app purchases
+## 6. Play Console “App content” declarations
 
-Built for thumbs. Playable in short bursts. Guaranteed to be someone else's
-fault.
-```
+Complete every card shown in Play Console, including:
 
-**Category:** Games › Arcade
-**Tags:** platformer, hardcore, arcade
-**Contact email:** nuruddinshabbir3@gmail.com
-**Privacy policy URL:** the one from Part 3
+- Privacy Policy URL;
+- Data safety;
+- Ads declaration: **No, the app does not contain ads** (only after confirming
+  no ad is displayed in the release build);
+- App access: generally **all functionality is available without special
+  access**; include concise instructions for creating/joining a multiplayer room
+  if reviewers need them;
+- Target audience and content;
+- IARC content-rating questionnaire;
+- Government app: **No**;
+- News app: **No**;
+- Financial features: **None**;
+- Health features: **None**;
+- any permissions declaration Play Console generates from the uploaded bundle;
+  and
+- any additional declarations that Play Console adds before submission.
 
-## Part 7 — Data safety form (the exact answers)
+## 7. Data safety draft for the current build
 
-This form is legally binding — it must match what the app really does. Based on
-the actual code:
+This is a conservative draft based on the current source. Re-check the final
+`.aab` and every bundled SDK before submitting.
 
-**Does your app collect or share any of the required user data types?** → **Yes**
+**Does the app collect or share user data?** **Yes**
 
-Declare exactly these:
-
-| Data type | Collected | Shared | Optional? | Purpose |
+| Google Play data type | Collected | Shared | Required/optional now | Purpose |
 | --- | --- | --- | --- | --- |
-| App interactions (gameplay events) | Yes | No | **Yes** — Settings toggle | Analytics |
-| Other user-generated content (nickname) | Yes | Yes (to other players) | Yes | App functionality |
+| Personal info → Name (nickname) | Yes | Yes, visible to players | Required by the current death-echo implementation | App functionality |
+| App activity → App interactions | Yes | No | Optional through ANONYMOUS DATA | Analytics |
+| App activity → Other actions (gameplay, deaths, scores) | Yes | Some results are visible to players | Required for current online features; analytics portion optional | App functionality, analytics |
+| Device or other IDs → random installation ID | Yes | No public sharing; processors receive it | Required by current death echoes; analytics portion optional | App functionality, analytics |
 
-**Is all data encrypted in transit?** → **Yes** (the analytics endpoint and
-Photon are both HTTPS/TLS)
+Also answer:
 
-**Do you provide a way to request data deletion?** → **Yes** — the email in the
-privacy policy
+- **Encrypted in transit:** Yes, assuming the final Photon and HTTPS
+  configuration remains in place.
+- **Users can request deletion:** Yes, through the privacy contact email.
+- **Account creation:** No. Therefore Play's account-deletion URL requirement
+  does not currently apply.
+- **Data sold:** No.
 
-**Do NOT tick:** location, personal info, financial info, health, photos, files,
-contacts, calendar, messages, device IDs. The game collects none of them.
+Do not declare location, contacts, messages, camera, microphone recordings,
+photos, health, financial information, purchase history, or advertising data
+unless the final bundle or a later feature actually collects them.
 
-> If you later add ads or analytics SDKs, this form must be updated **before**
-> that version ships.
+## 8. Target audience and children
 
-## Part 8 — Content rating questionnaire
+Recommended target groups for the current design:
 
-Answer honestly; these are the correct answers for this game:
+- **13–15**
+- **16–17**
+- **18 and over**
 
-- **Violence:** Yes — cartoon/fantasy. The player character dies in a stylised
-  pixel-art way with red particle effects.
-- **Blood:** Yes — stylised, non-realistic (pixel blood, "Blood Shards").
-- **Sexual content / nudity:** No
-- **Language:** Mild. The death lines are mocking but contain no profanity.
-- **Controlled substances:** No
-- **Gambling / simulated gambling:** No
-- **User interaction:** **Yes** — players can race each other and see each
-  other's nicknames.
-- **Shares location:** No
-- **Digital purchases:** No
+Do not select an under-13 group unless you deliberately redesign for Google
+Play Families requirements. The current build has online nicknames, analytics,
+Photon multiplayer, public death echoes, and SDKs that have not been audited for
+child-directed use.
 
-Expected outcome: **PEGI 7 / ESRB Everyone 10+** or thereabouts.
+If you want to officially target 8–12-year-olds, that is a separate compliance
+project: use a neutral age screen or child-safe mode, stop disallowed identifier
+transmission for children, audit every SDK for Families eligibility, restrict
+online interactions, and obtain any legally required parental consent.
 
-## Part 9 — Release order (do it in this order)
+## 9. Content-rating questionnaire
 
-1. Create the app in the Console: name, language, "Game", "Free".
-2. Complete **App content**: privacy policy URL, ads declaration (**No ads**),
-   content rating, target audience, data safety, government-app (No), financial
-   features (None).
-3. Upload the .aab to **Internal testing** first. Install it from the test link
-   on a real phone and play it. Never send an untested build to closed testing.
-4. Move to **Closed testing** and run the 12-tester / 14-day requirement.
-5. Apply for **production** access.
-6. Roll out to production — start at **20%** so you can halt it if crash reports
-   spike.
+Answer from the actual final build, not from the desired rating:
 
-## Part 10 — Before you press publish
+- fantasy/cartoon violence: **Yes**;
+- stylised blood or gore particles: **Yes**;
+- horror/fear themes, vampires, coffins, and death: **Yes**;
+- strong language: review every authored line; the milestone story is mild, but
+  free-text nicknames mean user content can vary;
+- sexual content/nudity: **No**;
+- controlled substances: **No**;
+- gambling/simulated gambling: **No**;
+- digital purchases: **No**;
+- users interact or exchange visible information: **Yes**;
+- user-generated content: **Yes** while free-text nicknames remain;
+- location sharing: **No**.
 
-- [ ] Keystore backed up in two places, password in a password manager
-- [ ] Privacy policy URL loads publicly in a browser
-- [ ] Version code higher than any previous upload
-- [ ] The .aab installs and runs on a real phone from a test track
-- [ ] Music attribution is visible in-game (Settings) — **this is a licence
-      obligation for the Kevin MacLeod tracks, not a nicety**
-- [ ] Data safety answers match Part 7
-- [ ] Screenshots are of the real game, not mockups (Play rejects misleading
-      store assets, and the mockup art is not what the game renders)
+Do not promise a specific PEGI/ESRB result. IARC assigns regional ratings after
+the questionnaire.
 
----
+## 10. Privacy Policy, Terms, and licences
 
-## Things that will get you rejected
+A custom end-user licence is not usually a separate Play Console upload for a
+simple game. However:
 
-- **Missing or unreachable privacy policy URL** — the single most common
-  rejection.
-- **Data safety form that doesn't match the app.** The game does send analytics;
-  declaring "no data collected" would be a false declaration.
-- **Screenshots that aren't the actual game.** Do not use the mockup paintings
-  as screenshots.
-- **Not targeting a recent Android API level.** Play raises this yearly; Unity
-  6000.4 targets a current level by default, but check the Console warning.
-- **Missing 64-bit support.** Already handled — ARM64 + IL2CPP.
+- the Privacy Policy is mandatory;
+- Terms of Use are effectively required here because the Game displays player
+  nicknames/UGC;
+- the Game must obtain acceptance of UGC rules before online participation;
+- third-party software and asset licences must be retained; and
+- Kevin MacLeod music attribution must stay visible and accurate under the
+  applicable Creative Commons licence.
+
+Keep proof of licences for every music track, sound, font, image, Unity asset,
+and third-party code component. Google may request evidence following an IP
+complaint.
+
+## 11. Release sequence
+
+1. Resolve the blockers at the top of this document.
+2. Remove unused SDKs and build the signed `.aab`.
+3. Create the app in Play Console and complete developer verification.
+4. Upload to internal testing.
+5. Complete the store listing and all App content declarations.
+6. Install the Play-delivered build on multiple real phones.
+7. Test offline startup, gameplay, settings, privacy links, data opt-outs,
+   sharing, TTS, two-device Photon multiplayer, and deletion/report workflows.
+8. Run the required closed test and retain tester feedback.
+9. Apply for production access if required.
+10. Submit production and monitor Android vitals, crashes, reviews, and policy
+    notices.
+
+## 12. Final checklist
+
+- [ ] Developer identity, email, phone, payment profile, and device verified
+- [ ] 2-Step Verification enabled
+- [ ] Package name final and registered
+- [ ] Upload keystore backed up securely
+- [ ] Play App Signing enabled
+- [ ] Release `.aab` targets the required API level
+- [ ] Version code is unique and higher
+- [ ] Unused Ads/Analytics/Purchasing SDKs removed
+- [ ] Final permissions and SDK behavior audited
+- [ ] Privacy Policy hosted publicly and linked in Settings
+- [ ] Terms hosted and accepted before online/UGC use
+- [ ] Report and Block implemented, or free-text nicknames removed
+- [ ] Online community-data choice/disclosure implemented
+- [ ] Data retention process decided and enforced
+- [ ] Data safety answers match the final bundle
+- [ ] Content rating and target audience are accurate
+- [ ] Store icon, feature graphic, and real screenshots uploaded
+- [ ] Support email works and is monitored
+- [ ] Music/asset/software licence evidence retained
+- [ ] Internal and closed testing completed as required
+- [ ] Multiplayer tested on two physical devices
+
+## Official references
+
+- User Data and Privacy Policy requirements:
+  <https://support.google.com/googleplay/android-developer/answer/10144311>
+- Data safety:
+  <https://support.google.com/googleplay/android-developer/answer/10787469>
+- UGC moderation:
+  <https://support.google.com/googleplay/android-developer/answer/12923286>
+- Target API levels:
+  <https://support.google.com/googleplay/android-developer/answer/11926878>
+- New personal-account testing:
+  <https://support.google.com/googleplay/android-developer/answer/14151465>
+- Developer verification:
+  <https://support.google.com/googleplay/android-developer/answer/10841920>
+- Play App Signing:
+  <https://support.google.com/googleplay/android-developer/answer/9842756>
+- Content ratings:
+  <https://support.google.com/googleplay/android-developer/answer/9859655>

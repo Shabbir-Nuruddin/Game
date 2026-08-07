@@ -43,11 +43,22 @@ namespace TrustIssues
         {
             get
             {
-                string n = PlayerPrefs.GetString("ti_nick", "");
-                if (string.IsNullOrEmpty(n)) { n = "Heir-" + UnityEngine.Random.Range(100, 999); Nick = n; }
+                const string key = "ti_safe_nick";
+                string n = PlayerPrefs.GetString(key, "");
+                if (string.IsNullOrEmpty(n))
+                {
+                    string[] titles = { "Crimson", "Silent", "Moon", "Velvet", "Hollow", "Night", "Iron", "Ashen" };
+                    string[] heirs = { "Bat", "Fang", "Heir", "Raven", "Shade", "Wolf", "Thorn", "Count" };
+                    n = titles[UnityEngine.Random.Range(0, titles.Length)] +
+                        heirs[UnityEngine.Random.Range(0, heirs.Length)] +
+                        UnityEngine.Random.Range(10, 100);
+                    PlayerPrefs.SetString(key, n);
+                    PlayerPrefs.DeleteKey("ti_nick");
+                    PlayerPrefs.DeleteKey("mp_name");
+                    PlayerPrefs.Save();
+                }
                 return n;
             }
-            set { PlayerPrefs.SetString("ti_nick", value); PlayerPrefs.Save(); }
         }
     }
 }

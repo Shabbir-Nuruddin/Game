@@ -1,0 +1,48 @@
+PRIVACY POLICY - TRUST ISSUES
+
+Effective date and last updated: 6 August 2026
+
+Trust Issues is published by Shabbir Nuruddin ("we", "us", or "our"). Contact: nuruddinshabbir3@gmail.com.
+
+1. WHAT THE GAME DOES NOT REQUIRE
+
+The Game does not require an account, real name, email address, phone number, payment information, precise location, contacts, camera, microphone, or access to personal photos and files. The current release does not display advertisements or offer in-app purchases.
+
+2. INFORMATION STORED ON YOUR DEVICE
+
+The Game stores progress, unlocked floors, deaths, checkpoints, achievements, best runs, Blood Shards, cosmetic ownership, equipped items, challenge codes, audio and visual preferences, a randomly generated safe nickname, and daily-play streaks using local app storage. This data normally remains until you clear the Game's storage or uninstall it, subject to Android backup settings.
+
+3. INFORMATION SENT OFF YOUR DEVICE
+
+Gameplay analytics: The Game may send a random installation identifier, random session identifier, app version, timestamps, game mode, floor, deaths, score, checkpoints, selected options, gameplay timing and positions, run outcomes, and death causes to our game service. We use this to find broken flows, balance levels, measure feature use, and improve the Game. We do not use it for advertising or advertising profiles.
+
+Leaderboards and death echoes: Records may contain the automatically generated nickname, mode, floor, score or death count, death location and cause, date, and random installation identifier. Other players may see the generated nickname, score, and a short death echo.
+
+Live multiplayer: When you host or join a race, the Game connects to Photon, operated by Exit Games GmbH. Photon processes room codes, the generated nickname, network and connection information, and real-time gameplay state needed for the match. Players in the room receive relevant movement, score, and match actions. Photon may process IP addresses under its own privacy policy.
+
+Device services: Optional story narration uses the Android Text-to-Speech service. Depending on the installed provider, narration may be processed locally or by that provider. Sharing uses Android's share sheet and the app you select handles the shared material.
+
+4. PURPOSES AND PROVIDERS
+
+We process information to operate gameplay, multiplayer, leaderboards and death echoes; save progress; secure and troubleshoot the Game; improve balance and performance; and comply with law. Render hosts our game service, Neon hosts its database, and Photon provides multiplayer networking. Providers may process information in other countries. We do not sell personal information or share it for cross-context behavioural advertising.
+
+5. RETENTION
+
+Gameplay records are retained while reasonably needed to operate and improve the Game or until a valid deletion request is completed. Death-echo lists are pruned as newer records arrive. Leaderboard scores remain while the leaderboard operates or until valid deletion. Local data remains until cleared, overwritten, or the Game is uninstalled. Infrastructure providers may retain security logs under their own schedules.
+
+6. YOUR CHOICES AND RIGHTS
+
+You can avoid multiplayer and leaderboard participation, mute narration in Settings, clear local data through Android Settings, or uninstall the Game. To request access to or deletion of server-side information, email nuruddinshabbir3@gmail.com with the generated nickname and approximate dates of play. Depending on where you live, you may have additional access, correction, deletion, restriction, portability, objection, consent-withdrawal, or complaint rights.
+
+7. CHILDREN
+
+Trust Issues is not directed to children under 13 and should not be used below the minimum digital-consent age that applies where the player lives without permission from a parent or guardian. If you believe a child submitted information in violation of law, contact us so we can investigate and delete it where appropriate.
+
+8. SECURITY AND CHANGES
+
+Network traffic uses HTTPS/TLS or secure Photon transport where supported. No method is completely secure. We may update this policy when the Game, providers, or legal requirements change. The date above identifies the latest version.
+
+CONTACT
+
+Shabbir Nuruddin
+nuruddinshabbir3@gmail.com

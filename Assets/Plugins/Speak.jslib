@@ -44,5 +44,45 @@ mergeInto(LibraryManager.library, {
     } catch (e) {
       // ignore — TTS is a nice-to-have
     }
+  },
+
+  // Slower, lower and steadier than the old one-line taunt voice. This is used
+  // only for the rare Castle story interludes.
+  TI_Narrate: function (textPtr, volume) {
+    try {
+      if (typeof window === 'undefined' || !window.speechSynthesis) return;
+      var text = UTF8ToString(textPtr);
+      if (!text) return;
+      window.speechSynthesis.cancel();
+      var u = new SpeechSynthesisUtterance(text);
+      u.pitch = 0.86;
+      u.rate = 0.92;
+      u.volume = Math.max(0, Math.min(1, volume));
+
+      var voices = window.speechSynthesis.getVoices() || [];
+      var want = ['daniel', 'guy', 'google uk english male', 'alex',
+                  'google us english', 'aria', 'jenny', 'samantha'];
+      var best = null, bestRank = 999;
+      for (var i = 0; i < voices.length; i++) {
+        var v = voices[i];
+        if (!v.lang || v.lang.indexOf('en') !== 0) continue;
+        var n = (v.name || '').toLowerCase();
+        for (var w = 0; w < want.length; w++) {
+          if (n.indexOf(want[w]) >= 0 && w < bestRank) { best = v; bestRank = w; }
+        }
+        if (best === null) best = v;
+      }
+      if (best) u.voice = best;
+      window.speechSynthesis.speak(u);
+    } catch (e) {
+      // Story narration is optional; never let device TTS interrupt play.
+    }
+  },
+
+  TI_StopSpeak: function () {
+    try {
+      if (typeof window !== 'undefined' && window.speechSynthesis)
+        window.speechSynthesis.cancel();
+    } catch (e) {}
   }
 });

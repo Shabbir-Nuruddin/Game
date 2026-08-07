@@ -277,23 +277,29 @@ namespace TrustIssues
             _armed = false;
             Codex.Unlock(TrapType.FakeFloor);   // you've discovered the treacher-floor
             GameRoot.I?.TrapFired(type, transform.position);   // survive the drop = CALLED IT
-            // A single-frame shudder as the only warning, then the floor is GONE.
-            // No time to react the first time — that's the trap. The crack tell
-            // means you'll know to jump it next run.
+            // Give a sharp-eyed player a tiny rescue window: the slab reddens and
+            // shakes before it gives way. Most first-timers still fall, but they
+            // SEE why and can plausibly save it with a fast jump.
             Vector3 home = transform.position;
-            for (int i = 0; i < 3; i++)
+            Color baseColor = _sr != null ? _sr.color : Color.white;
+            float warn = 0f;
+            while (warn < 0.22f)
             {
-                transform.position = home + (Vector3)(Random.insideUnitCircle * 0.05f);
+                warn += Time.deltaTime;
+                float k = Mathf.Clamp01(warn / 0.22f);
+                transform.position = home + (Vector3)(Random.insideUnitCircle * Mathf.Lerp(0.025f, 0.09f, k));
+                if (_sr != null) _sr.color = Color.Lerp(baseColor, new Color(0.72f, 0.18f, 0.2f, baseColor.a), k * 0.7f);
                 yield return null;
             }
             _col.enabled = false; // you fall NOW
             float e = 0f;
             Vector3 start = transform.position;
-            while (e < 0.3f)
+            while (e < 0.42f)
             {
                 e += Time.deltaTime;
-                transform.position = start + Vector3.down * (e * 14f);
-                var col = _sr.color; col.a = 1f - e / 0.3f; _sr.color = col;
+                transform.position = start + Vector3.down * (e * 10f);
+                transform.rotation = Quaternion.Euler(0f, 0f, e * 55f);
+                var col = _sr.color; col.a = 1f - e / 0.42f; _sr.color = col;
                 yield return null;
             }
             gameObject.SetActive(false);
@@ -447,7 +453,24 @@ namespace TrustIssues
             var col = go.AddComponent<BoxCollider2D>();
             col.isTrigger = true;
             col.size *= 0.8f; // reliable spike hitbox
+            col.enabled = false; // the warning and first half of the rise are escapable
             _spike = go.transform;
+
+            // A hairline crack appears before the spike moves. It is deliberately
+            // brief: a surprise on attempt one, actionable information thereafter.
+            var crack = Theme.Box("SpikeCrack", transform.parent,
+                new Vector2(transform.position.x, -2.66f), new Vector2(1.05f, 0.08f),
+                new Color(0.9f, 0.16f, 0.2f, 0.9f), 4);
+            Vector3 crackScale = crack.transform.localScale;
+            float warning = 0f;
+            while (warning < 0.12f)
+            {
+                warning += Time.deltaTime;
+                crack.transform.localScale = new Vector3(
+                    crackScale.x * (0.55f + warning * 3.75f), crackScale.y, crackScale.z);
+                yield return null;
+            }
+            if (crack != null) Destroy(crack);
 
             // Ease-out with a small overshoot-and-settle: the spike PUNCHES up,
             // pokes a hair past its mark, and sits back. A linear slide read as
@@ -455,16 +478,18 @@ namespace TrustIssues
             // good") — the overshoot is what sells impact at this sprite size.
             float e = 0f; Vector3 from = _spike.position;
             Vector3 to = from + Vector3.up * 0.95f;
-            const float T = 0.16f;
+            const float T = 0.22f;
             GameRoot.I?.ShakeCam(0.1f, 0.07f);
             while (e < T)
             {
                 e += Time.deltaTime;
                 float k = Mathf.Clamp01(e / T);
+                if (!col.enabled && k >= 0.45f) col.enabled = true;
                 float ease = 1f + 1.7f * Mathf.Pow(k - 1f, 3f) + 0.7f * Mathf.Pow(k - 1f, 2f); // back-out
                 _spike.position = Vector3.LerpUnclamped(from, to, ease);
                 yield return null;
             }
+            col.enabled = true;
             _spike.position = to;
         }
 

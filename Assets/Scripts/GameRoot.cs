@@ -2658,8 +2658,8 @@ namespace TrustIssues
             _menuPanel = Overlay(new Color(Theme.Sky.r, Theme.Sky.g, Theme.Sky.b, 0.92f), out var root);
             _onBack = ShowMenu;
 
-            // Exact artwork if present: tap-zones over the painted controls.
-            if (Skin.Background(root, "settings_bg") != null) { BuildSkinnedSettings(root); return; }
+            BuildCompactSettings(root);
+            return;
 
             Theme.Label(root, "SETTINGS", 86, Theme.Player,
                 new Vector2(0.5f, 0.5f), new Vector2(0, 440), new Vector2(1400, 120));
@@ -2705,6 +2705,105 @@ namespace TrustIssues
 
             Theme.Button(root, "‹ BACK", new Color(1, 1, 1, 0.25f), Color.white, 44,
                 new Vector2(0.5f, 0f), new Vector2(0, 40), new Vector2(360, 100), ShowMenu);
+        }
+
+        void BuildCompactSettings(Transform root)
+        {
+            // The phone release has one supported movement scheme. Clear preferences
+            // from older builds that exposed arrows, pads and replay-ghost switches.
+            PlayerPrefs.SetInt("opt_joystick", 1);
+            PlayerPrefs.SetInt("opt_touch", 1);
+            PlayerPrefs.SetInt("opt_replay_ghost", 0);
+            PlayerPrefs.Save();
+
+            Gothic.Backdrop(root);
+            Gothic.Heading(root, "SETTINGS", "AUDIO AND LEGAL");
+            Gothic.PlateAt(root, new Vector2(0, 28), new Vector2(1120, 660), Gothic.Plate);
+
+            Theme.Label(root, "AUDIO", 38, Gothic.Bone,
+                new Vector2(0.5f, 0.5f), new Vector2(0, 268), new Vector2(900, 54));
+            MakeVolumeSlider(root, new Vector2(0, 190), "MUSIC",
+                () => Audio.MusicVol, v => Audio.MusicVol = v);
+            MakeVolumeSlider(root, new Vector2(0, 105), "SFX",
+                () => Audio.SfxVol, v => Audio.SfxVol = v);
+            MakeVolumeSlider(root, new Vector2(0, 20), "VOICE",
+                () => Voice.Volume, v => Voice.Volume = v);
+
+            Theme.Label(root, "MOVEMENT:  JOYSTICK", 26, Gothic.Faint,
+                new Vector2(0.5f, 0.5f), new Vector2(0, -55), new Vector2(900, 46));
+            Gothic.Button(root, "PRIVACY POLICY", new Vector2(-290, -150), new Vector2(500, 92),
+                () => ShowLegalDocument("PRIVACY POLICY", "legal/privacy"), false, 32);
+            Gothic.Button(root, "TERMS OF USE", new Vector2(290, -150), new Vector2(500, 92),
+                () => ShowLegalDocument("TERMS OF USE", "legal/terms"), false, 32);
+
+            Theme.Label(root, "Music by Kevin MacLeod (incompetech.com) - licensed under Creative Commons BY 4.0",
+                18, new Color(1, 1, 1, 0.42f), new Vector2(0.5f, 0.5f),
+                new Vector2(0, -230), new Vector2(1050, 34));
+            Gothic.Back(root, ShowMenu);
+        }
+
+        void ShowLegalDocument(string title, string resourceName)
+        {
+            Audio.Play("click");
+            if (_menuPanel != null) Destroy(_menuPanel);
+            _menuPanel = Overlay(new Color(0.035f, 0.008f, 0.022f, 1f), out var root);
+            Gothic.Backdrop(root);
+            _onBack = ShowSettings;
+            Gothic.Heading(root, title, "READ INSIDE THE GAME - NO BROWSER REQUIRED");
+
+            var viewportGo = new GameObject("LegalViewport", typeof(RectTransform));
+            viewportGo.transform.SetParent(root, false);
+            var viewport = viewportGo.GetComponent<RectTransform>();
+            viewport.anchorMin = viewport.anchorMax = new Vector2(0.5f, 0.5f);
+            viewport.pivot = new Vector2(0.5f, 0.5f);
+            viewport.anchoredPosition = new Vector2(0, 35);
+            viewport.sizeDelta = new Vector2(1320, 650);
+            var viewportImage = viewportGo.AddComponent<Image>();
+            viewportImage.color = new Color(0.018f, 0.009f, 0.016f, 0.96f);
+            viewportGo.AddComponent<RectMask2D>();
+            Gothic.InnerFrame(viewportGo.transform);
+
+            var contentGo = new GameObject("LegalText", typeof(RectTransform));
+            contentGo.transform.SetParent(viewport, false);
+            var content = contentGo.GetComponent<RectTransform>();
+            content.anchorMin = new Vector2(0, 1);
+            content.anchorMax = new Vector2(1, 1);
+            content.pivot = new Vector2(0.5f, 1);
+            content.anchoredPosition = Vector2.zero;
+
+            var asset = Resources.Load<TextAsset>(resourceName);
+            string body = asset != null ? asset.text :
+                "This legal document could not be loaded. Please reinstall the game.";
+            var legal = contentGo.AddComponent<Text>();
+            legal.font = Theme.MenuFont != null ? Theme.MenuFont : Theme.Font;
+            legal.fontSize = 25;
+            legal.color = new Color(0.91f, 0.87f, 0.80f, 1f);
+            legal.alignment = TextAnchor.UpperLeft;
+            legal.horizontalOverflow = HorizontalWrapMode.Wrap;
+            legal.verticalOverflow = VerticalWrapMode.Overflow;
+            legal.lineSpacing = 1.22f;
+            legal.supportRichText = false;
+            legal.text = body;
+            var legalRt = legal.rectTransform;
+            legalRt.anchorMin = new Vector2(0, 1);
+            legalRt.anchorMax = new Vector2(1, 1);
+            legalRt.pivot = new Vector2(0.5f, 1);
+            legalRt.offsetMin = new Vector2(48, 0);
+            legalRt.offsetMax = new Vector2(-48, 0);
+            Canvas.ForceUpdateCanvases();
+            content.sizeDelta = new Vector2(0, Mathf.Max(viewport.rect.height, legal.preferredHeight + 80));
+            legalRt.sizeDelta = new Vector2(legalRt.sizeDelta.x, content.sizeDelta.y - 60);
+
+            var scroll = viewportGo.AddComponent<ScrollRect>();
+            scroll.viewport = viewport;
+            scroll.content = content;
+            scroll.horizontal = false;
+            scroll.vertical = true;
+            scroll.movementType = ScrollRect.MovementType.Clamped;
+            scroll.scrollSensitivity = 48f;
+            scroll.inertia = true;
+            scroll.decelerationRate = 0.12f;
+            Gothic.Back(root, ShowSettings);
         }
 
         // A rebind button: shows "ACTION:  Key"; click it, then press any key to set
@@ -3622,15 +3721,9 @@ namespace TrustIssues
                 var plate = new Color(0.026f, 0.014f, 0.016f, 1f);
 
                 Skin.Chip(root, 0.418f, 0.288f, 0.642f, 0.352f, plate);
-                var nameSlot = Skin.Slot(root, "NameSlot", 0.424f, 0.292f, 0.636f, 0.348f);
-                var nameIn = MakeInput(nameSlot, Vector2.zero, Vector2.zero, "type a name");
-                FillParent(nameIn);
-                nameIn.characterLimit = 14;
-                // A name is not a room code: spaces and punctuation must survive, so
-                // the 4-char alphanumeric validation the CODE box wears is dropped.
-                nameIn.characterValidation = InputField.CharacterValidation.None;
-                nameIn.text = Net.PlayerName;
-                nameIn.onValueChanged.AddListener(v => Net.PlayerName = v);
+                var safeName = Skin.LiveText(root, Net.PlayerName,
+                    0.424f, 0.292f, 0.636f, 0.348f, 34, Gothic.Bone);
+                if (Theme.MenuFont != null) safeName.font = Theme.MenuFont;
 
                 Skin.Zone(root, 0.300f, 0.395f, 0.700f, 0.487f,
                     () => { SetLobbyStatus("Creating room…"); Net.Host(StartVersus, LobbyError); }, "host");
@@ -3653,13 +3746,11 @@ namespace TrustIssues
 
             // YOUR NAME — persisted, and shown to the rival you race. Pre-filled with
             // the stored name; every keystroke saves it.
-            Gothic.Line(root, "YOUR NAME", 26, Gothic.Faint, new Vector2(-360, 190),
+            Gothic.Line(root, "YOUR RACER", 26, Gothic.Faint, new Vector2(-360, 190),
                 new Vector2(300, 40), TextAnchor.MiddleRight);
-            var nameField = MakeInput(root, new Vector2(60, 190), new Vector2(520, 84), "type a name");
-            nameField.characterLimit = 14;
-            nameField.characterValidation = InputField.CharacterValidation.None;
-            nameField.text = Net.PlayerName;
-            nameField.onValueChanged.AddListener(v => Net.PlayerName = v);
+            Gothic.PlateAt(root, new Vector2(60, 190), new Vector2(520, 84), Gothic.Plate);
+            Gothic.Line(root, Net.PlayerName, 34, Gothic.Bone, new Vector2(60, 190),
+                new Vector2(480, 70));
 
             // HOST
             Gothic.Button(root, "HOST A RACE", new Vector2(0, 76), new Vector2(560, 100),
@@ -4402,6 +4493,9 @@ namespace TrustIssues
         // makes it learnable on the retry. Always a jump-over (never blocks the floor).
         void BuildReactiveTraps()
         {
+            // Floors 1-4 are onboarding. Stable retries teach an answer; adding a
+            // fresh hazard where a beginner paused only turns learning into luck.
+            if (_mode == Mode.Curated && _levelIndex < 4) return;
             // TONIGHT'S RUMOR (3): the moon protects the marked — every spot the
             // castle learned about you stays quiet tonight. Proof lands at the exit.
             if (_mode == Mode.Daily && Rumor.MoonProtects)
@@ -4654,10 +4748,10 @@ namespace TrustIssues
             // The artwork's own top line: the floor in blood red, the place it's in
             // in candle gold, then the tally that never stops climbing.
             string place = _mode == Mode.Endless
-                         ? $"DISTANCE {CurrentEndlessMeters} M   <color=#{gold}>•   BEST {Mathf.Max(CurrentEndlessMeters, PlayerPrefs.GetInt("best_endless_distance", 0))} M</color>"
-                         : _mode == Mode.Daily ? $"NIGHT {_levelIndex + 1}/{DailyLen}"
-                         : _mode == Mode.Versus ? $"RACE {Net.RoomCode}"
-                         : $"FLOOR {_levelIndex + 1}   <color=#{gold}>•   {WorldNames[WorldOf(_levelIndex)]}</color>";
+                 ? $"DISTANCE {CurrentEndlessMeters} M   <color=#{gold}>•   BEST {Mathf.Max(CurrentEndlessMeters, PlayerPrefs.GetInt("best_endless_distance", 0))} M</color>"
+                 : _mode == Mode.Daily ? $"NIGHT {_levelIndex + 1}/{DailyLen}"
+                 : _mode == Mode.Versus ? $"RACE {Net.RoomCode}"
+                 : $"FLOOR {_levelIndex + 1}   <color=#{gold}>•   {WorldNames[WorldOf(_levelIndex)]}</color>";
             _hud.text = place + "     DEATHS " + _deaths;
 
             // …and the stage counter beneath it, which the HUD had nowhere to say
@@ -6282,8 +6376,6 @@ namespace TrustIssues
                 Handheld.Vibrate();
 #endif
             _floorDeaths++;
-            // If the nemesis trap just scored, its kill-streak taunt rides the roast.
-            if (msg != null) msg = Memory.DecorateRoast(msg);
             Vector2 deathPos = PlayerTransform != null ? (Vector2)PlayerTransform.position : Vector2.zero;
             if (_mode == Mode.Endless && _level != null)
                 _endlessPeakMeters = Mathf.Max(_endlessPeakMeters, _endlessBankedMeters +
@@ -6329,53 +6421,38 @@ namespace TrustIssues
             }
             if (_hearts > 0) _hearts--;     // lose a heart (Endless/Daily); Curated = -1 (infinite)
 
-            // A death SOUNDS like what killed you (spikes squelch, crusher slams,
-            // daylight burns…) AND the vampire lets out a dying groan, so there's
-            // always loud, layered feedback. The game also ROASTS you, meaner each death.
+            // Death keeps concise physical feedback from the hazard itself. There
+            // is deliberately no narrator, insult, spoken roast, or death caption:
+            // the castle only speaks during rare story milestones now.
             string cause = Juice.Categorize(msg);
             Audio.PlayOr(Juice.DeathSfx(cause), "death", 1f);
-            // The comedic punctuation under the roast. This used to be a long human
-            // groan, which made every death feel SAD — wrong emotion entirely for a
-            // game whose whole loop is "nah, watch this". A short synthesised hit
-            // (boom / bonk / sad-trombone once the pity tier kicks in) reads as the
-            // castle laughing instead. Pitch-jittered per death so it never wears out.
-            Stinger.Death(_deaths);
             FlashRed();
             StartCoroutine(HitStop(0.08f));        // a punchy freeze-frame on impact
             UpdateHud();
             RecordReactiveTrap();                  // the game LEARNS where you felt safe
-            string roast = Juice.Roast(cause, _deaths, _levelIndex + 1, nearMiss);
-            // THE PUNCHLINE. The castle already learns the spot you hesitated on and
-            // grows a trap there — but it used to kill you in silence, so the joke
-            // never landed and the player just read it as "unfair". If you died
-            // within reach of a spot the castle learned from YOUR last attempt, it
-            // says so. That single line is what turns a death into something worth
-            // clipping and sending to someone.
-            if (_ghostTrapX.Exists(g => Mathf.Abs(g - deathPos.x) < 2.2f))
-                roast = CastleRemembersLines[Random.Range(0, CastleRemembersLines.Length)];
-            // Losing to the SAME trap three times running is the most personal thing
-            // that can happen in this game, so when it does, the scoreline outranks
-            // every other roast — the castle reads the running total back to you.
-            string streakLine = Memory.StreakRoast();
-            if (streakLine != null) roast = streakLine;
-            Voice.Speak(roast);                    // the game mocks you OUT LOUD
             // Every 10th death, dangle the next unlock — the moment a bored player
             // quits is exactly when the shop should whisper. Rides the hint bar so
             // the roast toast (and the instant retry) stay untouched.
-            StartCoroutine(DieRoutine(roast));
+#if false
+            if (_deaths % 10 == 0 && _mode != Mode.Versus)
+            {
+                var nxt = Shop.NextUnlock();
+                if (nxt != null)
+                {
+                    int need = Shop.UnlockPrice(nxt) - Currency.Balance;
+                    ShowHint(need > 0
+                        ? $"{need} more shards until {Shop.UnlockName(nxt)} — the Crypt Shop waits"
+                        : $"You can afford {Shop.UnlockName(nxt)}. The Crypt Shop waits.", 2.2f);
+                }
+            }
+#endif
+            StartCoroutine(DieRoutine());
         }
 
-        IEnumerator DieRoutine(string msg)
+        IEnumerator DieRoutine()
         {
             // Snapshot this attempt's path so the next try races it as a ghost.
             if (_recP.Count > 1) { _lastT = _recT.ToArray(); _lastP = _recP.ToArray(); }
-            // Show the roast but DON'T block on it — it lingers on the canvas while
-            // you're already retrying (the toast survives the level rebuild).
-            // 1.2s was tuned for two-word roasts. The lines are full sentences again
-            // (a bare "Mid." is annoying, not enraging — it has to name what you
-            // actually did), and a sentence needs about two seconds to land. The
-            // toast still doesn't block: the retry happens underneath it either way.
-            if (_toast != null) { _toast.text = msg; StartCoroutine(ClearToastAfter(msg, 2.1f)); }
             Vector3 deathPos = _player != null ? _player.transform.position : Vector3.zero;
             if (_player != null)
             {
@@ -6429,31 +6506,6 @@ namespace TrustIssues
                        $"back to night 1 • {_hearts} fresh lives • trust nothing");
             BuildLevel();
         }
-
-        IEnumerator ClearToastAfter(string msg, float delay)
-        {
-            yield return new WaitForSecondsRealtime(delay);
-            if (_toast != null && _toast.text == msg) _toast.text = "";
-        }
-
-        // The game LEARNS: bank the spot where you lingered longest this attempt, so
-        // on the next retry a late-spike sprouts there. Avoidable (jump it) — never
-        // makes a floor impossible — but it punishes the "safe spot" you trusted.
-        // Spoken (and toasted) when a trap the castle LEARNED from your own
-        // hesitation is the thing that kills you. Written to be said out loud.
-        static readonly string[] CastleRemembersLines =
-        {
-            // The one place the castle openly admits it is watching YOU, so these
-            // stay specific — a vague line here wastes the best beat in the game.
-            "You stood right there last time.",
-            "I built that one just for you.",
-            "I watched you pause there. So I waited.",
-            "You keep going back to the same spot.",
-            "That was your safe place. Was.",
-            "I remembered. You didn't.",
-            "I moved it while you were dead.",
-            "You hesitated here before. I noticed.",
-        };
 
         void RecordReactiveTrap()
         {
@@ -6676,11 +6728,16 @@ namespace TrustIssues
             // newly-unlocked seal themselves — the beat where the win lands.
             if (_levelIndex + 1 < Levels.Count)
             {
+                int clearedFloor = _levelIndex + 1;
                 _levelIndex++;
                 PlayerPrefs.SetInt("ti_level", _levelIndex);
                 UnlockCastle(_levelIndex);     // beating a floor unlocks the next
                 PlayerPrefs.Save();
-                StartCoroutine(FloorClearedFlash());
+                if (IsStoryMilestone(clearedFloor) &&
+                    PlayerPrefs.GetInt($"ti_story_seen_{clearedFloor}", 0) == 0)
+                    StartCoroutine(StoryInterlude(clearedFloor));
+                else
+                    StartCoroutine(FloorClearedFlash());
             }
             else { UnlockCastle(Levels.Count - 1); Badges.Award("castle_clear"); TrackRunComplete(); _state = State.Win; Audio.Play("win", 0.7f); StartCoroutine(WinRoutine()); }
         }
@@ -6723,6 +6780,156 @@ namespace TrustIssues
             ResetFloorState();
             _state = State.Play;
             BuildLevel();
+        }
+
+        // The Castle tells its story rarely, after a meaningful stretch of play,
+        // rather than heckling the player on every death. These moments happen
+        // only on the first clear of each milestone and never interrupt a retry.
+        static bool IsStoryMilestone(int floor) =>
+            floor == 10 || floor == 18 || floor == 26 || floor == 33 || floor == 38;
+
+        string StoryDeathAside()
+        {
+            if (_deaths == 0)
+                return "He has done it without dying once. I dislike him already.";
+            if (_deaths < 25)
+                return $"He has died only {_deaths} time{(_deaths == 1 ? "" : "s")}. The castle finds this personally offensive.";
+            if (_deaths < 68)
+                return $"We prepared sixty-eight graves for him. He has used only {_deaths}. How inconsiderate.";
+            if (_deaths < 100)
+                return $"He has fallen {_deaths} times - fewer than the hundred graves prepared in his name.";
+            return $"He has died {_deaths} times. Most creatures would call that a warning. He has mistaken it for directions.";
+        }
+
+        static string StoryTitle(int floor)
+        {
+            switch (floor)
+            {
+                case 10: return "TEN FLOORS BELOW";
+                case 18: return "THE CASTLE LISTENS";
+                case 26: return "STONE DESCENDS";
+                case 33: return "NO LONGER A GUEST";
+                case 38: return "TWO FLOORS REMAIN";
+                default: return "THE CASTLE SPEAKS";
+            }
+        }
+
+        string StoryText(int floor)
+        {
+            string deaths = StoryDeathAside();
+            switch (floor)
+            {
+                case 10:
+                    return "The castle had already chosen an ending for this one. A nameless young vampire walks in, trusts the first stone, and becomes a stain beneath it. Yet here he stands, ten floors below the moon, still carrying the irritating habit of getting back up. " + deaths + " The castle did not expect him to reach this door. Neither did I.";
+                case 18:
+                    return "He has learned the rhythm now: the pause before the spike, the breath before the gate. Death has stopped sending him away. It only teaches him the next lie. " + deaths + " That is troublesome. A castle can frighten a visitor. It is much harder to frighten someone who has begun to understand it.";
+                case 26:
+                    return "The crypt tried weight. Stone, iron, and a ceiling descending like a verdict. He ran beneath it and survived. " + deaths + " Somewhere above, old hinges are waking. The castle is no longer playing with him. It is preparing for him.";
+                case 33:
+                    return "Thirty-three floors. He no longer looks like a guest. The gates recognize his footsteps. The dead have begun leaving room when he passes. " + deaths + " I once thought this was a story about a foolish vampire trying to conquer a castle. I may have mistaken which one was being conquered.";
+                case 38:
+                    return "Only two floors remain. Do not celebrate him yet. Hope is simply the castle's last trap, and he is standing exactly where it wants him. Still... " + deaths + " He has paid for every lesson in blood and remembered almost all of them. If he reaches the throne, the thing waiting there will have to call him by his name.";
+                default:
+                    return deaths;
+            }
+        }
+
+        IEnumerator StoryInterlude(int clearedFloor)
+        {
+            _state = State.Win;
+            Memory.RunEndedCleanly();
+            PlayerPrefs.SetInt($"ti_story_seen_{clearedFloor}", 1);
+            PlayerPrefs.Save();
+
+            bool skipRequested = false;
+            bool narrationStarted = false;
+            string story = StoryText(clearedFloor);
+
+            // An unadorned black panel deliberately breaks from the normal map and
+            // result-screen frames: the interruption should feel unexpected.
+            var panel = new GameObject($"StoryInterlude_{clearedFloor}", typeof(RectTransform));
+            panel.transform.SetParent(Theme.Canvas.transform, false);
+            var background = panel.AddComponent<Image>();
+            background.color = Color.black;
+            var panelRT = background.rectTransform;
+            panelRT.anchorMin = Vector2.zero; panelRT.anchorMax = Vector2.one;
+            panelRT.offsetMin = panelRT.offsetMax = Vector2.zero;
+            var group = panel.AddComponent<CanvasGroup>();
+            group.alpha = 0f; group.blocksRaycasts = true; group.interactable = true;
+
+            var chapter = Theme.Label(panel.transform, "THE CASTLE SPEAKS", 25,
+                new Color(0.72f, 0.08f, 0.12f), new Vector2(0.5f, 0.5f),
+                new Vector2(0, 330), new Vector2(1300, 50));
+            chapter.font = Theme.MenuFont != null ? Theme.MenuFont : Theme.Font;
+            chapter.raycastTarget = false;
+
+            var title = Theme.Label(panel.transform, StoryTitle(clearedFloor), 64, Gothic.Bone,
+                new Vector2(0.5f, 0.5f), new Vector2(0, 245), new Vector2(1600, 100));
+            title.font = Theme.TitleFont; title.raycastTarget = false;
+
+            var body = Theme.Label(panel.transform, story, 34, new Color(0.88f, 0.85f, 0.80f),
+                new Vector2(0.5f, 0.5f), new Vector2(0, 5), new Vector2(1420, 430));
+            body.font = Theme.MenuFont != null ? Theme.MenuFont : Theme.Font;
+            body.fontStyle = FontStyle.Normal;
+            body.horizontalOverflow = HorizontalWrapMode.Wrap;
+            body.verticalOverflow = VerticalWrapMode.Overflow;
+            body.lineSpacing = 1.18f;
+            body.raycastTarget = false;
+
+            Gothic.Button(panel.transform, "SKIP", new Vector2(0, -390), new Vector2(250, 68),
+                () => skipRequested = true, false, 27);
+            _onBack = () => skipRequested = true;
+
+            float fade = 0f;
+            while (fade < 0.6f && !skipRequested)
+            {
+                fade += Time.unscaledDeltaTime;
+                group.alpha = Mathf.Clamp01(fade / 0.6f);
+                yield return null;
+            }
+
+            if (!skipRequested)
+            {
+                group.alpha = 1f;
+                if (_levelRoot != null) Destroy(_levelRoot.gameObject);
+                Voice.Narrate(story);
+                narrationStarted = true;
+
+                int words = story.Split(new[] { ' ' }, System.StringSplitOptions.RemoveEmptyEntries).Length;
+                float readingTime = Mathf.Clamp(words / 2.35f + 2f, 11f, 40f);
+                float elapsed = 0f;
+                while (elapsed < readingTime && !skipRequested)
+                {
+                    elapsed += Time.unscaledDeltaTime;
+                    yield return null;
+                }
+            }
+
+            if (narrationStarted) Voice.Stop();
+            Analytics.Track("story_interlude", new System.Collections.Generic.Dictionary<string, object>
+            {
+                { "floor", clearedFloor },
+                { "deaths", _deaths },
+                { "skipped", skipRequested },
+            });
+
+            // Build the Castle map behind the still-opaque panel, then reveal it.
+            // This prevents a one-frame flash of the completed level on phones.
+            if (_levelRoot != null) Destroy(_levelRoot.gameObject);
+            _hasCheckpoint = false;
+            ResetFloorState();
+            ShowLevelSelect();
+            panel.transform.SetAsLastSibling();
+
+            fade = group.alpha;
+            while (fade > 0f)
+            {
+                fade -= Time.unscaledDeltaTime / 0.35f;
+                group.alpha = Mathf.Clamp01(fade);
+                yield return null;
+            }
+
+            if (panel != null) Destroy(panel);
         }
 
         // Castle only: the floor-clear beat. A short banner instead of the full

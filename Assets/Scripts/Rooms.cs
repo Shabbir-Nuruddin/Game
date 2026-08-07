@@ -6,7 +6,7 @@ namespace TrustIssues
 {
     /// <summary>
     /// Tags floor whose existence is tied to the candles. Two polarities:
-    /// normal (solid in light, gone in the dark — floor 2's lie) and ghost
+    /// normal (solid in light, gone in the dark — floor 7's first lie) and ghost
     /// (a faint shimmer in light, solid spectral stone in the dark — floor 7's
     /// inversion of that lie). Toggled by RoomDirector via SetSolid; colliders
     /// and every child sprite (stone face, blood lip, 2.5D depth slices) are
@@ -132,7 +132,7 @@ namespace TrustIssues
     /// <summary>
     /// The Endless Hall: cross the rune at the doorway on FOOT and you're
     /// silently back at the start of an identical room. Jumping it passes. The
-    /// hall gets bored after five loops and lets you through — mercy disguised
+    /// hall gets bored after three loops and lets you through — mercy disguised
     /// as boredom, so nobody is ever truly stuck (an unwinnable room reads as a
     /// broken game, and this project can't afford that twice).
     /// </summary>
@@ -152,11 +152,11 @@ namespace TrustIssues
             if (_released) return;             // walk on through — the hall is done with you
             _loops++;
 
-            // The FIFTH crossing is the one it relents on: message, disarm, and
+            // The THIRD crossing is the one it relents on: message, disarm, and
             // crucially let this crossing PASS instead of yanking you back (the
             // old code both said "…fine. Go." AND teleported you — an off-by-one
             // that read as a broken promise).
-            if (_loops >= 5)
+            if (_loops >= 3)
             {
                 _released = true;
                 GameRoot.I?.RoomToast("…fine. Go.");
@@ -169,7 +169,6 @@ namespace TrustIssues
             var p = pc.transform.position;
             pc.transform.position = new Vector3(returnX, p.y, p.z);
             if (_loops == 2) GameRoot.I?.RoomToast("Déjà vu…");
-            else if (_loops == 4) GameRoot.I?.RoomToast("The hall is enjoying this.");
         }
     }
 
@@ -182,8 +181,10 @@ namespace TrustIssues
     public class PressSlab : MonoBehaviour
     {
         const float TopY = 2.5f, BotY = -2.1f;      // centre travel: flush under ceiling → flush on floor
-        const float DownSpeed = 0.85f, UpSpeed = 1.7f;
-        const float DwellBottom = 2.2f, DwellTop = 0.9f;
+        // Mobile players need enough time to read the warning and make a clean
+        // jump. This still forces movement without demanding a perfect sprint.
+        const float DownSpeed = 0.65f, UpSpeed = 1.9f;
+        const float DwellBottom = 1.5f, DwellTop = 1.4f;
         int _state;        // 0 descend, 1 dwell bottom, 2 rise, 3 dwell top
         float _t;
 
@@ -224,9 +225,10 @@ namespace TrustIssues
     public class Portcullis : MonoBehaviour
     {
         const float UpY = -0.15f, DownY = -1.85f;   // centre travel (bars are 1.7 tall)
-        const float SlamTime = 0.22f, RiseTime = 1.4f;
-        const float DwellDown = 1.1f, DwellUp = 1.2f;
-        const float SenseR = 2.1f;                   // how close counts as "approaching"
+        // Punish charging blindly, but reopen promptly once the tell is understood.
+        const float SlamTime = 0.32f, RiseTime = 0.85f;
+        const float DwellDown = 0.65f, DwellUp = 1.8f;
+        const float SenseR = 1.8f;                   // how close counts as "approaching"
 
         Transform _player;
         BoxCollider2D _col;
@@ -515,7 +517,14 @@ namespace TrustIssues
             switch (room.Rule)
             {
                 case RoomRule.Press:
-                    if (!_slabSpawned[_active]) { _slabSpawned[_active] = true; BuildSlab(room); }
+                    if (!_slabSpawned[_active])
+                    {
+                        _slabSpawned[_active] = true;
+                        GameRoot.I?.RoomToast("RUN — THE CEILING IS FALLING!");
+                        GameRoot.I?.ShakeCam(0.28f, 0.14f);
+                        Audio.PlayOr("die_slam", "jump", 0.35f);
+                        BuildSlab(room);
+                    }
                     break;
                 case RoomRule.Reverse:
                     if (_reverseToastRoom != _active)
@@ -664,9 +673,35 @@ namespace TrustIssues
             sr.sprite = Theme.StoneTile;
             sr.drawMode = SpriteDrawMode.Tiled;
             sr.size = new Vector2(w, 1.2f);
-            sr.color = new Color(0.75f, 0.7f, 0.72f);
+            sr.color = new Color(0.48f, 0.42f, 0.48f);
             sr.sortingOrder = 4;
-            // A blood-red grinding edge so the underside reads as the dangerous part.
+            // Deep underside shadow separates the moving mass from the static vault.
+            var shadow = Theme.Box("UndersideShadow", go.transform, Vector2.zero,
+                new Vector2(w, 0.34f), new Color(0.08f, 0.04f, 0.06f, 0.95f), 5);
+            shadow.transform.localPosition = new Vector3(0f, -0.47f, 0f);
+
+            // Iron ribs and cracks stop the press reading as one plain rectangle.
+            int ribs = Mathf.Clamp(Mathf.RoundToInt(w / 4.5f), 3, 8);
+            for (int i = 0; i < ribs; i++)
+            {
+                float x = Mathf.Lerp(-w * 0.42f, w * 0.42f, ribs == 1 ? 0.5f : i / (float)(ribs - 1));
+                var rib = Theme.Box("VaultRib", go.transform, Vector2.zero,
+                    new Vector2(0.16f, 1.08f), new Color(0.17f, 0.14f, 0.18f, 1f), 6);
+                rib.transform.localPosition = new Vector3(x, 0f, 0f);
+                var bolt = Theme.SpriteBox("BloodBolt", go.transform, Vector2.zero,
+                    new Vector2(0.20f, 0.20f), Theme.Disc, 7);
+                bolt.transform.localPosition = new Vector3(x, -0.32f, 0f);
+                bolt.GetComponent<SpriteRenderer>().color = new Color(0.72f, 0.08f, 0.12f, 0.9f);
+            }
+            for (int i = 0; i < 3; i++)
+            {
+                var crack = Theme.Box("StoneCrack", go.transform, Vector2.zero,
+                    new Vector2(0.08f, 0.58f), new Color(0.12f, 0.09f, 0.13f, 0.8f), 6);
+                crack.transform.localPosition = new Vector3((i - 1) * w * 0.23f, 0.10f, 0f);
+                crack.transform.localRotation = Quaternion.Euler(0f, 0f, i % 2 == 0 ? 28f : -24f);
+            }
+
+            // A blood-red grinding edge pulses as the readable danger line.
             var lip = new GameObject("Lip");
             lip.transform.SetParent(go.transform, false);
             lip.transform.localPosition = new Vector3(0f, -0.62f, 0f);
@@ -675,6 +710,7 @@ namespace TrustIssues
             lsr.color = Theme.PlatEdge;
             lsr.sortingOrder = 5;
             lsr.transform.localScale = new Vector3(w, 0.1f, 1f);
+            var pulse = lip.AddComponent<FaintPulse>(); pulse.min = 0.65f; pulse.max = 1f; pulse.speed = 7f;
             var col = go.AddComponent<BoxCollider2D>();
             col.isTrigger = true;
             col.size = new Vector2(w - 0.15f, 1.05f);

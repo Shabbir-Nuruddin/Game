@@ -1,3 +1,4 @@
+using System.IO;
 using UnityEditor;
 using UnityEditor.Build.Reporting;
 using UnityEngine;
@@ -19,6 +20,8 @@ namespace TrustIssues.EditorTools
         [MenuItem("Trust Issues/Build Android APK")]
         public static void Build()
         {
+            Directory.CreateDirectory("Builds");
+
             // A stable package name. Without this Unity falls back to
             // com.DefaultCompany.*, and the package name is the app's permanent
             // identity on a device (changing it later = a separate install).
@@ -35,6 +38,11 @@ namespace TrustIssues.EditorTools
             // phones can't install directly).
             EditorUserBuildSettings.buildAppBundle = false;
 
+            // Make every sideloaded APK visibly newer than the previous one. Android
+            // uses this code when deciding whether an installed package is an update.
+            int previousVersionCode = PlayerSettings.Android.bundleVersionCode;
+            PlayerSettings.Android.bundleVersionCode = previousVersionCode + 1;
+
             var options = new BuildPlayerOptions
             {
                 scenes = new[] { "Assets/scene.unity" },
@@ -45,8 +53,16 @@ namespace TrustIssues.EditorTools
             BuildReport report = BuildPipeline.BuildPlayer(options);
             Debug.Log($"Android build: {report.summary.result}, " +
                       $"{report.summary.totalSize / (1024 * 1024)} MB -> {options.locationPathName}");
-            if (report.summary.result != BuildResult.Succeeded)
+            if (report.summary.result == BuildResult.Succeeded)
+            {
+                AssetDatabase.SaveAssets();
+                Debug.Log($"APK version code {PlayerSettings.Android.bundleVersionCode} saved.");
+            }
+            else
+            {
+                PlayerSettings.Android.bundleVersionCode = previousVersionCode;
                 EditorApplication.Exit(1);   // headless callers see the failure
+            }
         }
     }
 }

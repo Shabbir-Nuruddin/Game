@@ -545,48 +545,38 @@ namespace TrustIssues
             return b.Finish();
         }
 
-        // 2 — THE CANDLES GO OUT. Night floors vanish and spikes RELOCATE while
-        // the lights are out — with saws and fallers running at the same time.
-        // Triggers fire before the first night floor so the lie lands mid-run.
+        // 2 — MOVING TEETH. The beginner's first full floor: one moving hazard
+        // per stage, one collapsing floor, then a gate-and-saw graduation test.
         static Level L2()
         {
             var b = new B();
-            b.Room(RoomRule.Dark, 0.28f);       // S1: the floor you watched stops existing
-            b.Plat(6f); b.NightFloor(2.2f);
-            float a1 = b.Plat(5f); b.Spike(a1 + 1.5f);
-            b.Gap(2.3f); b.Plat(4f);
+            b.Room(RoomRule.None);              // S1: watch a spike breathe, then cross
+            b.Plat(7f);
+            float a1 = b.Plat(9f); b.GrowSpike(a1 + 2f);
+            b.Plat(5f);
 
-            b.Room(RoomRule.Dark, 0.2f);        // S2: saw + a spike that moves in the dark
-            b.Plat(4f);
-            float a2 = b.Plat(7f); b.Saw(a2 - 2f); b.ShiftSpike(a2 + 2.4f, a2 + 0.6f);
-            b.Gap(2.3f); b.NightFloor(2f); b.Plat(4f);
+            b.Room(RoomRule.None);              // S2: one saw with generous space around it
+            b.Plat(6f); b.Gap(2.2f);
+            float a2 = b.Plat(10f); b.Saw(a2 + 1.5f);
+            b.Plat(6f);
 
-            b.Room(RoomRule.Dark, 0.15f);       // S3: two vanishing floors + a falling block
-            b.Plat(3.5f); b.NightFloor(2f);
-            float a3 = b.Plat(4f); b.Faller(a3);
-            b.NightFloor(2.2f);
-            float c3 = b.Plat(5f); b.Spike(c3 + 1.5f);
-            b.Gap(2.3f); b.Plat(3f);
+            b.Room(RoomRule.None);              // S3: the floor lies once, then gives a wide landing
+            b.Plat(7f); b.FakeFloor(1.8f); b.Plat(10f);
 
-            b.Room(RoomRule.None);              // S4: lights stay on — the relief before S5
-            b.Plat(3.5f); b.Gap(2.4f);
-            float a4 = b.Plat(4f); b.Saw(a4);
-            b.Gap(2.4f);
-            float c4 = b.Plat(5f); b.LateSpike(c4);
-            b.Plat(3.5f);
+            b.Room(RoomRule.None);              // S4: an ambush spike can be escaped on reflex
+            b.Plat(7f);
+            float a4 = b.Plat(11f); b.LateSpike(a4 + 2f);
+            b.Plat(5f);
 
-            b.Room(RoomRule.Dark, 0.13f);       // S5: everything at once, in the dark
-            b.Plat(3.5f); b.NightFloor(2.2f);
-            float a5 = b.Plat(4f); b.ShiftSpike(a5 + 1.2f, a5 + 0.5f);
-            b.Gap(2.3f);
-            float c5 = b.Plat(4f); b.Faller(c5);
-            b.NightFloor(2f); b.Plat(2f);
+            b.Room(RoomRule.None, 0.35f, true); // S5: wait out the gate, then read one moving saw
+            b.Plat(7f);
+            float a5 = b.Plat(11f); b.Saw(a5 + 2f);
+            b.Gap(2.1f); b.Plat(7f);
             return b.Finish();
         }
 
-        // 3 — THE COFFIN FLEES. Four dense classic screens, then the chase: the
-        // coffin waits one step ahead of the spawn and bolts across a pulsing
-        // puddle, a dart lane and spikes until the end wall corners it.
+        // 3 — THE COFFIN FLEES. Four one-hazard practice rooms, then a readable
+        // chase. Each stage introduces one timing idea without stacking another.
         static Level L3()
         {
             var b = new B();
@@ -598,53 +588,47 @@ namespace TrustIssues
             b.Plat(4.5f);
             float a1 = b.Plat(6f); b.Dart(a1);
             b.Gap(2.3f);
-            float c1 = b.Plat(6f); b.Spike(c1 + 1.5f);
-            b.Plat(4f);
+            b.Plat(8f);
 
-            b.Room(RoomRule.None);              // S2: the bobbing slab ride, then a saw
-            b.Plat(4f); b.MoverGap(6.8f);
-            float a2 = b.Plat(6f); b.Saw(a2);
-            b.Plat(4f);
+            b.Room(RoomRule.None);              // S2: ordinary jumps establish confidence
+            b.Plat(6f); b.Gap(2.2f);
+            float a2 = b.Plat(8f); b.Saw(a2 + 2f);
+            b.Plat(5f);
 
             b.Room(RoomRule.None);              // S3: pendulum, then a floor that lies
             b.Plat(4f);
             float a3 = b.Plat(6f); b.Pendulum(a3);
-            b.Gap(2.3f); b.FakeFloor(2.2f);
-            b.Plat(5f);
+            b.Gap(2.2f); b.Plat(8f);
 
             b.Room(RoomRule.None);              // S4: the drop from above, on its own
             b.Plat(4f); b.Gap(2.3f);
             float a4 = b.Plat(6f); b.Faller(a4);
-            b.Gap(2.3f);
-            float c4 = b.Plat(6f); b.Spike(c4 + 1.5f);
-            b.Plat(4f);
+            b.Gap(2.2f); b.Plat(9f);
 
-            b.Room(RoomRule.Flee, 0.05f, true); // S5: THE CHASE (gate slams behind you)
-            float p5 = b.Plat(3.5f);
-            float a5 = b.Plat(6f); b.Spike(a5 + 1f);
-            b.Gap(2.3f);
+            b.Room(RoomRule.Flee, 0.12f);       // S5: THE CHASE, without a gate tax
+            float p5 = b.Plat(5f);
+            float a5 = b.Plat(8f); b.Spike(a5 + 2f);
+            b.Gap(2.1f);
             // The chase is the whole point of this stage, so the lane it runs
             // through is kept READABLE — one hazard to swerve round, not three.
-            float c5 = b.Plat(10f); b.Dart(c5 + 1f);
+            b.Plat(10f);
             b.Plat(5f);
             b.ExitAt(p5 + 0.6f);   // one step ahead of you. it knows.
             return b.FinishBare();
         }
 
-        // 4 — THE CRYPT PRESS. The whole ceiling descends over full screens of
-        // hazards; S4 makes you ride the bobbing slab UNDER the press cycle.
+        // 4 — THE GATEHOUSE. No global time pressure yet: gates, moving steel and
+        // one falling chandelier test the trap vocabulary learned so far.
         static Level L4()
         {
             var b = new B();
-            b.Room(RoomRule.Press, 0.3f);       // S1: one long run — just don't stop
-            b.Plat(4f);
-            float a1 = b.Plat(12f); b.Spike(a1 + 2f);
-            b.Plat(4f);
+            b.Room(RoomRule.None);              // S1: generous runway, then one visible jump
+            b.Plat(7f);
+            float a1 = b.Plat(13f); b.Spike(a1 + 3f);
+            b.Plat(6f);
 
-            b.Room(RoomRule.Press, 0.25f);      // S2: press + a floor that lies
-            b.Plat(4f); b.FakeFloor(2.2f);
-            float a2 = b.Plat(6f); b.Saw(a2);
-            b.Plat(4f);
+            b.Room(RoomRule.None, 0.35f, true); // S2: first gate, then remember that floors lie
+            b.Plat(7f); b.FakeFloor(1.8f); b.Plat(10f);
 
             // S3: open sky. The chandelier is a big, loud, one-off idea and it
             // used to share a stage with a late spike — two blind kills in one
@@ -655,22 +639,20 @@ namespace TrustIssues
             b.Gap(2.4f);
             b.Plat(5f);
 
-            b.Room(RoomRule.Press, 0.22f);      // S4: keep moving under the drop — jumpable pits, not a slab-ride
-            b.Plat(4f); b.Gap(2.4f);
-            float a4 = b.Plat(5f); b.HolyWater(a4);
-            b.Gap(2.4f); b.Plat(5f);
+            b.Room(RoomRule.None);              // S4: moving steel between two clean jumps
+            b.Plat(7f); b.Gap(2.1f);
+            float a4 = b.Plat(9f); b.Saw(a4 + 1.5f);
+            b.Gap(2.1f); b.Plat(7f);
 
-            b.Room(RoomRule.Press, 0.2f, true); // S5: gate, press, one lying floor, saw
-            b.Plat(4f); b.FakeFloor(2f);
-            float a5 = b.Plat(6f); b.Spike(a5 + 1.5f);
-            b.Gap(2.3f);
-            float c5 = b.Plat(5f); b.Saw(c5);
-            b.Plat(3.5f);
+            b.Room(RoomRule.None, 0.35f, true); // S5: final gate, one readable hazard
+            b.Plat(6f);
+            float a5 = b.Plat(10f); b.Spike(a5 + 2.5f);
+            b.Gap(2.1f); b.Plat(7f);
             return b.Finish();
         }
 
-        // 5 — THE LULLABY. Sleep runes on full screens: nap under a bat, nap
-        // under the press, or thread a rune field with a saw running.
+        // 5 — THE LULLABY. Sleep runes grow from isolated lessons into a final
+        // rune-field test, without introducing global time pressure this early.
         static Level L5()
         {
             var b = new B();
@@ -688,7 +670,7 @@ namespace TrustIssues
             float c2 = b.Plat(5f); b.Saw(c2);
             b.Plat(3.5f);
 
-            b.Room(RoomRule.Press, 0.25f);      // S3: the thesis — a rune under the press
+            b.Room(RoomRule.None);              // S3: learn the rune cleanly before pressure returns
             b.Plat(3.5f);
             float a3 = b.Plat(7f); b.SleepRune(a3 - 1.5f); b.Spike(a3 + 2f);
             b.Gap(2.3f);
@@ -701,10 +683,10 @@ namespace TrustIssues
             b.SleepRune(a4 + 2f); b.Bat(a4 + 0.3f);
             b.Gap(2.3f); b.Plat(5f);
 
-            b.Room(RoomRule.Press, 0.3f, true); // S5: runes + saw under the press
-            b.Plat(3.5f);
-            float a5 = b.Plat(8f); b.SleepRune(a5 - 2.4f); b.SleepRune(a5 + 0.2f); b.Saw(a5 + 2.6f);
-            b.FakeFloor(2f); b.Plat(2.5f);
+            b.Room(RoomRule.None);              // S5: one final rune, no unrelated time pressure
+            b.Plat(6f);
+            float a5 = b.Plat(11f); b.SleepRune(a5);
+            b.Gap(2.1f); b.Plat(6f);
             return b.Finish();
         }
 
@@ -741,12 +723,10 @@ namespace TrustIssues
             float c4 = b.Plat(6f); b.Spike(c4 + 1.5f);
             b.Gap(2.3f); b.Plat(4f);
 
-            b.Room(RoomRule.Reverse, 0.15f, true); // S5: the reversed gauntlet
-            b.Plat(4f);
-            float a5 = b.Plat(5f); b.Saw(a5);
-            b.Gap(2.4f);
-            float c5 = b.Plat(5f); b.Pendulum(c5);
-            b.Plat(4f);
+            b.Room(RoomRule.Reverse, 0.28f);    // S5: one clean reversed timing test
+            b.Plat(6f); b.Gap(2.2f);
+            float c5 = b.Plat(9f); b.Pendulum(c5 + 1.5f);
+            b.Plat(6f);
             return b.Finish();
         }
 
@@ -766,12 +746,9 @@ namespace TrustIssues
             float a2 = b.Plat(6f); b.Spike(a2 + 1.8f);
             b.Gap(2.3f); b.Plat(3f);
 
-            b.Room(RoomRule.Dark, 0.14f);       // S3: dark deletes one floor, builds another
-            b.Plat(3.5f); b.NightFloor(2f);
-            float a3 = b.Plat(3f); b.Faller(a3);
-            b.GhostFloor(7.2f);
-            float c3 = b.Plat(4f); b.ShiftSpike(c3 + 1.2f, c3 + 0.4f);
-            b.Plat(3f);
+            b.Room(RoomRule.Dark, 0.25f);       // S3: dark swaps one floor for one bridge
+            b.Plat(5f); b.NightFloor(1.8f);
+            b.Plat(4f); b.GhostFloor(7.2f); b.Plat(7f);
 
             b.Room(RoomRule.None);              // S4: chandelier + spike in honest light
             b.Plat(3.5f); b.Gap(2.4f);
@@ -780,17 +757,17 @@ namespace TrustIssues
             float c4 = b.Plat(4f); b.Spike(c4);
             b.Plat(3f);
 
-            b.Room(RoomRule.Dark, 0.12f);       // S5: bridge, spike, vanishing floor, coffin
-            b.Plat(3.5f); b.GhostFloor(7.2f);
-            float a5 = b.Plat(3f); b.Spike(a5);
-            b.NightFloor(2f); b.Plat(2f);
+            b.Room(RoomRule.Dark, 0.22f);       // S5: bridge plus one visible landing test
+            b.Plat(5f); b.GhostFloor(7.2f);
+            float a5 = b.Plat(9f); b.Spike(a5 + 2.5f);
+            b.Plat(5f);
             return b.Finish();
         }
 
         // 8 — THE ENDLESS HALL. Doorway runes silently loop you back across a
         // full screen you can SEE all of — that's the gaslight. Grow-spike
         // clocks and darts run while you time the rune jump; the hall gives up
-        // after five loops so nobody is stuck forever.
+        // after three loops so nobody is stuck forever.
         static Level L8()
         {
             var b = new B();
@@ -816,16 +793,16 @@ namespace TrustIssues
             float a4 = b.Plat(7f); b.Saw(a4 - 1.5f); b.GrowSpike(a4 + 2f);
             b.Gap(2.3f); b.Plat(7f);
 
-            b.Room(RoomRule.None, 0.35f, true); // S5: the exit door bites; the runway lies
-            b.Plat(3.5f); b.FakeFloor(2.2f);
-            float a5 = b.Plat(5f); b.LateSpike(a5);
-            b.FakeFloor(2f); b.Plat(2.5f);
+            b.Room(RoomRule.None);              // S5: final runway, no gate stacked on the traps
+            b.Plat(5f); b.FakeFloor(1.8f);
+            float a5 = b.Plat(8f); b.Spike(a5 + 2f);
+            b.Plat(4f);
             return b.Finish();
         }
 
         // 9 — COFFIN ROULETTE. Dull-brass fakes among flame jets and acid, dark
         // screens where coffins loom out of the candlelight — and the one true
-        // glowing coffin flees through its brothers when you reach for it.
+        // glowing coffin flees past one final decoy when you reach for it.
         static Level L9()
         {
             var b = new B();
@@ -850,15 +827,14 @@ namespace TrustIssues
             float a3 = b.Plat(9f); b.FakeCoffin(a3 - 2f); b.Saw(a3 + 3.2f);
             b.Gap(2.3f); b.Plat(5f);
 
-            b.Room(RoomRule.None);              // S4: lying floor into the coffin-and-fire pinch
-            b.Plat(4f); b.FakeFloor(2f);
-            float a4 = b.Plat(6f); b.FakeCoffin(a4 + 0.7f); b.FlameJet(a4 - 1.6f);
-            b.Gap(2.4f);
-            b.Plat(4.5f);
+            b.Room(RoomRule.None);              // S4: one fake coffin, with room to read its tell
+            b.Plat(5f);
+            float a4 = b.Plat(10f); b.FakeCoffin(a4 + 1.5f);
+            b.Gap(2.2f); b.Plat(6f);
 
-            b.Room(RoomRule.Flee, 0.05f);       // S5: the slalom chase through the fakes
-            float p5 = b.Plat(3.5f);
-            float a5 = b.Plat(12f); b.FakeCoffin(a5 - 3f); b.FakeCoffin(a5 + 1.5f);
+            b.Room(RoomRule.Flee, 0.12f);       // S5: chase past one learned fake
+            float p5 = b.Plat(5f);
+            float a5 = b.Plat(13f); b.FakeCoffin(a5 + 1.5f);
             b.Plat(5f);
             b.ExitAt(p5 + 0.6f);
             return b.FinishBare();
@@ -870,40 +846,36 @@ namespace TrustIssues
         static Level L10()
         {
             var b = new B();
-            b.Room(RoomRule.Dark, 0.3f);        // S1: night floor + moving spike + saw (see it lit first)
+            b.Room(RoomRule.Dark, 0.38f);       // S1: night floor + moving spike (see both lit first)
             b.Plat(3.5f); b.NightFloor(2f);
-            float a1 = b.Plat(6f); b.Saw(a1 - 1.5f); b.ShiftSpike(a1 + 2f, a1 + 0.8f);
+            float a1 = b.Plat(8f); b.ShiftSpike(a1 + 2f, a1 + 0.8f);
             b.Gap(2.3f); b.Plat(6f);
 
-            b.Room(RoomRule.Press, 0.2f);       // S2: press over acid and a lying floor
-            b.Plat(3.5f);
-            float a2 = b.Plat(5f); b.HolyWater(a2);
-            b.FakeFloor(2.2f);
-            float c2 = b.Plat(5f); b.Spike(c2 + 1f);
-            b.Gap(2.3f); b.Plat(3.5f);
+            b.Room(RoomRule.None);              // S2: one pulsing puddle, read before crossing
+            b.Plat(6f);
+            float a2 = b.Plat(11f); b.HolyWater(a2 + 1.5f);
+            b.Gap(2.1f); b.Plat(7f);
 
             b.Room(RoomRule.None);              // S3: THE PORTAL ROOM — pick a door
             float p3 = b.Plat(7f);
             b.Gap(7.5f);                        // unjumpable: a portal is the only way over
-            float q3 = b.Plat(10f); b.GrowSpike(q3 - 1f); b.Saw(q3 + 2f);
+            float q3 = b.Plat(10f); b.GrowSpike(q3 + 1.5f);
             // Pads sit clear of the spawn zone, with a jumpable gap between them
             // so you can reach the far pad without touching the near one.
             b.PortalAt(p3 + 2f, -2f, q3 - 3.5f, -2f);     // the RIGHT door
             b.PortalAt(p3 - 0.5f, -2f, p3 - 2.9f, -2f);   // the joke door (back you go)
 
-            b.Room(RoomRule.Reverse, 0.2f);     // S4: rune + pendulum with flipped hands
-            b.Plat(3.5f);
-            float a4 = b.Plat(5f); b.SleepRune(a4);
-            b.FakeFloor(2.2f);
-            float c4 = b.Plat(5f); b.Pendulum(c4);
-            b.Gap(2.3f); b.Plat(4f);
+            b.Room(RoomRule.Reverse, 0.3f);     // S4: one pendulum with flipped hands
+            b.Plat(6f);
+            float c4 = b.Plat(10f); b.Pendulum(c4 + 1.5f);
+            b.Gap(2.2f); b.Plat(6f);
 
-            b.Room(RoomRule.Flee, 0.15f, true); // S5: the last chase, gate slammed behind (a beat to read it)
-            float p5 = b.Plat(3.5f);
-            float a5 = b.Plat(6f); b.Dart(a5 + 1f);
-            b.Gap(2.3f);
-            float c5 = b.Plat(9f); b.Spike(c5 - 2f); b.GrowSpike(c5 + 1f); b.Spike(c5 + 3f);
-            b.Plat(4f);
+            b.Room(RoomRule.Flee, 0.18f);       // S5: the last chase tests, rather than piles on
+            float p5 = b.Plat(5f);
+            float a5 = b.Plat(8f); b.Dart(a5 + 2f);
+            b.Gap(2.1f);
+            float c5 = b.Plat(11f); b.Spike(c5 + 2.5f);
+            b.Plat(5f);
             b.ExitAt(p5 + 0.6f);
             return b.FinishBare();
         }
@@ -973,294 +945,271 @@ namespace TrustIssues
         // entry-clean, exam at 19. Floor 11 (the Chapel Inverts) opens the world.
         // ====================================================================
 
-        // 12 — THE DARK RETURNS. World 1's dark, without the training wheels:
-        // ghost bridges and vanishing floors in the same stage, spikes that
-        // relocate, and things that move on their own while you can't see.
+        // 12 — THE DARK RETURNS. World 1's dark without the training wheels —
+        // and world 2's opening statement, which is about SHAPE. Every floor up
+        // to this one has been five long halls, 100 units end to end, in exactly
+        // the same rhythm. This is SEVEN CRAMPED CELLS, one idea each, a door
+        // slamming behind every one of them. The castle didn't get harder here,
+        // it got NARROWER — and that lands before a single trap fires.
         static Level L12()
         {
             var b = new B();
-            b.Room(RoomRule.Dark, 0.28f);       // S1: it starts lying immediately
-            b.Plat(5.5f); b.NightFloor(2.2f);
-            float a1 = b.Plat(5f); b.Saw(a1);
-            b.Gap(2.3f); b.Plat(4f);
+            b.Room(RoomRule.Dark, 0.30f);       // I: a floor that stops existing. Nothing else.
+            b.Plat(4f); b.NightFloor(2.1f); b.Plat(4f);
 
-            b.Room(RoomRule.Dark, 0.18f);       // S2: faller + moving spike, unlit
-            b.Plat(4f);
-            float a2 = b.Plat(7f); b.Faller(a2 - 2f); b.ShiftSpike(a2 + 2.2f, a2 + 0.4f);
-            b.Gap(2.3f); b.NightFloor(2f); b.Plat(3.5f);
+            b.Room(RoomRule.Dark, 0.25f);       // II: the spike moves while you can't watch it
+            float a2 = b.Plat(8f); b.ShiftSpike(a2 + 2.2f, a2 - 1.4f);
 
-            b.Room(RoomRule.Dark, 0.14f);       // S3: a ghost bridge with a bat on the far shore
-            b.Plat(3.5f); b.GhostFloor(7.2f);
-            float a3 = b.Plat(5f); b.Bat(a3);
+            b.Room(RoomRule.None);              // III: lit — one saw, seen properly, as a mercy
+            float a3 = b.Plat(7f); b.Saw(a3);
+
+            b.Room(RoomRule.Dark, 0.22f);       // IV: something drops, unlit
+            float a4 = b.Plat(4.5f); b.Faller(a4);
             b.Gap(2.3f); b.Plat(3.5f);
 
-            b.Room(RoomRule.None);              // S4: lit relief with teeth
-            b.Plat(4f); b.Gap(2.4f);
-            float a4 = b.Plat(6f); b.Saw(a4 - 1.3f); b.Spike(a4 + 1.5f);
-            b.FakeFloor(2f); b.Plat(4f);
+            b.Room(RoomRule.Dark, 0.15f);       // V: the bridge that's only there in the dark
+            b.Plat(3.5f); b.GhostFloor(7.2f); b.Plat(3.5f);
 
-            b.Room(RoomRule.Dark, 0.12f, true); // S5: night floor, moving spike, ghost bridge out
+            b.Room(RoomRule.None, 0.35f, true); // VI: the door bites and the floor lies
+            b.Plat(3.5f); b.FakeFloor(2f); b.Plat(4f);
+
+            b.Room(RoomRule.Dark, 0.15f);       // VII: all of it, in the smallest room yet
             b.Plat(3.5f); b.NightFloor(2f);
-            float a5 = b.Plat(4f); b.ShiftSpike(a5 + 1.3f, a5 + 0.5f);
-            b.GhostFloor(7.2f); b.Plat(2.5f);
+            float a7 = b.Plat(5f); b.ShiftSpike(a7 + 1.4f, a7 - 1.1f);
             return b.Finish();
         }
 
-        // 13 — SPRING LOADED. Launch pads that throw you into hidden sunbeams:
-        // the most inviting mushroom in the castle is the one that kills you.
+        // 13 — SPRING LOADED. Launch pads that throw you at things the ground
+        // never showed you. THREE rooms, each one long question — coming
+        // straight off floor 12's seven slamming doors, a floor with almost none
+        // reads as open space, which is exactly the wrong thing to feel safe in.
         static Level L13()
         {
             var b = new B();
-            b.Room(RoomRule.None);              // S1: the first pad, right past a landing
-            b.Plat(4.5f); b.Gap(2.3f);
-            float a1 = b.Plat(7f); b.Spring(a1 + 0.5f); b.Spike(a1 + 2.4f);
-            b.Plat(5f);
-
-            b.Room(RoomRule.None);              // S2: pad between a faller and a chandelier
-            b.Plat(3.5f);
-            float a2 = b.Plat(5f); b.Faller(a2 - 1f); b.Spring(a2 + 1.4f);
+            b.Room(RoomRule.None);              // R1: the pad, and the ceiling's answer to it
+            b.Plat(5f); b.Gap(2.3f);
+            float a1 = b.Plat(8f); b.Spring(a1 - 1.5f); b.Spike(a1 + 1.5f);
             b.Gap(2.4f);
-            float c2 = b.Plat(5f); b.Chandelier(c2);
-            b.Plat(3.5f);
+            float c1 = b.Plat(7f); b.Chandelier(c1);
+            b.Plat(4f);
 
-            b.Room(RoomRule.None);              // S3: ride the slab, dodge the pad
-            b.Plat(3.5f); b.MoverGap(6.8f);
-            float a3 = b.Plat(5f); b.Spring(a3 - 1f); b.Dart(a3 + 1.5f);
+            b.Room(RoomRule.None);              // R2: pads and spikes, without an untaught room rule
+            b.Plat(3.6f);
+            float a2 = b.Plat(9f); b.Spring(a2 - 2.5f); b.Spike(a2); b.Spring(a2 + 2.5f);
             b.Gap(2.3f); b.Plat(4f);
 
-            b.Room(RoomRule.Press, 0.22f);      // S4: sprint the press lane, thread the pads
-            b.Plat(3.5f);
-            float a4 = b.Plat(9f); b.Spring(a4 - 2.5f); b.Spike(a4); b.Spring(a4 + 2.5f);
-            b.Gap(2.3f); b.Plat(4f);
-
-            b.Room(RoomRule.None, 0.35f, true); // S5: gate, saw, pad, faller
-            b.Plat(3.5f); b.FakeFloor(2f);
-            float a5 = b.Plat(5f); b.Saw(a5 - 1.5f); b.Spring(a5 + 1f);
+            b.Room(RoomRule.None, 0.35f, true); // R3: the ferry, then the biting door
+            b.Plat(4f); b.MoverGap(6.8f);
+            float a3 = b.Plat(6f); b.Spring(a3 - 1.2f); b.Dart(a3 + 1.5f);
             b.Gap(2.3f);
-            float c5 = b.Plat(4f); b.Faller(c5);
-            b.Plat(2.5f);
+            float c3 = b.Plat(5f); b.Saw(c3);
+            b.Plat(3f);
             return b.Finish();
         }
 
         // 14 — THE SUN LIES. Patches of daylight burn the undead — invisible
         // ground that kills, always placed exactly where relief should be.
+        // FOUR long rooms, not five short ones — and three sunbeams, not five.
+        // The x-ray had this floor at NINE unavoidable deaths, the second-worst
+        // in the game: a joke told nine times isn't a joke, it's a toll. The sun
+        // still lies three times; everything guarding it now announces itself.
         static Level L14()
         {
             var b = new B();
-            b.Room(RoomRule.None);              // S1: the first sunbeam, after a calm gap
-            b.Plat(4.5f); b.Gap(2.3f);
-            float a1 = b.Plat(7f); b.Surprise(a1 - 0.8f); b.Spike(a1 + 1.8f);
-            b.Plat(4.5f);
+            b.Room(RoomRule.None);              // I: the first beam, after a calm gap
+            b.Plat(5f); b.Gap(2.3f);
+            float a1 = b.Plat(8f); b.Surprise(a1 - 0.8f); b.Spike(a1 + 2.2f);
+            b.Gap(2.4f);
+            float c1 = b.Plat(6f); b.Pendulum(c1);
+            b.Plat(4f);
 
-            b.Room(RoomRule.None);              // S2: pendulum, lying floor, then the sun
-            b.Plat(3.5f);
-            float a2 = b.Plat(5f); b.Pendulum(a2);
-            b.FakeFloor(2.2f);
-            float c2 = b.Plat(5f); b.Surprise(c2 + 0.6f);
-            b.Gap(2.3f); b.Plat(3.5f);
+            b.Room(RoomRule.None);              // II: honest blades, then the sun again
+            b.Plat(4f);
+            float a2 = b.Plat(7f); b.Pendulum(a2 - 1.5f); b.GrowSpike(a2 + 2f);
+            b.Gap(2.4f);
+            float c2 = b.Plat(7f); b.Saw(c2 - 2f); b.Surprise(c2 + 1.4f);
+            b.Plat(4f);
 
-            b.Room(RoomRule.None);              // S3: chandelier + sun + a diving bat
-            b.Plat(3.5f); b.Gap(2.4f);
-            float a3 = b.Plat(5f); b.Chandelier(a3 - 1f); b.Surprise(a3 + 1.4f);
-            b.Gap(2.3f);
-            float c3 = b.Plat(4f); b.Bat(c3);
-            b.Plat(3f);
-
-            b.Room(RoomRule.Dark, 0.2f);        // S4: sunbeams you REALLY can't see now
+            b.Room(RoomRule.Dark, 0.2f);        // III: you couldn't see it lit. Now try it unlit.
             b.Plat(4f); b.NightFloor(2f);
-            float a4 = b.Plat(6f); b.Pendulum(a4 - 1.5f); b.Surprise(a4 + 1.7f);
-            b.Gap(2.3f); b.Plat(4f);
+            float a3 = b.Plat(8f); b.Pendulum(a3 - 2f); b.Surprise(a3 + 2f);
+            b.Gap(2.3f); b.Plat(5f);
 
-            b.Room(RoomRule.None, 0.35f, true); // S5: the sun guards the coffin road
-            b.Plat(3.5f); b.FakeFloor(2f);
-            float a5 = b.Plat(6f); b.Surprise(a5 - 1.5f); b.Pendulum(a5 + 0.8f);
+            b.Room(RoomRule.None, 0.35f, true); // IV: the coffin road, guarded honestly
+            b.Plat(4f);
+            float a4 = b.Plat(8f); b.Saw(a4 - 2f); b.Pendulum(a4 + 1.5f);
             b.Gap(2.3f);
-            float c5 = b.Plat(4f); b.LateSpike(c5);
-            b.Plat(2.5f);
+            float c4 = b.Plat(6f); b.Bat(c4);
+            b.Plat(3f);
             return b.Finish();
         }
 
         // 15 — ARROW CHOIR. Ceiling timers rain bolts on a beat; crushers force
         // you LOW while everything else wants you jumping.
+        // SIX rooms — the longest floor in the world, because a rhythm needs
+        // bars to be a rhythm, and because after a three-room floor the length
+        // itself is the surprise.
         static Level L15()
         {
             var b = new B();
-            b.Room(RoomRule.None);              // S1: learn the rain's rhythm
+            b.Room(RoomRule.None);              // 1: learn the beat
             b.Plat(4.5f);
             float a1 = b.Plat(7f); b.ArrowRain(a1 - 1.5f); b.ArrowRain(a1 + 1.5f);
-            b.Gap(2.3f); b.Plat(4.5f);
-
-            b.Room(RoomRule.None);              // S2: crusher lane, then rain + spike
-            b.Plat(3.5f); b.Gap(2.3f);
-            float a2 = b.Plat(4f); b.Crusher(a2);
-            b.Gap(2.4f);
-            float c2 = b.Plat(5f); b.ArrowRain(c2 - 1f); b.Spike(c2 + 1.5f);
-            b.Plat(3.5f);
-
-            b.Room(RoomRule.None);              // S3: rain-saw-rain corridor
-            b.Plat(3.5f);
-            float a3 = b.Plat(7f); b.ArrowRain(a3 - 2.2f); b.Saw(a3); b.ArrowRain(a3 + 2.2f);
             b.Gap(2.3f); b.Plat(4f);
 
-            b.Room(RoomRule.None);              // S4: ride the slab into the rain
-            b.Plat(3.5f); b.MoverGap(6.8f);
-            float a4 = b.Plat(5f); b.ArrowRain(a4 - 1f); b.Spike(a4 + 1.5f);
+            b.Room(RoomRule.None);              // 2: the crusher — the one thing that wants you LOW
+            b.Plat(4f); b.Gap(2.3f);
+            float a2 = b.Plat(5f); b.Crusher(a2);
+            b.Gap(2.4f); b.Plat(4f);
+
+            b.Room(RoomRule.None);              // 3: rain, blade, rain
+            b.Plat(3.5f);
+            float a3 = b.Plat(8f); b.ArrowRain(a3 - 2.4f); b.Saw(a3); b.ArrowRain(a3 + 2.4f);
             b.Plat(4f);
 
-            b.Room(RoomRule.None, 0.35f, true); // S5: crusher, double rain, lying runway
+            b.Room(RoomRule.None);              // 4: the ferry, mid-choir
+            b.Plat(4f); b.MoverGap(6.8f);
+            float a4 = b.Plat(6f); b.ArrowRain(a4 - 1f); b.Spike(a4 + 1.8f);
+            b.Plat(4f);
+
+            b.Room(RoomRule.Reverse, 0.25f);    // 5: same beat, wrong hands
+            b.Plat(4f);
+            float a5 = b.Plat(7f); b.ArrowRain(a5); b.Spike(a5 + 2.5f);
+            b.Gap(2.3f); b.Plat(4f);
+
+            b.Room(RoomRule.None, 0.35f, true); // 6: the crescendo, behind a biting door
             b.Plat(3.5f);
-            float a5 = b.Plat(4f); b.Crusher(a5);
+            float a6 = b.Plat(5f); b.Crusher(a6);
             b.Gap(2.3f);
-            float c5 = b.Plat(6f); b.ArrowRain(c5 - 1.5f); b.ArrowRain(c5 + 0.5f); b.Dart(c5 + 2.2f);
-            b.FakeFloor(2f); b.Plat(2.5f);
+            float c6 = b.Plat(7f); b.ArrowRain(c6 - 1.8f); b.ArrowRain(c6 + 0.6f); b.Dart(c6 + 2.6f);
+            b.Plat(3f);
             return b.Finish();
         }
 
         // 16 — THE LONG SLEEP. Sleep runes under arrow timers: nap on the wrong
         // tile and the choir turns you into a pincushion.
+        //
+        // ONE ROOM. No doorways, no chambers, no stage to fall back to — the
+        // only floor in the castle built as a single unbroken hall, because a
+        // floor about never waking up should not have doors in it. One
+        // coffin-shaped mercy sits halfway down; past that it's you, the runes,
+        // and the length of the room.
         static Level L16()
         {
             var b = new B();
-            b.Room(RoomRule.None);              // S1: the thesis — a rune directly under the rain
-            b.Plat(4.5f);
-            float a1 = b.Plat(7f); b.SleepRune(a1 - 0.5f); b.ArrowRain(a1 - 0.5f); b.Spike(a1 + 2f);
-            b.Gap(2.3f); b.Plat(4.5f);
-
-            b.Room(RoomRule.None);              // S2: rune + roosting bat + saw
-            b.Plat(3.5f); b.Gap(2.4f);
-            float a2 = b.Plat(6f); b.SleepRune(a2 - 1.5f); b.Bat(a2 - 1f);
+            b.Room(RoomRule.None);
+            b.Plat(5f);
+            float a1 = b.Plat(8f); b.SleepRune(a1 - 1f); b.ArrowRain(a1 - 1f); b.Spike(a1 + 2.4f);
+            b.Gap(2.4f);
+            float a2 = b.Plat(7f); b.SleepRune(a2 - 1.5f); b.Bat(a2 - 1f);
             b.Gap(2.3f);
-            float c2 = b.Plat(4f); b.Saw(c2);
+            float a3 = b.Plat(6.5f); b.Checkpoint(a3 - 2f); b.Saw(a3 + 1.6f);   // the halfway mercy
+            b.Gap(2.4f);
+            float a4 = b.Plat(8f); b.SleepRune(a4 - 2f); b.HolyWater(a4 + 1f);
+            b.Gap(2.3f);
+            float a5 = b.Plat(10f); b.SleepRune(a5 - 3f); b.Bat(a5 - 2.5f);
+            b.SleepRune(a5 + 0.5f); b.ArrowRain(a5 + 0.5f); b.SleepRune(a5 + 3f);
             b.Plat(3f);
-
-            b.Room(RoomRule.Press, 0.22f);      // S3: runes + acid under the descending crypt
-            b.Plat(4f);
-            float a3 = b.Plat(7f); b.SleepRune(a3 - 2f); b.SleepRune(a3 + 0.5f); b.HolyWater(a3 + 2.5f);
-            b.Gap(2.3f); b.Plat(5f);
-
-            b.Room(RoomRule.Dark, 0.2f);        // S4: runes you can barely see
-            b.Plat(4f); b.NightFloor(2f);
-            float a4 = b.Plat(7f); b.SleepRune(a4 - 1f); b.ArrowRain(a4 - 1f); b.Spike(a4 + 2f);
-            b.Gap(2.3f); b.Plat(3.5f);
-
-            b.Room(RoomRule.None, 0.35f, true); // S5: the dormitory — three runes, one choir
-            b.Plat(3.5f);
-            float a5 = b.Plat(9f); b.SleepRune(a5 - 3f); b.Bat(a5 - 2.6f);
-            b.SleepRune(a5); b.ArrowRain(a5); b.SleepRune(a5 + 2.6f);
-            b.Gap(2.3f); b.Plat(2.5f);
             return b.Finish();
         }
 
         // 17 — FIRE SERMON. Flame jets and holy water in overlapping rhythms;
         // one crossing is made from a bobbing slab over the flames.
+        // SIX cells, each a single verse: the sermon is delivered one line at a
+        // time and you are never made to hear two at once.
         static Level L17()
         {
             var b = new B();
-            b.Room(RoomRule.None);              // S1: two jets, one beat
-            b.Plat(4.5f);
-            float a1 = b.Plat(6f); b.FlameJet(a1 - 1.5f); b.FlameJet(a1 + 1.5f);
-            b.Gap(2.3f); b.Plat(4.5f);
+            b.Room(RoomRule.None);              // I: one jet. Learn its breath.
+            float a1 = b.Plat(8f); b.FlameJet(a1);
 
-            b.Room(RoomRule.None);              // S2: acid + fire + a diving bat
-            b.Plat(3.5f);
-            float a2 = b.Plat(6f); b.HolyWater(a2 - 1.5f); b.FlameJet(a2 + 1f);
-            b.Gap(2.4f);
-            float c2 = b.Plat(4f); b.Bat(c2);
-            b.Plat(3.5f);
+            b.Room(RoomRule.None);              // II: two jets, out of phase
+            float a2 = b.Plat(9f); b.FlameJet(a2 - 2f); b.FlameJet(a2 + 2f);
 
-            b.Room(RoomRule.None);              // S3: the ferry over the fire pit
-            b.Plat(3.5f); b.MoverGap(6.8f);
-            float a3 = b.Plat(5f); b.FlameJet(a3 - 1f); b.HolyWater(a3 + 1.5f);
-            b.Gap(2.3f); b.Plat(3.5f);
+            b.Room(RoomRule.None);              // III: the water, which is worse
+            float a3 = b.Plat(8f); b.HolyWater(a3 - 1.5f); b.FlameJet(a3 + 2f);
 
-            b.Room(RoomRule.Reverse, 0.2f);     // S4: flipped hands over the flame beat
-            b.Plat(3.5f);
-            float a4 = b.Plat(7f); b.FlameJet(a4 - 1.5f); b.FlameJet(a4 + 1.5f);
-            b.Gap(2.3f);
-            float c4 = b.Plat(4f); b.HolyWater(c4);
-            b.Plat(3f);
+            b.Room(RoomRule.None);              // IV: the ferry over the fire pit
+            b.Plat(4f); b.MoverGap(6.8f);
+            float a4 = b.Plat(6f); b.FlameJet(a4 + 1f);
 
-            b.Room(RoomRule.None, 0.35f, true); // S5: the sermon's crescendo
+            b.Room(RoomRule.Reverse, 0.2f);     // V: same beat, flipped hands
+            b.Plat(4f);
+            float a5 = b.Plat(8f); b.FlameJet(a5 - 2f); b.FlameJet(a5 + 2f);
+
+            b.Room(RoomRule.None, 0.35f, true); // VI: the amen, behind a biting door
             b.Plat(3.5f);
-            float a5 = b.Plat(5f); b.FlameJet(a5);
+            float a6 = b.Plat(6f); b.FlameJet(a6);
             b.FakeFloor(2.2f);
-            float c5 = b.Plat(5f); b.HolyWater(c5 - 1f); b.FlameJet(c5 + 1.5f);
-            b.Plat(2.5f);
+            float c6 = b.Plat(6f); b.HolyWater(c6 - 1f); b.Bat(c6 + 1.5f);
+            b.Plat(3f);
             return b.Finish();
         }
 
         // 18 — GRAVEYARD SHIFT. The roulette's coffins come back mid-world,
         // guarded by fire, hidden in the dark, once across a ghost bridge.
+        // THREE rooms and THREE fakes. The x-ray had this at ten unavoidable
+        // deaths — the worst floor in world 2 — because six dull-brass coffins
+        // stop being a lie and become a coin you're made to flip six times. It's
+        // short and mean now instead of long and arbitrary.
         static Level L18()
         {
             var b = new B();
-            b.Room(RoomRule.None);              // S1: remember the tell (dull cross = lie)
-            b.Plat(4.5f);
-            float a1 = b.Plat(7f); b.FakeCoffin(a1 - 1f); b.Spike(a1 + 1.8f);
-            b.Gap(2.3f); b.Plat(4f);
-
-            b.Room(RoomRule.Dark, 0.16f);       // S2: coffins loom + a saw in the dark
-            b.Plat(4f);
-            float a2 = b.Plat(8f); b.FakeCoffin(a2 - 2f); b.FakeCoffin(a2 + 1f); b.Saw(a2 + 3f);
-            b.Gap(2.3f); b.Plat(4f);
-
-            b.Room(RoomRule.Dark, 0.13f);       // S3: a ghost bridge to a coffin and fire
-            b.Plat(3.5f); b.GhostFloor(7.2f);
-            float a3 = b.Plat(6f); b.FakeCoffin(a3 - 1f); b.FlameJet(a3 + 1.2f);
-            b.Plat(3f);
-
-            b.Room(RoomRule.None);              // S4: fire + coffin + dart, lit
-            b.Plat(3.5f); b.FakeFloor(2f);
-            float a4 = b.Plat(5f); b.FlameJet(a4 - 1.2f); b.FakeCoffin(a4 + 1f);
-            b.Gap(2.4f);
-            float c4 = b.Plat(4f); b.Dart(c4);
-            b.Plat(3f);
-
-            b.Room(RoomRule.Flee, 0.05f);       // S5: the chase through the graveyard
-            float p5 = b.Plat(3.5f);
-            float a5 = b.Plat(11f); b.FakeCoffin(a5 - 3f); b.FakeCoffin(a5);
-            b.FlameJet(a5 + 2f); b.FakeCoffin(a5 + 4f);
+            b.Room(RoomRule.None);              // I: remember the tell — gold glows, brass doesn't
             b.Plat(5f);
-            b.ExitAt(p5 + 0.6f);
+            float a1 = b.Plat(8f); b.FakeCoffin(a1 - 1f); b.Spike(a1 + 2.2f);
+            b.Gap(2.3f);
+            float c1 = b.Plat(6f); b.FlameJet(c1);
+            b.Plat(4f);
+
+            b.Room(RoomRule.Dark, 0.14f);       // II: a bridge of faith, with a liar on the far shore
+            b.Plat(4f); b.GhostFloor(7.2f);
+            float a2 = b.Plat(7f); b.FakeCoffin(a2 - 1.2f); b.Saw(a2 + 2.2f);
+            b.Plat(4f);
+
+            b.Room(RoomRule.Flee, 0.05f);       // III: the chase, past one last liar
+            float p3 = b.Plat(3.5f);
+            float a3 = b.Plat(12f); b.FakeCoffin(a3 - 3f); b.FlameJet(a3 + 2f);
+            b.Plat(5f);
+            b.ExitAt(p3 + 0.6f);
             return b.FinishBare();
         }
 
         // 19 — WORLD EXAM II. Everything world 2 taught, plus a gravity crossing
         // (floor 11's lesson) and a portal choice, ending in a gated chase.
+        // FOUR long rooms instead of five short ones, and each is a whole
+        // discipline rather than a single trick: the dark, the ceiling road, the
+        // closing crypt, and a chase that makes you use all three under pressure.
+        // It scored 4.3 on the x-ray — easier than floor 3 — which is not what
+        // the last door before the Countess should feel like.
         static Level L19()
         {
             var b = new B();
-            b.Room(RoomRule.Dark, 0.16f);       // S1: dark + rain + moving spike
-            b.Plat(3.5f); b.NightFloor(2f);
-            float a1 = b.Plat(6f); b.ArrowRain(a1 - 1f); b.ShiftSpike(a1 + 2f, a1 + 0.6f);
-            b.Gap(2.3f); b.Plat(5f);
+            b.Room(RoomRule.Dark, 0.16f);       // I: the dark, with everything it learned
+            b.Plat(4f); b.NightFloor(2f);
+            float a1 = b.Plat(7f); b.ArrowRain(a1 - 1.5f); b.ShiftSpike(a1 + 2.4f, a1 + 0.4f);
+            b.Gap(2.3f);
+            float c1 = b.Plat(4.5f); b.Faller(c1);
+            b.GhostFloor(7.2f); b.Plat(4f);
 
-            b.Room(RoomRule.None);              // S2: the ceiling road (remember the Chapel?)
+            b.Room(RoomRule.None);              // II: the ceiling road — the Chapel's lesson, examined
             float a2 = b.Plat(6f); b.GravRune(a2 + 1.5f);
             b.Gap(8f);
-            float c2 = b.Plat(8f); b.CeilRune(c2 - 2.5f); b.FlameJet(c2 + 1.5f);
-
-            b.Room(RoomRule.Press, 0.2f);       // S3: spring + acid + rune under the press
-            b.Plat(3.5f);
-            float a3 = b.Plat(6f); b.Spring(a3 - 1f); b.HolyWater(a3 + 1.5f);
-            b.Gap(2.3f);
-            float c3 = b.Plat(5f); b.SleepRune(c3);
+            float c2 = b.Plat(9f); b.CeilRune(c2 - 3f); b.FlameJet(c2 + 1.5f); b.Spike(c2 + 3.5f);
             b.Plat(3f);
 
-            b.Room(RoomRule.None);              // S4: pick a door
-            float p4 = b.Plat(7f);
-            b.Gap(7.5f);
-            float q4 = b.Plat(9f); b.GrowSpike(q4 - 1f); b.Bat(q4 + 2f);
-            b.PortalAt(p4 + 2f, -2f, q4 - 3f, -2f);
-            b.PortalAt(p4 - 0.5f, -2f, p4 - 2.9f, -2f);
+            b.Room(RoomRule.None);              // III: a nap, acid and a launch in open space
+            b.Plat(3.6f);
+            float a3 = b.Plat(9f); b.Spring(a3 - 2.5f); b.HolyWater(a3 + 0.5f); b.SleepRune(a3 + 3f);
+            b.Gap(2.3f); b.Plat(4f);
 
-            b.Room(RoomRule.Flee, 0.05f, true); // S5: the gated chase
-            float p5 = b.Plat(3.5f);
-            float a5 = b.Plat(6f); b.FlameJet(a5 + 1f);
+            b.Room(RoomRule.Flee, 0.05f, true); // IV: the gated chase
+            float p4 = b.Plat(3.5f);
+            float a4 = b.Plat(7f); b.Pendulum(a4 - 2f); b.FlameJet(a4 + 1f);
             b.Gap(2.3f);
-            float c5 = b.Plat(9f); b.Spike(c5 - 2f); b.ArrowRain(c5); b.Spike(c5 + 2.5f);
+            float c4 = b.Plat(11f); b.Spike(c4 - 3f); b.ArrowRain(c4); b.GrowSpike(c4 + 3f);
             b.Plat(4f);
-            b.ExitAt(p5 + 0.6f);
+            b.ExitAt(p4 + 0.6f);
             return b.FinishBare();
         }
 
@@ -1365,7 +1314,7 @@ namespace TrustIssues
             float a2 = b.Plat(4f); b.HolyWater(a2);
             b.MoverGap(6.8f); b.Plat(3.5f);
 
-            b.Room(RoomRule.Press, 0.2f);       // S3: the ferry under the descending crypt
+            b.Room(RoomRule.None);              // S3: learn the ferry before global time pressure exists
             b.Plat(3.5f); b.MoverGap(6.8f);
             float a3 = b.Plat(5f); b.FlameJet(a3);
             b.Gap(2.3f); b.Plat(4f);
@@ -1481,10 +1430,10 @@ namespace TrustIssues
             b.SleepRune(a2 + 1f); b.Bat(a2 + 1.4f);
             b.Gap(2.3f); b.Plat(5f);
 
-            b.Room(RoomRule.Press, 0.2f);       // S3: runes + fire + acid under the press
-            b.Plat(3.5f);
-            float a3 = b.Plat(8f); b.SleepRune(a3 - 1.5f); b.FlameJet(a3 + 0.5f); b.HolyWater(a3 + 2.5f);
-            b.Gap(2.3f); b.Plat(4f);
+            b.Room(RoomRule.Press, 0.42f);      // S3: first crypt press — one readable flame, one jump
+            b.Plat(7f);
+            float a3 = b.Plat(12f); b.FlameJet(a3 + 2f);
+            b.Gap(2.2f); b.Plat(8f);
 
             b.Room(RoomRule.Reverse, 0.18f);    // S4: flipped hands past the rune
             b.Plat(3.5f);
