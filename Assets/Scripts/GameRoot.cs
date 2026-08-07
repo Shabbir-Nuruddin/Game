@@ -24,7 +24,6 @@ namespace TrustIssues
         // quit to change modes. Every screen now points _onBack at the same thing
         // its on-screen "‹ BACK" button does, and one handler routes the key there.
         System.Action _onBack;
-        bool _capturingKey;       // true while rebinding a control (that eats Esc)
         float _quitArmedUntil;    // main-menu "press back again to quit" window
 
         Camera _cam;
@@ -1958,333 +1957,6 @@ namespace TrustIssues
             Skin.Fit(t, 30, 14);
         }
 
-        // SETTINGS — tap-zones over the painted controls. The picture shows the
-        // DEFAULT bindings/values (which is what a fresh install has); the zones make
-        // every control work — rebinds capture a key, sliders step the volume,
-        // toggles flip, difficulty cycles. Painted labels stay put (art as-is).
-        // The artwork bakes EVERY value into the picture (JUMP: SPACE, 100%,
-        // DIFFICULTY: NORMAL…), so the old tap-zone-only version looked broken:
-        // taps changed the setting but the frozen picture never moved, and the
-        // volume "bars" were paintings you couldn't drag. Each painted control now
-        // gets a real widget laid exactly over it — the interiors of those frames
-        // are pure black in the art, so a black chip hides the baked value and the
-        // live one is drawn in the artwork's own crimson/bone lettering. The look
-        // is untouched; everything under it is now genuinely live.
-        //
-        // Rects below are fractions of the screen measured off the 1600x900 mockup.
-        void BuildSkinnedSettings(Transform root)
-        {
-            // Column interiors for the two-across rows (inset to stay inside the
-            // ornate end-caps of each painted frame).
-            const float LcX0 = 0.287f, LcX1 = 0.471f;   // left column, CONTROLS rows
-            const float RcX0 = 0.529f, RcX1 = 0.713f;   // right column, CONTROLS rows
-
-            // ---- The CONTROLS block --------------------------------------------
-            // On a PHONE there is no keyboard, so four key-rebind rows (JUMP: SPACE,
-            // DASH: K…) are dead weight — you can never press those keys. The block
-            // keeps its painted frames and becomes the settings a thumb actually
-            // wants: which movement control, whether the stick follows your thumb,
-            // how big the pads are, and which hand they sit under.
-            if (Application.isMobilePlatform) BuildTouchSettings(root, LcX0, LcX1, RcX0, RcX1);
-            else
-            {
-                // ---- Desktop: ability key rebinds (tap, then press the new key) ----
-                SkinRebind(root, LcX0, 0.261f, LcX1, 0.303f, "JUMP",      "jump");
-                SkinRebind(root, RcX0, 0.261f, RcX1, 0.303f, "SHOOT",     "shoot");
-                SkinRebind(root, LcX0, 0.328f, LcX1, 0.370f, "DASH",      "dash");
-                SkinRebind(root, RcX0, 0.328f, RcX1, 0.370f, "BAT-GLIDE", "fly");
-            }
-
-            // ---- Volume: real draggable sliders over the painted bars ----
-            SkinSlider(root, 0.5211f, "MUSIC", () => Audio.MusicVol, v => Audio.MusicVol = v);
-            SkinSlider(root, 0.5800f, "SFX",   () => Audio.SfxVol,   v => Audio.SfxVol = v);
-            SkinSlider(root, 0.6383f, "VOICE", () => Voice.Volume,   v => Voice.Volume = v);
-
-            // ---- Difficulty: cycles, and the blurb under it follows along ----
-            Text blurb = null;
-            SkinChoice(root, 0.350f, 0.685f, 0.650f, 0.723f, "difficulty",
-                () => Skin.Caption("DIFFICULTY", Diff.Name),
-                () => Diff.Current = (Difficulty)(((int)Diff.Current + 1) % 3),
-                () => { if (blurb != null) blurb.text = Diff.Blurb; });
-            // Chip first, live line on top. Kept tight to the painted text: the art
-            // either side of it is castle detail, so a chip that overran the line
-            // would read as a black bar drawn across the scenery.
-            Skin.Chip(root, 0.325f, 0.741f, 0.675f, 0.769f, Skin.Interior);
-            // Also best-fit: the Casual blurb is much longer than the painted one.
-            blurb = Skin.Fit(Skin.LiveText(root, Diff.Blurb, 0.30f, 0.741f, 0.70f, 0.769f,
-                23, new Color(0.72f, 0.22f, 0.26f, 1f)), 23);
-
-            // ---- Gameplay toggles ----
-            const float TlX0 = 0.245f, TlX1 = 0.455f;   // left toggle column
-            const float TrX0 = 0.545f, TrX1 = 0.755f;   // right toggle column
-            SkinChoice(root, TlX0, 0.782f, TlX1, 0.821f, "replayghost",
-                () => Skin.Caption("REPLAY GHOST", PrefOn("opt_replay_ghost", 0) ? "ON" : "OFF"),
-                () => FlipPrefQuiet("opt_replay_ghost", 0), null);
-            SkinChoice(root, TrX0, 0.782f, TrX1, 0.821f, "pads",
-                () => Skin.Caption("ON-SCREEN PADS", PrefOn("opt_touch", 0) ? "ON" : "OFF"),
-                () => FlipPrefQuiet("opt_touch", 0), null);
-            // MOVE lives up in the CONTROLS block on a phone, so this slot carries
-            // rumble there instead of repeating itself.
-            if (Application.isMobilePlatform)
-                SkinChoice(root, TlX0, 0.842f, TlX1, 0.881f, "haptics",
-                    () => Skin.Caption("RUMBLE", PrefOn("opt_haptics", 1) ? "ON" : "OFF"),
-                    () => FlipPrefQuiet("opt_haptics", 1), null);
-            else
-                SkinChoice(root, TlX0, 0.842f, TlX1, 0.881f, "move",
-                    () => Skin.Caption("MOVE", JoystickMode ? "JOYSTICK" : "ARROWS"),
-                    () => { PlayerPrefs.SetInt("opt_joystick", JoystickMode ? 0 : 1); PlayerPrefs.Save(); },
-                    SyncMoveMode);
-            SkinChoice(root, TrX0, 0.842f, TrX1, 0.881f, "depth",
-                () => Skin.Caption("2.5D DEPTH", PrefOn("opt_25d", 1) ? "ON" : "OFF"),
-                () => FlipPrefQuiet("opt_25d", 1), ApplyDepthMode);
-
-            Skin.Zone(root, 0.39f, 0.905f, 0.61f, 0.975f, ShowMenu, "back");
-
-            // REQUIRED BY THE PRIVACY POLICY. The policy shipped on the store listing
-            // states the player can stop gameplay analytics from Settings, so the
-            // control has to exist and has to be findable — a promised switch that
-            // isn't there is a false statement to Google and to the player. Sits in
-            // the empty painted panel to the RIGHT of BACK, mirroring the music
-            // credit on the left.
-            SkinChoice(root, 0.625f, 0.906f, 0.875f, 0.952f, "analytics",
-                () => Skin.Caption("ANONYMOUS DATA", Analytics.Enabled ? "ON" : "OFF"),
-                () => Analytics.Enabled = !Analytics.Enabled, null);
-
-            // REQUIRED ATTRIBUTION — same licence obligation as the code-built
-            // screen below. The artwork doesn't paint it, so the skinned Settings
-            // has to supply it or shipping the music becomes unlicensed. Tucked
-            // into the dark, empty panel to the left of BACK as fine print, where
-            // it's legible without touching the composition.
-            var credit = Skin.LiveText(root,
-                "Music by Kevin MacLeod (incompetech.com)\nlicensed under Creative Commons BY 4.0",
-                0.13f, 0.906f, 0.38f, 0.952f, 15, new Color(1f, 1f, 1f, 0.42f),
-                false, TextAnchor.MiddleLeft);
-            credit.horizontalOverflow = HorizontalWrapMode.Wrap;
-        }
-
-        // The phone version of the CONTROLS block. Same four painted frames, four
-        // touch settings instead of four key rebinds. SIZE and LEFT-HANDED rebuild the
-        // pads on the spot, so the change is visible the moment you resume.
-        //
-        // The painted instruction lines above and below the frames name keys too
-        // ("click an action, then press the new key", "move: A D / ← →  restart: R"),
-        // so both are chipped out and replaced with touch wording — otherwise the
-        // screen would still be telling a phone player to press Esc.
-        void BuildTouchSettings(Transform root, float LcX0, float LcX1, float RcX0, float RcX1)
-        {
-            var band = new Color(0.028f, 0.014f, 0.018f, 1f);   // the near-black castle behind both lines
-
-            Skin.Chip(root, 0.290f, 0.216f, 0.715f, 0.240f, band);
-            var lead = Skin.LiveText(root, "tap a row to change it — tuned for thumbs",
-                0.27f, 0.216f, 0.735f, 0.240f, 24, new Color(0.72f, 0.22f, 0.26f, 1f));
-            if (Theme.MenuFont != null) lead.font = Theme.MenuFont;
-            Skin.Fit(lead, 24, 13);
-
-            SkinChoice(root, LcX0, 0.261f, LcX1, 0.303f, "move",
-                () => Skin.Caption("MOVE", JoystickMode ? "JOYSTICK" : "ARROWS"),
-                () => { PlayerPrefs.SetInt("opt_joystick", JoystickMode ? 0 : 1); PlayerPrefs.Save(); },
-                SyncMoveMode);
-            SkinChoice(root, RcX0, 0.261f, RcX1, 0.303f, "stickmode",
-                () => Skin.Caption("STICK", FloatingStick ? "FOLLOWS THUMB" : "FIXED"),
-                () => { PlayerPrefs.SetInt("opt_stick_float", FloatingStick ? 0 : 1); PlayerPrefs.Save(); },
-                RebuildTouchControls);
-            SkinChoice(root, LcX0, 0.328f, LcX1, 0.370f, "padsize",
-                () => Skin.Caption("PAD SIZE", PadSizePref == 0 ? "SMALL" : PadSizePref == 2 ? "LARGE" : "NORMAL"),
-                () => { PlayerPrefs.SetInt("opt_pad_size", (PadSizePref + 1) % 3); PlayerPrefs.Save(); },
-                RebuildTouchControls);
-            SkinChoice(root, RcX0, 0.328f, RcX1, 0.370f, "lefty",
-                () => Skin.Caption("HAND", LeftHanded ? "LEFT" : "RIGHT"),
-                () => { PlayerPrefs.SetInt("opt_lefty", LeftHanded ? 0 : 1); PlayerPrefs.Save(); },
-                RebuildTouchControls);
-
-            Skin.Chip(root, 0.262f, 0.401f, 0.712f, 0.427f, band);
-            var hint = Skin.LiveText(root, "the stick appears wherever your thumb lands",
-                0.24f, 0.401f, 0.735f, 0.427f, 24, new Color(0.72f, 0.22f, 0.26f, 1f));
-            if (Theme.MenuFont != null) hint.font = Theme.MenuFont;
-            Skin.Fit(hint, 24, 13);
-        }
-
-        // Matched to the artwork's own lettering: its captions are ~18px tall on a
-        // 900px-tall mockup, and the canvas measures in 1080-tall reference units,
-        // so the painted size scales up by 1080/900 before becoming a font size.
-        const int CaptionSize = 30;
-        // Side margin between a caption and the painted frame around it, in screen fractions.
-        const float CapPad = 0.008f;
-
-        static bool PrefOn(string key, int def) => PlayerPrefs.GetInt(key, def) == 1;
-
-        // Flip a 0/1 pref without the click sound — SkinChoice plays it already.
-        static void FlipPrefQuiet(string key, int def)
-        {
-            PlayerPrefs.SetInt(key, PlayerPrefs.GetInt(key, def) == 1 ? 0 : 1);
-            PlayerPrefs.Save();
-        }
-
-        /// <summary>
-        /// A painted control whose caption cycles when tapped: chip to hide the baked
-        /// value, invisible tap-zone for the press flash, live caption on top.
-        /// </summary>
-        Text SkinChoice(Transform root, float x0, float top0, float x1, float top1, string name,
-            System.Func<string> caption, System.Action advance, System.Action after)
-        {
-            Skin.Chip(root, x0, top0, x1, top1, Skin.Interior);
-            Text live = null;
-            Skin.Zone(root, x0, top0, x1, top1, () =>
-            {
-                advance();
-                if (!Audio.Muted) Audio.Play("click", 0.6f);
-                after?.Invoke();
-                if (live != null) live.text = caption();
-            }, name);
-            // The chip spans the full interior (it must hide every painted pixel),
-            // but the caption is inset a little so a long value stops short of the
-            // ornate border instead of kissing it.
-            live = Skin.Fit(Skin.LiveText(root, caption(), x0 + CapPad, top0, x1 - CapPad, top1,
-                CaptionSize, Color.white), CaptionSize);
-            return live;
-        }
-
-        /// <summary>
-        /// A rebindable key row over the painted frame. Tapping it shows a prompt in
-        /// place of the key name, then the caption updates the instant a key is
-        /// pressed — so the screen finally reflects what you actually bound.
-        /// </summary>
-        void SkinRebind(Transform root, float x0, float top0, float x1, float top1,
-            string label, string action)
-        {
-            Skin.Chip(root, x0, top0, x1, top1, Skin.Interior);
-            Text live = null;
-            System.Func<string> caption = () => Skin.Caption(label, Controls.Name(Controls.Get(action)));
-            Skin.Zone(root, x0, top0, x1, top1,
-                () => StartCoroutine(CaptureKeyLive(action, live, label, caption)), action);
-            // The chip spans the full interior (it must hide every painted pixel),
-            // but the caption is inset a little so a long value stops short of the
-            // ornate border instead of kissing it.
-            live = Skin.Fit(Skin.LiveText(root, caption(), x0 + CapPad, top0, x1 - CapPad, top1,
-                CaptionSize, Color.white), CaptionSize);
-        }
-
-        // Skinned-screen key capture: same as CaptureKey but drives a Skin LiveText
-        // caption instead of a code-built button label.
-        System.Collections.IEnumerator CaptureKeyLive(string action, Text live, string label,
-            System.Func<string> caption)
-        {
-            if (live != null) live.text = Skin.Caption(label, "press a key…");
-            yield return CaptureKeySilent(action);
-            if (live != null) live.text = caption();
-        }
-
-        /// <summary>
-        /// A real, draggable volume slider laid over one of the painted bars, rebuilt
-        /// in the artwork's own style: blood-red fill on a black track with the same
-        /// diamond handle. Also replaces the frozen "100%" to its right.
-        /// </summary>
-        void SkinSlider(Transform root, float centerY, string name,
-            System.Func<float> get, System.Action<float> set)
-        {
-            // Bar geometry measured off the mockup (all three bars share it).
-            const float BarX0 = 0.378f, BarX1 = 0.628f;   // painted bar incl. end caps
-            const float Half = 0.0148f;                    // half the bar's height
-            float top = centerY - Half, bot = centerY + Half;
-
-            // Hide the painted bar and its baked percentage.
-            Skin.Chip(root, BarX0, top, BarX1, bot, Skin.Interior);
-            Skin.Chip(root, 0.638f, centerY - 0.018f, 0.70f, centerY + 0.018f, Skin.Interior);
-
-            // The slot is deliberately TALLER than the painted bar: its height is the
-            // grab area (a 13px-tall bar is nearly impossible to hit with a thumb),
-            // while the visible groove stays bar-thin via StretchBand below. Height
-            // doesn't affect the slider's horizontal travel, so the feel is unchanged.
-            var slot = Skin.Slot(root, "Slider_" + name, BarX0, centerY - 0.026f, BarX1, centerY + 0.026f);
-            // An invisible full-slot graphic on the SAME object as the Slider, so a
-            // press anywhere along the bar reaches it — not just one on the handle.
-            var grab = slot.gameObject.AddComponent<Image>();
-            grab.color = new Color(1f, 1f, 1f, 0f);
-            var slider = slot.gameObject.AddComponent<Slider>();
-
-            const float BarFrac = 0.28f;   // visible groove height as a fraction of the grab area
-
-            // Track: a thin dark groove the full width of the painted bar.
-            var track = new GameObject("Track", typeof(RectTransform)).AddComponent<Image>();
-            track.transform.SetParent(slot, false);
-            track.color = new Color(0.10f, 0.03f, 0.04f, 1f);
-            track.raycastTarget = false;
-            StretchBand(track.rectTransform, BarFrac);
-
-            // Fill: the blood red of the artwork, growing left to right.
-            var fillArea = new GameObject("FillArea", typeof(RectTransform)).GetComponent<RectTransform>();
-            fillArea.SetParent(slot, false);
-            StretchBand(fillArea, BarFrac);
-            var fill = new GameObject("Fill", typeof(RectTransform)).AddComponent<Image>();
-            fill.transform.SetParent(fillArea, false);
-            fill.color = Skin.BarRed;
-            fill.raycastTarget = false;
-            var fr = fill.rectTransform;
-            fr.anchorMin = Vector2.zero; fr.anchorMax = Vector2.one;
-            fr.offsetMin = fr.offsetMax = Vector2.zero;
-
-            // Handle: the artwork's diamond, i.e. a square turned 45 degrees. The
-            // rotation lives on a CHILD so the Slider can size the handle freely.
-            var handleArea = new GameObject("HandleArea", typeof(RectTransform)).GetComponent<RectTransform>();
-            handleArea.SetParent(slot, false);
-            handleArea.anchorMin = Vector2.zero; handleArea.anchorMax = Vector2.one;
-            handleArea.offsetMin = new Vector2(11, 0); handleArea.offsetMax = new Vector2(-11, 0);
-            var handle = new GameObject("Handle", typeof(RectTransform)).GetComponent<RectTransform>();
-            handle.SetParent(handleArea, false);
-            handle.sizeDelta = new Vector2(22, 0);
-            var diamond = new GameObject("Diamond", typeof(RectTransform)).AddComponent<Image>();
-            diamond.transform.SetParent(handle, false);
-            diamond.sprite = Theme.Square;
-            diamond.color = new Color(0.86f, 0.30f, 0.31f, 1f);
-            var dr = diamond.rectTransform;
-            dr.anchorMin = dr.anchorMax = new Vector2(0.5f, 0.5f);
-            dr.pivot = new Vector2(0.5f, 0.5f);
-            dr.anchoredPosition = Vector2.zero;
-            dr.sizeDelta = new Vector2(17, 17);
-            dr.localRotation = Quaternion.Euler(0, 0, 45f);
-
-            slider.targetGraphic = diamond;
-            slider.fillRect = fr;
-            slider.handleRect = handle;
-            slider.direction = Slider.Direction.LeftToRight;
-            slider.minValue = 0f; slider.maxValue = 1f;
-            slider.SetValueWithoutNotify(get());
-
-            var pct = Skin.LiveText(root, Mathf.RoundToInt(get() * 100f) + "%",
-                0.638f, centerY - 0.018f, 0.70f, centerY + 0.018f, 28, Skin.ValueBone);
-
-            slider.onValueChanged.AddListener(v =>
-            {
-                set(v);
-                pct.text = Mathf.RoundToInt(v * 100f) + "%";
-            });
-        }
-
-        // Like CaptureKey but with no label to update (the caller drives the caption).
-        System.Collections.IEnumerator CaptureKeySilent(string action)
-        {
-            _capturingKey = true;
-            yield return null;   // swallow the click frame
-            while (true)
-            {
-                if (Input.GetKeyDown(KeyCode.Escape)) break;
-                KeyCode picked = KeyCode.None;
-                foreach (KeyCode kc in System.Enum.GetValues(typeof(KeyCode)))
-                {
-                    if (kc == KeyCode.None || (int)kc >= 323 || !Controls.Bindable(kc)) continue;
-                    if (Input.GetKeyDown(kc)) { picked = kc; break; }
-                }
-                if (picked != KeyCode.None)
-                {
-                    Controls.Set(action, picked);
-                    if (!Audio.Muted) Audio.Play("click", 0.6f);
-                    break;
-                }
-                yield return null;
-            }
-            _capturingKey = false;
-        }
-
         // Funnel: how many sessions actually reach an interactive menu (the gap
         // between session_start and this is load/boot bounce).
         void TrackMenuShown()
@@ -2659,52 +2331,6 @@ namespace TrustIssues
             _onBack = ShowMenu;
 
             BuildCompactSettings(root);
-            return;
-
-            Theme.Label(root, "SETTINGS", 86, Theme.Player,
-                new Vector2(0.5f, 0.5f), new Vector2(0, 440), new Vector2(1400, 120));
-
-            // ---- Rebindable ability keys ----
-            Theme.Label(root, "CONTROLS", 40, new Color(1, 1, 1, 0.85f),
-                new Vector2(0.5f, 0.5f), new Vector2(0, 350), new Vector2(1200, 60));
-            Theme.Label(root, "click an action, then press the new key  (Esc cancels)", 24, Theme.Coin,
-                new Vector2(0.5f, 0.5f), new Vector2(0, 305), new Vector2(1200, 40));
-            MakeRebindButton(root, new Vector2(-250, 240), "JUMP", "jump");
-            MakeRebindButton(root, new Vector2(250, 240), "SHOOT", "shoot");
-            MakeRebindButton(root, new Vector2(-250, 156), "DASH", "dash");
-            MakeRebindButton(root, new Vector2(250, 156), "BAT-GLIDE", "fly");
-            Theme.Label(root, "move:  A D / ← →        restart:  R        pause:  Esc", 26,
-                new Color(1, 1, 1, 0.6f), new Vector2(0.5f, 0.5f), new Vector2(0, 86), new Vector2(1200, 44));
-
-            // ---- Audio volume sliders (0–100%) — independent of the master HUD mute ----
-            Theme.Label(root, "AUDIO", 40, new Color(1, 1, 1, 0.85f),
-                new Vector2(0.5f, 0.5f), new Vector2(0, 20), new Vector2(1200, 60));
-            MakeVolumeSlider(root, new Vector2(0, -55), "MUSIC",
-                () => Audio.MusicVol, v => Audio.MusicVol = v);
-            MakeVolumeSlider(root, new Vector2(0, -125), "SFX",
-                () => Audio.SfxVol, v => { Audio.SfxVol = v; });
-            MakeVolumeSlider(root, new Vector2(0, -195), "VOICE",
-                () => Voice.Volume, v => Voice.Volume = v);
-
-            // ---- Gameplay ----
-            MakeDifficultyChip(root, new Vector2(0, -252), new Vector2(620, 58));
-            Theme.Label(root, Diff.Blurb, 22, new Color(1, 1, 1, 0.6f),
-                new Vector2(0.5f, 0.5f), new Vector2(0, -294), new Vector2(1200, 36));
-            MakeToggle(root, new Vector2(-290, -348), "REPLAY GHOST", "opt_replay_ghost", 0);
-            MakeToggle(root, new Vector2(290, -348), "ON-SCREEN PADS", "opt_touch", 0);
-            MakeMoveModeToggle(root, new Vector2(-290, -414));
-            MakeToggle(root, new Vector2(290, -414), "2.5D DEPTH", "opt_25d", 1, 420f, ApplyDepthMode);
-
-            // REQUIRED ATTRIBUTION. Every music track is Kevin MacLeod's, licensed
-            // CC BY — free to ship commercially, but only while the credit is
-            // visible. Deleting this line invalidates the game's music licence, so
-            // it lives on the Settings screen where it can't be lost in a redesign.
-            Theme.Label(root, "Music by Kevin MacLeod (incompetech.com) - licensed under Creative Commons BY 4.0",
-                18, new Color(1, 1, 1, 0.42f),
-                new Vector2(0.5f, 0f), new Vector2(0, 156), new Vector2(1500, 28));
-
-            Theme.Button(root, "‹ BACK", new Color(1, 1, 1, 0.25f), Color.white, 44,
-                new Vector2(0.5f, 0f), new Vector2(0, 40), new Vector2(360, 100), ShowMenu);
         }
 
         void BuildCompactSettings(Transform root)
@@ -2806,46 +2432,6 @@ namespace TrustIssues
             Gothic.Back(root, ShowSettings);
         }
 
-        // A rebind button: shows "ACTION:  Key"; click it, then press any key to set
-        // the new binding (Esc cancels). Backed by the Controls store.
-        void MakeRebindButton(Transform root, Vector2 pos, string label, string action)
-        {
-            Button btn = null;
-            System.Func<string> caption = () => $"{label}:  {Controls.Name(Controls.Get(action))}";
-            btn = Theme.Button(root, caption(), new Color(0.24f, 0.17f, 0.28f, 0.95f), Color.white, 28,
-                new Vector2(0.5f, 0.5f), pos, new Vector2(430, 74),
-                () => StartCoroutine(CaptureKey(btn, label, action, caption)));
-        }
-
-        // Listen for the next key press and bind it to `action`. Esc cancels.
-        System.Collections.IEnumerator CaptureKey(Button btn, string label, string action,
-            System.Func<string> caption)
-        {
-            var t = btn.GetComponentInChildren<Text>();
-            if (t != null) t.text = $"{label}:  press a key…";
-            _capturingKey = true;    // stop HandleBackButton from also eating this Esc
-            yield return null;   // swallow the click frame
-            while (true)
-            {
-                if (Input.GetKeyDown(KeyCode.Escape)) break;          // cancel, keep old binding
-                KeyCode picked = KeyCode.None;
-                foreach (KeyCode kc in System.Enum.GetValues(typeof(KeyCode)))
-                {
-                    if (kc == KeyCode.None || (int)kc >= 323 || !Controls.Bindable(kc)) continue; // skip mouse/joystick + OS keys
-                    if (Input.GetKeyDown(kc)) { picked = kc; break; }
-                }
-                if (picked != KeyCode.None)
-                {
-                    Controls.Set(action, picked);
-                    if (!Audio.Muted) Audio.Play("click", 0.6f);
-                    break;
-                }
-                yield return null;
-            }
-            _capturingKey = false;
-            if (t != null) t.text = caption();
-        }
-
         // A labelled 0–100% volume slider backed by getter/setter delegates. Built
         // from a UnityEngine.UI.Slider so it can be dragged or clicked anywhere on
         // the track. Layout per row: [NAME]   [====track====]   [ 70% ].
@@ -2907,49 +2493,6 @@ namespace TrustIssues
                 set(v);
                 pct.text = Mathf.RoundToInt(v * 100f) + "%";
             });
-        }
-
-        // A simple ON/OFF toggle button backed by a PlayerPrefs int (0/1). The caption
-        // shows the live state; clicking flips and persists it.
-        void MakeToggle(Transform root, Vector2 pos, string label, string prefKey, int def, float width = 560f,
-            System.Action onChanged = null)
-        {
-            Button btn = null;
-            System.Func<string> caption = () =>
-                $"{label}:  {(PlayerPrefs.GetInt(prefKey, def) == 1 ? "ON" : "OFF")}";
-            // Smaller font + a width that fits the caption, so it never spills out of the box.
-            btn = Theme.Button(root, caption(), new Color(0.24f, 0.17f, 0.28f, 0.95f), Color.white, 22,
-                new Vector2(0.5f, 0.5f), pos, new Vector2(width, 68), () =>
-                {
-                    int cur = PlayerPrefs.GetInt(prefKey, def);
-                    PlayerPrefs.SetInt(prefKey, cur == 1 ? 0 : 1);
-                    PlayerPrefs.Save();
-                    if (!Audio.Muted) Audio.Play("click", 0.6f);
-                    onChanged?.Invoke();   // live-apply hooks (e.g. 2.5D re-placement)
-                    var t = btn.GetComponentInChildren<Text>();
-                    if (t != null) t.text = caption();
-                });
-        }
-
-        // Movement control mode: bare arrow pads or the virtual joystick. Same
-        // look/behaviour as MakeToggle but flips between two named states
-        // instead of ON/OFF, and re-syncs the live touch layout immediately so
-        // switching mid-settings shows correctly the moment Play resumes.
-        void MakeMoveModeToggle(Transform root, Vector2 pos)
-        {
-            Button btn = null;
-            System.Func<string> caption = () =>
-                $"MOVE:  {(JoystickMode ? "JOYSTICK" : "ARROWS")}";
-            btn = Theme.Button(root, caption(), new Color(0.24f, 0.17f, 0.28f, 0.95f), Color.white, 22,
-                new Vector2(0.5f, 0.5f), pos, new Vector2(420, 68), () =>
-                {
-                    PlayerPrefs.SetInt("opt_joystick", JoystickMode ? 0 : 1);
-                    PlayerPrefs.Save();
-                    if (!Audio.Muted) Audio.Play("click", 0.6f);
-                    SyncMoveMode();
-                    var t = btn.GetComponentInChildren<Text>();
-                    if (t != null) t.text = caption();
-                });
         }
 
         // Anchor a child as a horizontal band centred vertically in its parent,
@@ -3707,10 +3250,14 @@ namespace TrustIssues
             }
 
             // PAINTED LOBBY. The artwork draws the heading, the name plate, HOST, the
-            // CODE box, JOIN, the hint and BACK — so all that goes on top is the two
-            // things that must be REAL (the name field and the code field, because
-            // you have to be able to type into them), the tap-zones, and the status
-            // line. Rects measured off the 1536x1024 mockup.
+            // CODE box, JOIN, the hint and BACK — so all that goes on top is the one
+            // control that must be REAL (the code field, because you have to be able
+            // to type a room code into it), the tap-zones, and the status line.
+            // Rects measured off the 1536x1024 mockup.
+            //
+            // The name plate is DISPLAY ONLY. Names come from a fixed safe vocabulary
+            // (Meta.Nick), so there is no free-text field for a player to type a slur
+            // into and no user-generated content for the store review to worry about.
             //
             // The painted name reads "Heir-609" and the painted status reads
             // "CREATING ROOM…". Both are baked pictures of a moment, so both are
@@ -7630,7 +7177,6 @@ namespace TrustIssues
         // fall through to its default and close the game.
         void HandleBackButton()
         {
-            if (_capturingKey) return;   // a control rebind is swallowing this Esc
             switch (_state)
             {
                 case State.Play:   Pause();  break;   // back opens the pause menu (which has MAIN MENU)

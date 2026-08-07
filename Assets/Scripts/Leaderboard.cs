@@ -49,11 +49,16 @@ namespace TrustIssues
         {
             var body = new ScoreBody { mode = mode, nick = Meta.Nick, value = value,
                 day = DateTime.UtcNow.Year * 10000 + DateTime.UtcNow.Month * 100 + DateTime.UtcNow.Day };
+            // No server, no request. See Analytics.ServerLive.
+            if (!Analytics.ServerLive) return;
             Runner.StartCoroutine(PostScore(body));
         }
 
         public static void Fetch(string mode, string scope, Action<List<Entry>> onResult)
         {
+            // Same fail-soft contract as a server that returns nothing: hand back
+            // an empty board rather than leaving the caller waiting on a callback.
+            if (!Analytics.ServerLive) { onResult?.Invoke(new List<Entry>()); return; }
             Runner.StartCoroutine(GetPage(mode, scope, onResult));
         }
 

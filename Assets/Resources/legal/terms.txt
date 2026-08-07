@@ -14,9 +14,9 @@ We grant you a personal, limited, revocable, non-exclusive, non-transferable lic
 
 3. ONLINE FEATURES
 
-The Game assigns each installation a nickname generated from a fixed, family-safe vocabulary. Players cannot enter a custom nickname in the current release. Challenge codes, leaderboard results, automated death echoes, multiplayer movement, scores, and match actions may be visible to other players. Do not attempt to manipulate, abuse, or exploit these features.
+The Game assigns each installation a nickname generated from a fixed, family-safe vocabulary. Players cannot enter a custom nickname, and the Game provides no chat, messaging, or other way to send text to another player. In the current release the only online feature is a live multiplayer race: when you host or join one, your generated nickname, movement, score, and match actions are visible to the other player in that room. Online leaderboards and death echoes are not active in this release. Do not attempt to manipulate, abuse, or exploit these features.
 
-We may remove records, restrict online features, or suspend access when reasonably needed to protect players, enforce these Terms, or secure the Game. Report an online issue to nuruddinshabbir3@gmail.com with the generated nickname, approximate time, and what occurred.
+We may restrict online features or suspend access when reasonably needed to protect players, enforce these Terms, or secure the Game. Report an online issue to nuruddinshabbir3@gmail.com with the generated nickname, approximate time, and what occurred.
 
 4. MULTIPLAYER AND THIRD-PARTY SERVICES
 

@@ -18,6 +18,23 @@ namespace TrustIssues
     /// </summary>
     public static class Analytics
     {
+        /// <summary>
+        /// THE ONE SWITCH FOR EVERYTHING THAT LEAVES THE DEVICE (except Photon,
+        /// which is a separate live service). Currently FALSE.
+        ///
+        /// Analytics, leaderboards and death echoes all talk to the same server,
+        /// and that server is not running. With this false the game makes no
+        /// request at all, which is what the shipped privacy policy now says and
+        /// what keeps the Play "Data safety" form a clean "no data collected".
+        /// Left true against a dead host, the app would just burn battery
+        /// retrying while the policy described collection that wasn't happening.
+        ///
+        /// TO GO LIVE LATER: stand the server up, point Endpoint at it, flip this
+        /// to true, put the player-facing analytics opt-out back on the Settings
+        /// screen, and update the privacy policy + Data safety form to match.
+        /// </summary>
+        public static readonly bool ServerLive = false;
+
         // ====== EDIT THIS ONE LINE when you deploy ======
         // Local testing (Unity Editor):  "http://localhost:3000/collect"
         // Live (after deploying to Render): "https://<your-app>.onrender.com/collect"
@@ -35,11 +52,32 @@ namespace TrustIssues
         static AnalyticsRunner _runner;
 
         // The anonymous per-device id, shared with the echo system so players are
-        // never shown their OWN tombstones.
-        public static string DeviceId => _deviceId ?? "";
+        // never shown their OWN tombstones. Minted on first use rather than in
+        // Init(), because the echo system still needs it when collection is off.
+        public static string DeviceId
+        {
+            get
+            {
+                if (string.IsNullOrEmpty(_deviceId))
+                {
+                    _deviceId = PlayerPrefs.GetString(DeviceKey, "");
+                    if (string.IsNullOrEmpty(_deviceId))
+                    {
+                        _deviceId = Guid.NewGuid().ToString("N");
+                        PlayerPrefs.SetString(DeviceKey, _deviceId);
+                        PlayerPrefs.Save();
+                    }
+                }
+                return _deviceId;
+            }
+        }
 
         public static void Init()
         {
+            // Nothing to start while the master switch is off: no flush runner
+            // spawns and no request is ever built.
+            if (!ServerLive) return;
+
             if (_started)
             {
                 // Editor "Enter Play Mode without domain reload": statics survive
@@ -50,13 +88,7 @@ namespace TrustIssues
             }
             _started = true;
 
-            _deviceId = PlayerPrefs.GetString(DeviceKey, "");
-            if (string.IsNullOrEmpty(_deviceId))
-            {
-                _deviceId = Guid.NewGuid().ToString("N");
-                PlayerPrefs.SetString(DeviceKey, _deviceId);
-                PlayerPrefs.Save();
-            }
+            _ = DeviceId;                                 // mint/load the anonymous id
             _sessionId = Guid.NewGuid().ToString("N");
             _version = Application.version;
 
@@ -78,16 +110,12 @@ namespace TrustIssues
         }
 
         /// <summary>
-        /// The player's opt-out. The privacy policy shipped with the game promises
-        /// a switch that stops gameplay analytics, and a policy that promises a
-        /// control which doesn't exist is a false statement, not a rounding error —
-        /// so the switch is here and it is checked on the single path every event
-        /// goes through. Default ON; turning it off drops events at the source, so
-        /// nothing is queued and nothing can be sent later.
+        /// The player's opt-out. Gated by <see cref="ServerLive"/>, so while the
+        /// game ships without a server this reads false no matter what is stored.
         /// </summary>
         public static bool Enabled
         {
-            get => PlayerPrefs.GetInt("opt_analytics", 1) == 1;
+            get => ServerLive && PlayerPrefs.GetInt("opt_analytics", 1) == 1;
             set
             {
                 PlayerPrefs.SetInt("opt_analytics", value ? 1 : 0);

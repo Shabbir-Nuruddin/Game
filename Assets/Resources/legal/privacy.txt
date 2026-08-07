@@ -14,25 +14,25 @@ The Game stores progress, unlocked floors, deaths, checkpoints, achievements, be
 
 3. INFORMATION SENT OFF YOUR DEVICE
 
-Gameplay analytics: The Game may send a random installation identifier, random session identifier, app version, timestamps, game mode, floor, deaths, score, checkpoints, selected options, gameplay timing and positions, run outcomes, and death causes to our game service. We use this to find broken flows, balance levels, measure feature use, and improve the Game. We do not use it for advertising or advertising profiles.
+Gameplay analytics: None. This release does not collect analytics. It does not send gameplay events, identifiers, or usage data to us, and it contains no advertising or analytics SDKs. If we introduce analytics in a future version, we will update this policy and the store listing before doing so.
 
-Leaderboards and death echoes: Records may contain the automatically generated nickname, mode, floor, score or death count, death location and cause, date, and random installation identifier. Other players may see the generated nickname, score, and a short death echo.
+Leaderboards and death echoes: Not active in this release. Scores and death markers are not uploaded and no online records are created.
 
-Live multiplayer: When you host or join a race, the Game connects to Photon, operated by Exit Games GmbH. Photon processes room codes, the generated nickname, network and connection information, and real-time gameplay state needed for the match. Players in the room receive relevant movement, score, and match actions. Photon may process IP addresses under its own privacy policy.
+Live multiplayer: This is the only feature that sends information off your device. When you choose to host or join a race, the Game connects to Photon, operated by Exit Games GmbH. Photon processes the room code, the automatically generated nickname, network and connection information, and the real-time gameplay state needed for the match. The other player in the room receives relevant movement, score, and match actions. Photon may process IP addresses under its own privacy policy. If you never open multiplayer, the Game makes no connection of this kind.
 
 Device services: Optional story narration uses the Android Text-to-Speech service. Depending on the installed provider, narration may be processed locally or by that provider. Sharing uses Android's share sheet and the app you select handles the shared material.
 
 4. PURPOSES AND PROVIDERS
 
-We process information to operate gameplay, multiplayer, leaderboards and death echoes; save progress; secure and troubleshoot the Game; improve balance and performance; and comply with law. Render hosts our game service, Neon hosts its database, and Photon provides multiplayer networking. Providers may process information in other countries. We do not sell personal information or share it for cross-context behavioural advertising.
+We process information only to run a live multiplayer match when you start one, and to keep your progress on your own device. Photon provides the multiplayer networking and may process information in other countries under its own privacy policy. We do not sell personal information and we do not share it for cross-context behavioural advertising.
 
 5. RETENTION
 
-Gameplay records are retained while reasonably needed to operate and improve the Game or until a valid deletion request is completed. Death-echo lists are pruned as newer records arrive. Leaderboard scores remain while the leaderboard operates or until valid deletion. Local data remains until cleared, overwritten, or the Game is uninstalled. Infrastructure providers may retain security logs under their own schedules.
+Photon holds match and connection information under its own retention schedule; we do not keep a copy. Everything else lives on your device and remains until you clear the Game's storage, overwrite it, or uninstall the Game.
 
 6. YOUR CHOICES AND RIGHTS
 
-You can avoid multiplayer and leaderboard participation, mute narration in Settings, clear local data through Android Settings, or uninstall the Game. To request access to or deletion of server-side information, email nuruddinshabbir3@gmail.com with the generated nickname and approximate dates of play. Depending on where you live, you may have additional access, correction, deletion, restriction, portability, objection, consent-withdrawal, or complaint rights.
+You can avoid multiplayer entirely and play the whole Game offline, mute narration in Settings, clear local data through Android Settings, or uninstall the Game. Because we do not operate a server that stores your information in this release, there is normally nothing on our side to access or delete; if you have a question or a request, email nuruddinshabbir3@gmail.com. Depending on where you live, you may have additional access, correction, deletion, restriction, portability, objection, consent-withdrawal, or complaint rights.
 
 7. CHILDREN
 
@@ -40,7 +40,7 @@ Trust Issues is not directed to children under 13 and should not be used below t
 
 8. SECURITY AND CHANGES
 
-Network traffic uses HTTPS/TLS or secure Photon transport where supported. No method is completely secure. We may update this policy when the Game, providers, or legal requirements change. The date above identifies the latest version.
+Multiplayer traffic uses Photon's secure transport where supported. No method is completely secure. We may update this policy when the Game, providers, or legal requirements change, and the date above identifies the latest version. If a future version begins collecting information that this version does not, we will update this policy and the store listing before that version is released.
 
 CONTACT
 

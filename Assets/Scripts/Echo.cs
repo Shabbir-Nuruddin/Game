@@ -48,6 +48,8 @@ namespace TrustIssues
         /// <summary>Fire-and-forget: this death becomes a tombstone in other players' games.</summary>
         public static void Report(string mode, int level, int day, Vector2 pos, string cause)
         {
+            // No server, no request. See Analytics.ServerLive.
+            if (!Analytics.ServerLive) return;
             var b = new Body
             {
                 mode = mode, level = level, day = day,
@@ -60,6 +62,9 @@ namespace TrustIssues
         /// <summary>Fetch other players' deaths for a floor (session-cached, fail-soft).</summary>
         public static void Fetch(string mode, int level, int day, Action<List<Entry>> onResult)
         {
+            // No server: hand back an empty list, exactly as the documented
+            // fail-soft path already does when the request comes back cold.
+            if (!Analytics.ServerLive) { onResult?.Invoke(new List<Entry>()); return; }
             string key = mode + "|" + level + "|" + day;
             if (_cache.TryGetValue(key, out var hit)) { onResult?.Invoke(hit); return; }
             Runner.StartCoroutine(Get(key, mode, level, day, onResult));
