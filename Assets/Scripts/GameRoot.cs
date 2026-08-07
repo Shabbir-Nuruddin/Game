@@ -1732,82 +1732,6 @@ namespace TrustIssues
         // mockup. Painted labels/values stay as-is (the picture supplies the look);
         // the zones just make them work.
 
-        // THE CASTLE — 40 floor seals in an 8x5 grid, numbered in a switchback the
-        // same way the artwork paints them (row1 L→R 1-8, row2 L→R 16-9, etc.).
-        //
-        // These fractions are MEASURED off castle_bg.jpg (the bone-white numerals were
-        // located pixel by pixel), not estimated. The previous guesses spread the grid
-        // from 0.135 to 0.865 when the painted seals actually run 0.190 → 0.819, so
-        // every tap landed on the seal to its right — tapping the painted "1" started
-        // floor 2, and the drift grew across the row. Seals sit on a perfectly even
-        // pitch, so one origin + one step reproduces all forty exactly.
-        const float CastleX0 = 0.1900f, CastleStepX = 0.08988f;   // column centres
-        static readonly float[] CastleRowY = { 0.2956f, 0.4244f, 0.5533f, 0.6817f, 0.8106f };
-        const float CastleHalfW = 0.040f, CastleHalfH = 0.056f;   // tap-zone half-size
-
-        void BuildSkinnedCastle(Transform root)
-        {
-            int unlocked = CastleUnlocked;
-            for (int r = 0; r < 5; r++)
-                for (int col = 0; col < 8; col++)
-                {
-                    int number = r == 0 ? 1 + col
-                               : r == 1 ? 16 - col
-                               : r == 2 ? 17 + col
-                               : r == 3 ? 32 - col
-                                        : 33 + col;
-                    int idx = number - 1;
-                    if (idx < 0 || idx >= Levels.Count) continue;
-                    float cx = CastleX0 + col * CastleStepX, cy = CastleRowY[r];
-                    bool locked = idx > unlocked;
-                    bool here = idx == unlocked;
-
-                    // Progress has to be drawn live: a veil over the floors you
-                    // haven't reached, and the painting's own red glow over the one
-                    // you're actually up to. The artwork baked that glow onto seal 1
-                    // for ever, so the picture was lit under floor 1 no matter how
-                    // far you'd climbed — the glow has been lifted off the sheet
-                    // (castle_bg) and cut into ui/seal_glow, and it now follows you.
-                    if (locked)
-                        CastleSealVeil(root, cx, cy, new Color(0.02f, 0.01f, 0.03f, 0.62f), Theme.Circle);
-                    else if (here)
-                        CastleSealGlow(root, cx, cy);
-
-                    Skin.Zone(root, cx - CastleHalfW, cy - CastleHalfH, cx + CastleHalfW, cy + CastleHalfH,
-                        locked ? (System.Action)(() => ShowHint("Sealed — clear the floor before it first."))
-                               : (System.Action)(() => StartGame(idx)), "floor" + number);
-                }
-            Skin.Zone(root, 0.40f, 0.865f, 0.60f, 0.965f, ShowMenu, "back");
-        }
-
-        // One round marker sat exactly on a painted seal (veil when locked, ring when
-        // it's the floor you're up to). Anchored by the same top-left fractions as the
-        // tap-zones so it tracks the seal however the artwork scales — the painted
-        // seals are ~96px across on the 1600x900 mockup.
-        const float SealHalfW = 0.0300f, SealHalfH = 0.0533f;
-        void CastleSealVeil(Transform root, float cx, float cy, Color color, Sprite sprite)
-        {
-            var rt = Skin.Slot(root, "Seal", cx - SealHalfW, cy - SealHalfH, cx + SealHalfW, cy + SealHalfH);
-            var img = rt.gameObject.AddComponent<Image>();
-            img.sprite = sprite; img.color = color; img.raycastTarget = false;
-        }
-
-        // "YOU ARE HERE" — the crowned red halo lifted off the painting's own first
-        // seal, re-laid over whichever floor you're up to. The cut is 148x138 of the
-        // 1600x900 sheet, centred on the seal, so these are its exact fractions: the
-        // halo sits a little higher than centre because the skull crown rides above
-        // the seal. Falls back to nothing if the cut is missing — the veil on the
-        // sealed floors already shows how far you've climbed.
-        const float GlowHalfW = 0.04625f, GlowUp = 0.08667f, GlowDown = 0.06667f;
-        void CastleSealGlow(Transform root, float cx, float cy)
-        {
-            var rt = Skin.Slot(root, "SealGlow", cx - GlowHalfW, cy - GlowUp, cx + GlowHalfW, cy + GlowDown);
-            var img = rt.gameObject.AddComponent<Image>();
-            img.sprite = Skin.Cut("seal_glow");
-            img.color = Color.white; img.raycastTarget = false;
-            if (img.sprite == null) Destroy(rt.gameObject);
-        }
-
         // WARDROBE — 10 character cards in a 5x2 grid, same order as Skins.All.
         //
         // The painting bakes EVERY card's caption into the picture: THE HEIR is drawn
@@ -2537,164 +2461,232 @@ namespace TrustIssues
         }
 
         // A CANDY MAP: levels are sweets along a snaking trail, not a boring grid.
-        // Which castle tier the map screen is showing (-1 = follow progress).
-        int _mapWorld = -1;
         // Floors per castle tier — matches WorldOf()'s 10-floor worlds.
         const int FloorsPerWorld = 10;
 
         /// <summary>
-        /// THE CASTLE map. This replaced a flat 8-column grid of numbered discs
-        /// that told the player nothing about where they were — it read as a level
-        /// list, not a place. Now each world is a TOWER SECTION you climb: floor 1
-        /// sits at the bottom, the path switchbacks up the stonework, and the four
-        /// tiers (Castle / Crypt / Swamp / Throne) are their own coloured floors of
-        /// one building, tinted with the exact theme colours that world uses in
-        /// play. Tabs pick the tier; sealed tiers stay locked behind progress.
+        /// THE CASTLE map — one continuous climb you drag with your thumb.
+        ///
+        /// This replaced a four-tab grid: ten seals a page, four pages, no way to
+        /// see the run as a whole. Tabs are a filing cabinet, and the castle is
+        /// supposed to be a PLACE. Now all 40 floors are a single winding road
+        /// that you scroll — floor 1 at the bottom, floor 40 at the top — so the
+        /// distance you've climbed is a physical length you drag past, and the
+        /// dark stretch above you is visibly how far there is left to go.
+        ///
+        /// Three things the map has to say, borrowed from what makes Level
+        /// Devil's map worth scrolling back through:
+        ///   • WHERE YOU ARE — the live floor wears a ring nothing else has.
+        ///   • WHAT IT COST — every floor carries its lifetime death count, so
+        ///     the map is a record of the fight, not a list of buttons.
+        ///   • WHAT'S COMING — bosses sit bigger on the road, milestone floors
+        ///     are marked, and locked floors are visible but dead.
         /// </summary>
         void ShowLevelSelect()
         {
             Audio.Play("click");
             _state = State.Menu;
             if (_menuPanel != null) Destroy(_menuPanel);
-            _menuPanel = Overlay(new Color(Theme.Sky.r, Theme.Sky.g, Theme.Sky.b, 0.82f), out var root);
+            _menuPanel = Overlay(new Color(0.030f, 0.014f, 0.026f, 1f), out var root);
             _onBack = ShowMenu;
 
-            // Exact artwork if present: 40 tap-zones over the painted seal grid.
-            if (Skin.Background(root, "castle_bg") != null) { BuildSkinnedCastle(root); return; }
+            // The painted castle stays as the BACKDROP. It's a fixed picture of a
+            // 40-seal grid, so it can't be the map any more, but it's the right
+            // wall to hang the road on — dimmed so the live nodes read on top.
+            var art = Skin.Background(root, "castle_bg");
+            if (art != null) art.color = new Color(0.34f, 0.32f, 0.38f, 1f);
+            else Gothic.Backdrop(root);
 
             int unlocked = CastleUnlocked;
-            int worlds = Mathf.CeilToInt(Levels.Count / (float)FloorsPerWorld);
-            if (_mapWorld < 0) _mapWorld = WorldOf(Mathf.Min(unlocked, Levels.Count - 1));
-            _mapWorld = Mathf.Clamp(_mapWorld, 0, worlds - 1);
-            int w = _mapWorld;
+            int count = Levels.Count;
 
-            Theme.Label(root, "THE CASTLE", 72, Theme.Player,
-                new Vector2(0.5f, 0.5f), new Vector2(0, 452), new Vector2(1400, 110)).font = Theme.TitleFont;
+            // ---- The scroll viewport --------------------------------------------
+            var viewGo = new GameObject("MapViewport", typeof(RectTransform));
+            viewGo.transform.SetParent(root, false);
+            var view = viewGo.GetComponent<RectTransform>();
+            view.anchorMin = view.anchorMax = new Vector2(0.5f, 0.5f);
+            view.pivot = new Vector2(0.5f, 0.5f);
+            view.anchoredPosition = new Vector2(0, 30);
+            view.sizeDelta = new Vector2(1180, 760);
+            var viewImg = viewGo.AddComponent<Image>();
+            viewImg.color = new Color(0.02f, 0.01f, 0.02f, 0.55f);   // must be raycastable to catch the drag
+            viewGo.AddComponent<RectMask2D>();
 
-            // ---- Tier tabs: the four floors of the castle -----------------------
-            for (int t = 0; t < worlds; t++)
-            {
-                int tier = t;
-                bool tierLocked = unlocked < t * FloorsPerWorld;
-                bool sel = t == w;
-                var tint = ThemeMoon[Mathf.Clamp(t, 0, ThemeMoon.Length - 1)];
-                var bg = sel ? new Color(tint.r * 0.5f, tint.g * 0.5f, tint.b * 0.5f, 0.95f)
-                             : new Color(1f, 1f, 1f, tierLocked ? 0.06f : 0.14f);
-                var tab = Theme.Button(root, tierLocked ? "SEALED" : ThemeNames[t], bg,
-                    tierLocked ? new Color(1, 1, 1, 0.3f) : Color.white, 26,
-                    new Vector2(0.5f, 0.5f), new Vector2(-585 + t * 390, 366), new Vector2(370, 74),
-                    tierLocked ? (System.Action)null
-                               : () => { _mapWorld = tier; ShowLevelSelect(); });
-                if (tierLocked) tab.interactable = false;
-            }
+            var contentGo = new GameObject("MapRoad", typeof(RectTransform));
+            contentGo.transform.SetParent(view, false);
+            var content = contentGo.GetComponent<RectTransform>();
+            content.anchorMin = new Vector2(0.5f, 0f);
+            content.anchorMax = new Vector2(0.5f, 0f);
+            content.pivot = new Vector2(0.5f, 0f);
 
-            // ---- The tower shaft this tier lives in -----------------------------
-            var shaft = new GameObject("Shaft", typeof(RectTransform));
-            shaft.transform.SetParent(root, false);
-            var si = shaft.AddComponent<Image>();
-            si.sprite = Theme.StoneTile;
-            si.type = Image.Type.Tiled;
-            var wTint = ThemeMoon[Mathf.Clamp(w, 0, ThemeMoon.Length - 1)];
-            si.color = new Color(wTint.r * 0.30f, wTint.g * 0.28f, wTint.b * 0.34f, 0.92f);
-            var srt = si.rectTransform;
-            srt.anchorMin = srt.anchorMax = new Vector2(0.5f, 0.5f); srt.pivot = new Vector2(0.5f, 0.5f);
-            srt.anchoredPosition = new Vector2(0, 20); srt.sizeDelta = new Vector2(760, 620);
+            // ---- Node placement: a sine road, floor 1 at the bottom --------------
+            // The wave is what stops 40 evenly-spaced discs reading as a spreadsheet:
+            // the eye follows a curve, and the switchback gives each floor its own
+            // spot on the wall rather than a row and a column.
+            const float RowSpacing = 168f;   // vertical distance between floors
+            const float Swing = 300f;        // how far the road leans off centre
+            const float BottomPad = 130f, TopPad = 190f;
+            float roadH = BottomPad + (count - 1) * RowSpacing + TopPad;
+            content.sizeDelta = new Vector2(1180, roadH);
 
-            // Buttresses either side so the shaft reads as masonry, not a panel.
-            for (int s = -1; s <= 1; s += 2)
-            {
-                var col = new GameObject("Buttress", typeof(RectTransform));
-                col.transform.SetParent(root, false);
-                var ci = col.AddComponent<Image>();
-                ci.sprite = Theme.StoneTile; ci.type = Image.Type.Tiled;
-                ci.color = new Color(wTint.r * 0.18f, wTint.g * 0.17f, wTint.b * 0.22f, 0.95f);
-                var crt = ci.rectTransform;
-                crt.anchorMin = crt.anchorMax = new Vector2(0.5f, 0.5f); crt.pivot = new Vector2(0.5f, 0.5f);
-                crt.anchoredPosition = new Vector2(s * 424, 20); crt.sizeDelta = new Vector2(88, 660);
-            }
-
-            // ---- Switchback climb: floor 1 at the bottom, 10 at the top ---------
-            int first = w * FloorsPerWorld;
-            int count = Mathf.Min(FloorsPerWorld, Levels.Count - first);
-            const int perRow = 2;
-            int rows = Mathf.CeilToInt(count / (float)perRow);
-            float botY = -228f, rowSp = 124f, colX = 186f, node = 104f;
             var pos = new Vector2[count];
             for (int i = 0; i < count; i++)
+                pos[i] = new Vector2(Mathf.Sin(i * 0.62f) * Swing, BottomPad + i * RowSpacing);
+
+            // ---- The blood trail linking the floors ------------------------------
+            // Drawn first so every node sits on top of it.
+            for (int i = 0; i < count - 1; i++)
             {
-                int r = i / perRow, c = i % perRow;
-                if (r % 2 == 1) c = perRow - 1 - c;          // switchback
-                pos[i] = new Vector2(-colX + c * (colX * 2f), botY + r * rowSp);
+                bool walked = i < unlocked;
+                for (int d = 1; d <= 6; d++)
+                {
+                    var p = Vector2.Lerp(pos[i], pos[i + 1], d / 7f);
+                    var dot = new GameObject("Dot", typeof(RectTransform));
+                    dot.transform.SetParent(content, false);
+                    var di = dot.AddComponent<Image>();
+                    di.sprite = Theme.Disc;
+                    di.raycastTarget = false;
+                    di.color = walked ? new Color(0.88f, 0.72f, 0.25f, 0.50f)   // walked — candle gold
+                                      : new Color(0.55f, 0.10f, 0.14f, 0.26f);  // ahead  — faint blood
+                    var drt = di.rectTransform;
+                    drt.anchorMin = drt.anchorMax = new Vector2(0.5f, 0f);
+                    drt.pivot = new Vector2(0.5f, 0.5f);
+                    drt.anchoredPosition = p;
+                    drt.sizeDelta = new Vector2(walked ? 13 : 10, walked ? 13 : 10);
+                }
             }
 
-            // Blood trail linking the climb, drawn under the seals.
-            for (int i = 0; i < count - 1; i++)
-                for (int d = 1; d <= 4; d++)
-                {
-                    var p = Vector2.Lerp(pos[i], pos[i + 1], d / 5f);
-                    var dot = new GameObject("Dot", typeof(RectTransform));
-                    dot.transform.SetParent(root, false);
-                    var di = dot.AddComponent<Image>();
-                    di.color = (first + i) < unlocked
-                        ? new Color(0.88f, 0.72f, 0.25f, 0.55f)   // walked — candle gold
-                        : new Color(0.7f, 0.12f, 0.16f, 0.35f);   // ahead  — faint blood
-                    var drt = di.rectTransform;
-                    drt.anchorMin = drt.anchorMax = new Vector2(0.5f, 0.5f);
-                    drt.pivot = new Vector2(0.5f, 0.5f);
-                    drt.anchoredPosition = p; drt.sizeDelta = new Vector2(15, 15);
-                }
+            // ---- World banners: the road passes through four parts of the castle --
+            for (int wI = 0; wI < Mathf.CeilToInt(count / (float)FloorsPerWorld); wI++)
+            {
+                int firstFloor = wI * FloorsPerWorld;
+                if (firstFloor >= count) break;
+                var tint = ThemeMoon[Mathf.Clamp(wI, 0, ThemeMoon.Length - 1)];
+                var banner = Theme.Label(content, ThemeNames[Mathf.Clamp(wI, 0, ThemeNames.Length - 1)],
+                    30, new Color(tint.r, tint.g, tint.b, unlocked >= firstFloor ? 0.80f : 0.30f),
+                    new Vector2(0.5f, 0f), new Vector2(0, pos[firstFloor].y - 88f), new Vector2(900, 44));
+                banner.raycastTarget = false;
+                if (Theme.MenuFont != null) banner.font = Theme.MenuFont;
+            }
 
-            // ---- The floor seals ------------------------------------------------
+            // ---- The floors ------------------------------------------------------
+            RectTransform hereNode = null;
             for (int i = 0; i < count; i++)
             {
-                int idx = first + i;
-                int lvl = idx;
+                int idx = i;                       // captured by the click handler
                 bool locked = idx > unlocked;
                 bool cleared = idx < unlocked;
                 bool here = idx == unlocked;
                 bool boss = BossTierForFloor(idx) > 0;
-                float sz = boss ? node * 1.22f : node;
+                bool milestone = (idx + 1) % FloorsPerWorld == 0;
+                float sz = boss ? 132f : milestone ? 118f : 100f;
 
                 var go = new GameObject("Floor" + (idx + 1), typeof(RectTransform));
-                go.transform.SetParent(root, false);
+                go.transform.SetParent(content, false);
                 var img = go.AddComponent<Image>();
                 img.sprite = Theme.Disc;
-                img.color = locked ? new Color(0.20f, 0.18f, 0.22f, 0.92f)
-                          : cleared ? new Color(0.86f, 0.68f, 0.24f, 1f)     // sealed in gold
-                          : new Color(0.88f, 0.23f, 0.26f, 1f);              // the live edge
+                img.color = locked ? new Color(0.17f, 0.15f, 0.19f, 0.95f)
+                          : cleared ? new Color(0.86f, 0.68f, 0.24f, 1f)      // sealed in gold
+                                    : new Color(0.88f, 0.23f, 0.26f, 1f);     // the live edge
                 var rt = img.rectTransform;
-                rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
+                rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0f);
                 rt.pivot = new Vector2(0.5f, 0.5f);
-                rt.anchoredPosition = pos[i]; rt.sizeDelta = new Vector2(sz, sz);
+                rt.anchoredPosition = pos[i];
+                rt.sizeDelta = new Vector2(sz, sz);
+
+                // THE RING. Only the live floor gets one, and it sits OUTSIDE the
+                // disc so it reads at a glance while scrolling past.
+                if (here)
+                {
+                    var ring = new GameObject("Ring", typeof(RectTransform));
+                    ring.transform.SetParent(go.transform, false);
+                    var ri = ring.AddComponent<Image>();
+                    ri.sprite = Theme.Disc;
+                    ri.color = new Color(1f, 0.88f, 0.55f, 0.85f);
+                    ri.raycastTarget = false;
+                    var rrt = ri.rectTransform;
+                    rrt.anchorMin = rrt.anchorMax = new Vector2(0.5f, 0.5f);
+                    rrt.pivot = new Vector2(0.5f, 0.5f);
+                    rrt.anchoredPosition = Vector2.zero;
+                    rrt.sizeDelta = new Vector2(sz + 22f, sz + 22f);
+                    ring.transform.SetAsFirstSibling();       // behind the disc = a rim, not a cover
+                    hereNode = rt;
+                    StartCoroutine(Pulse(go.transform));
+                }
+
                 if (!locked)
                 {
-                    var btn = go.AddComponent<Button>(); btn.targetGraphic = img;
-                    btn.onClick.AddListener(() => StartGame(lvl));
+                    var btn = go.AddComponent<Button>();
+                    btn.targetGraphic = img;
+                    btn.onClick.AddListener(() => StartGame(idx));
                 }
-                if (here) StartCoroutine(Pulse(go.transform));   // "you are here"
 
-                Theme.Label(go.transform, (idx + 1).ToString(), Mathf.RoundToInt(42 * sz / 120f),
-                    locked ? new Color(1, 1, 1, 0.25f) : Theme.Ink,
+                var num = Theme.Label(go.transform, (idx + 1).ToString(),
+                    Mathf.RoundToInt(42 * sz / 120f),
+                    locked ? new Color(1, 1, 1, 0.28f) : Theme.Ink,
                     new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(sz, sz));
+                num.raycastTarget = false;
 
-                // Mark the floors that are not just another corridor.
-                string tag = boss ? "BOSS" : (idx + 1) % FloorsPerWorld == 0 ? "EXAM" : null;
+                // Boss / exam marker above the disc.
+                string tag = boss ? "BOSS" : milestone ? "EXAM" : null;
                 if (tag != null)
-                    Theme.Label(go.transform, tag, 20,
-                        locked ? new Color(1, 1, 1, 0.28f) : new Color(1f, 0.86f, 0.5f, 0.95f),
-                        new Vector2(0.5f, 0.5f), new Vector2(0, -sz * 0.72f), new Vector2(200, 34));
+                {
+                    var t = Theme.Label(go.transform, tag, 21,
+                        locked ? new Color(1, 1, 1, 0.30f) : new Color(1f, 0.86f, 0.5f, 0.95f),
+                        new Vector2(0.5f, 0.5f), new Vector2(0, sz * 0.70f), new Vector2(220, 32));
+                    t.raycastTarget = false;
+                }
+
+                // WHAT IT COST. Only floors that have actually killed you carry a
+                // number — a row of honest zeros would just be noise.
+                int fd = FloorDeaths(idx);
+                if (fd > 0)
+                {
+                    var d = Theme.Label(go.transform, fd == 1 ? "1 death" : fd + " deaths", 21,
+                        new Color(0.92f, 0.34f, 0.36f, 0.92f),
+                        new Vector2(0.5f, 0.5f), new Vector2(0, -sz * 0.72f), new Vector2(240, 32));
+                    d.raycastTarget = false;
+                }
             }
 
-            // Where the climb is heading — the tier name sits at the top of the shaft.
-            Theme.Label(root, ThemeNames[Mathf.Clamp(w, 0, ThemeNames.Length - 1)], 34,
-                new Color(wTint.r, wTint.g, wTint.b, 0.85f),
-                new Vector2(0.5f, 0.5f), new Vector2(0, 300), new Vector2(700, 50));
-            Theme.Label(root, $"floors {first + 1}–{first + count}   •   climb from the bottom",
-                24, new Color(1, 1, 1, 0.45f),
-                new Vector2(0.5f, 0.5f), new Vector2(0, -308), new Vector2(900, 40));
+            // ---- Wire the scroll -------------------------------------------------
+            var scroll = viewGo.AddComponent<ScrollRect>();
+            scroll.viewport = view;
+            scroll.content = content;
+            scroll.horizontal = false;
+            scroll.vertical = true;
+            scroll.movementType = ScrollRect.MovementType.Elastic;
+            scroll.elasticity = 0.09f;
+            scroll.scrollSensitivity = 46f;
+            scroll.inertia = true;
+            scroll.decelerationRate = 0.135f;
 
-            Theme.Button(root, "‹ BACK", new Color(1, 1, 1, 0.25f), Color.white, 44,
-                new Vector2(0.5f, 0f), new Vector2(0, 40), new Vector2(360, 100), ShowMenu);
+            // Open on the floor you're actually playing, not at floor 1 — after
+            // floor 25 the live edge is a long way up an 8000-pixel road.
+            Canvas.ForceUpdateCanvases();
+            if (hereNode != null && roadH > view.rect.height)
+            {
+                float target = Mathf.Clamp01(
+                    (hereNode.anchoredPosition.y - view.rect.height * 0.42f) /
+                    (roadH - view.rect.height));
+                scroll.verticalNormalizedPosition = target;
+            }
+
+            // ---- Frame ------------------------------------------------------------
+            var title = Theme.Label(root, "THE CASTLE", 62, Theme.Player,
+                new Vector2(0.5f, 0.5f), new Vector2(0, 452), new Vector2(1400, 96));
+            if (Theme.TitleFont != null) title.font = Theme.TitleFont;
+            title.raycastTarget = false;
+
+            int totalDeaths = 0;
+            for (int i = 0; i < count; i++) totalDeaths += FloorDeaths(i);
+            var sub = Theme.Label(root,
+                $"floor {Mathf.Min(unlocked + 1, count)} of {count}   •   {totalDeaths} deaths so far   •   drag to climb",
+                24, new Color(1, 1, 1, 0.50f),
+                new Vector2(0.5f, 0.5f), new Vector2(0, 400), new Vector2(1100, 38));
+            sub.raycastTarget = false;
+
+            Gothic.Back(root, ShowMenu);
         }
 
         // ==================== MAP EDITOR ====================
@@ -3882,6 +3874,17 @@ namespace TrustIssues
         static void UnlockCastle(int idx)
         {
             if (idx > CastleUnlocked) { PlayerPrefs.SetInt("castle_unlocked", idx); PlayerPrefs.Save(); }
+        }
+
+        // Lifetime deaths on one castle floor, kept forever so the map can show
+        // the cost of every floor you've walked. Not reset by clearing a floor —
+        // the scar is the point.
+        const string FloorDeathKey = "ti_fd_";
+        static int FloorDeaths(int idx) => PlayerPrefs.GetInt(FloorDeathKey + idx, 0);
+        static void AddFloorDeath(int idx)
+        {
+            PlayerPrefs.SetInt(FloorDeathKey + idx, FloorDeaths(idx) + 1);
+            PlayerPrefs.Save();
         }
 
         void BuildLevel()
@@ -5923,6 +5926,11 @@ namespace TrustIssues
                 Handheld.Vibrate();
 #endif
             _floorDeaths++;
+            // Persist the tally PER FLOOR so the castle map can show what each
+            // one cost you. Level Devil's map does this and it's most of why
+            // scrolling back through it is fun: the number is a scar, and a
+            // floor that took you 40 tries is a story you can point at.
+            if (_mode == Mode.Curated) AddFloorDeath(_levelIndex);
             Vector2 deathPos = PlayerTransform != null ? (Vector2)PlayerTransform.position : Vector2.zero;
             if (_mode == Mode.Endless && _level != null)
                 _endlessPeakMeters = Mathf.Max(_endlessPeakMeters, _endlessBankedMeters +
