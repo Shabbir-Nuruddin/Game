@@ -238,7 +238,7 @@ namespace TrustIssues
             // deaths apiece, which reads as noise rather than difficulty.
             static readonly HashSet<TrapType> Blinding = new()
             {
-                TrapType.FakeFloor, TrapType.LateSpike, TrapType.Surprise, TrapType.FakeExit,
+                TrapType.FakeFloor, TrapType.Surprise, TrapType.FakeExit,
                 TrapType.Faller, TrapType.Chandelier, TrapType.Crusher, TrapType.Dart,
                 TrapType.WarpBack, TrapType.Reverse,
             };
@@ -870,7 +870,7 @@ namespace TrustIssues
         }
 
         // THE LIARS — the original thesis, concentrated. Floors that aren't
-        // floors, spikes that arrive after you've landed, ground that was never
+        // floors, spikes that reveal just before you arrive, ground that was never
         // there. Every death on this shape is one you agreed to.
         static Level Liars(Depth d)
         {
@@ -887,7 +887,7 @@ namespace TrustIssues
                 if (d.TakeBlind()) b.FakeFloor(d.Range(2.0f, 2.3f));
                 else b.Gap(d.Range(2.2f, 2.6f));
                 float c = b.Plat(d.Range(5f, 6.5f));
-                if (d.TakeBlind()) b.LateSpike(c + 1.2f);   // it rises the instant you arrive
+                if (d.TakeBlind()) b.LateSpike(c + 1.2f);   // the forward sensor reveals it just before arrival
                 else b.GrowSpike(c + 1.2f);
                 Cross(b, d);
                 float w = d.Range(5f, 6.5f);

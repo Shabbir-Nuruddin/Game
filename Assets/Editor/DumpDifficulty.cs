@@ -15,7 +15,7 @@ using TrustIssues;
 //
 //   • how many traps are in it, and of what kind
 //   • how many of those are UNTELEGRAPHED (kill you with no warning the first
-//     time — fake floors, late spikes, invisible surprises, reactive drops)
+//     time — fake floors, invisible surprises, reactive drops)
 //   • the widest gap you have to jump
 //   • a crude "expected deaths" score
 //
@@ -39,7 +39,7 @@ public static class DumpDifficulty
     // also its entire death count, so their density per stage is the real dial.
     static readonly HashSet<TrapType> Untelegraphed = new()
     {
-        TrapType.FakeFloor, TrapType.LateSpike, TrapType.Surprise, TrapType.FakeExit,
+        TrapType.FakeFloor, TrapType.Surprise, TrapType.FakeExit,
         TrapType.Faller, TrapType.Chandelier, TrapType.Crusher, TrapType.Dart,
         TrapType.WarpBack, TrapType.Reverse,
     };

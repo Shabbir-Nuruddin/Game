@@ -43,7 +43,7 @@ public static class DumpEndless
 
     static readonly HashSet<TrapType> Untelegraphed = new()
     {
-        TrapType.FakeFloor, TrapType.LateSpike, TrapType.Surprise, TrapType.FakeExit,
+        TrapType.FakeFloor, TrapType.Surprise, TrapType.FakeExit,
         TrapType.Faller, TrapType.Chandelier, TrapType.Crusher, TrapType.Dart,
         TrapType.WarpBack, TrapType.Reverse,
     };
