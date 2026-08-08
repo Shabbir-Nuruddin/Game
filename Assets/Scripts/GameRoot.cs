@@ -1794,28 +1794,39 @@ namespace TrustIssues
             Leaderboard.Fetch(mode, mode == "daily" ? "today" : "all", entries =>
             {
                 if (status == null) return;
-                if (entries.Count == 0)
-                {
-                    // Two genuinely different situations, and they must not share a
-                    // line. While the ranking server is down the board CANNOT fill
-                    // up, so "be the first" is a lie that leaves the player waiting
-                    // on something that will never happen — and the old copy leaked
-                    // the server's status to them, which is our problem, not theirs.
-                    status.text = Analytics.ServerLive
-                        ? "No souls ranked yet — be the first."
-                        : "The chronicle is sealed.\nRankings return in a coming update.";
-                    return;
-                }
-                status.text = "";
+                int rank = Leaderboard.MyRank(entries);
+                // The line above the table does the motivating: it names where the
+                // player stands and who is directly in front of them, which is the
+                // only part of a leaderboard most people actually read.
+                status.text = rank == 0
+                    ? "You are unranked. † marks the castle's own dead — beat one."
+                    : $"YOU ARE #{rank} OF {entries.Count}" +
+                      (rank > 1 ? $"   ·   next: {entries[rank - 2].nick} on " +
+                                  $"{entries[rank - 2].value}{(mode == "endless" ? " m" : " deaths")}"
+                                : "   ·   nothing above you");
+
+                // Window the rows around the player so they always see themselves
+                // even once they're deep in the table (a board that scrolls your own
+                // score off the screen is a board you stop opening).
+                int first = 0;
+                if (rank > 0 && entries.Count > MaxRows)
+                    first = Mathf.Clamp(rank - 1 - MaxRows / 2, 0, entries.Count - MaxRows);
+
                 float rowH = (RowsBot - RowsTop) / MaxRows;
-                for (int i = 0; i < entries.Count && i < MaxRows; i++)
+                for (int i = 0; i < MaxRows && first + i < entries.Count; i++)
                 {
+                    var e = entries[first + i];
+                    int place = first + i + 1;
                     float t0 = RowsTop + i * rowH, t1 = t0 + rowH;
-                    // The leader wears candle gold, everyone else bone.
-                    var col = i == 0 ? Theme.Coin : Gothic.Bone;
-                    BoardCell(root, $"{i + 1}", 0.185f, t0, 0.255f, t1, col);
-                    BoardCell(root, entries[i].nick, 0.285f, t0, 0.560f, t1, col, TextAnchor.MiddleLeft);
-                    BoardCell(root, entries[i].value + (mode == "endless" ? " m" : ""),
+                    // Your own row in blood red, the leader in candle gold, and the
+                    // house dead dimmed under a dagger so nobody mistakes a castle
+                    // character for another player.
+                    var col = e.you ? Theme.Player : place == 1 ? Theme.Coin
+                            : e.ghost ? Gothic.Faint : Gothic.Bone;
+                    string name = (e.ghost ? "† " : "") + e.nick + (e.you ? "   (you)" : "");
+                    BoardCell(root, $"{place}", 0.185f, t0, 0.255f, t1, col);
+                    BoardCell(root, name, 0.285f, t0, 0.560f, t1, col, TextAnchor.MiddleLeft);
+                    BoardCell(root, e.value + (mode == "endless" ? " m" : ""),
                         0.600f, t0, 0.820f, t1, col);
                 }
             });
@@ -3585,6 +3596,15 @@ namespace TrustIssues
         }
 
         public void DevOpenBestiary() => ShowCodex();
+
+        /// <summary>Open a leaderboard with a plausible personal best already banked,
+        /// so a screenshot run can prove the "you are #N" row actually renders in
+        /// the right place instead of only ever showing the unranked state.</summary>
+        public void DevOpenLeaderboard(string mode, int myScore)
+        {
+            if (myScore > 0) Leaderboard.Submit(mode, myScore);
+            ShowLeaderboard(mode);
+        }
 
         // Open the race lobby with something typed into both boxes, so a screenshot
         // run can prove the letters are actually visible in the painted slots.
@@ -6172,6 +6192,11 @@ namespace TrustIssues
                 PlayerPrefs.Save();
                 if (metres >= 500) Badges.Award("endless10");
                 if (metres >= 1000) Badges.Award("endless20");
+                // Post the distance as it is BANKED, not only when the run ends.
+                // An Endless run that gets quit out of (or backgrounded, or killed
+                // by the OS) used to never reach the result screen, so the best
+                // distance of the session was simply never ranked.
+                Leaderboard.Submit("endless", metres);
                 StartCoroutine(ContinueEndless());
                 return;
             }
@@ -6541,19 +6566,29 @@ namespace TrustIssues
             Leaderboard.Fetch(mode, scope, entries =>
             {
                 if (list == null) return;
-                if (entries.Count == 0)
-                {
-                    // Same rule as the skinned board above: never promise a race
-                    // the player can't enter, and never leak our server status.
-                    list.text = Analytics.ServerLive
-                        ? "No souls ranked yet — be the first."
-                        : "The chronicle is sealed.\nRankings return in a coming update.";
-                    return;
-                }
+                int rank = Leaderboard.MyRank(entries);
+                string gold = ColorUtility.ToHtmlStringRGB(Theme.Coin);
+                string blood = ColorUtility.ToHtmlStringRGB(Theme.Player);
+                string faint = ColorUtility.ToHtmlStringRGB(Gothic.Faint);
+
                 var sb = new System.Text.StringBuilder();
-                for (int i = 0; i < entries.Count && i < 12; i++)
-                    sb.AppendLine($"{i + 1}.   {entries[i].nick}      {entries[i].value}" +
-                        (mode == "endless" ? " m" : ""));
+                sb.AppendLine(rank == 0
+                    ? $"<color=#{faint}>You are unranked — † marks the castle's own dead. Beat one.</color>\n"
+                    : $"<color=#{blood}>YOU ARE #{rank} OF {entries.Count}</color>\n");
+                // Same windowing rule as the skinned board: never scroll the player
+                // off their own leaderboard.
+                const int Rows = 11;
+                int first = (rank > 0 && entries.Count > Rows)
+                    ? Mathf.Clamp(rank - 1 - Rows / 2, 0, entries.Count - Rows) : 0;
+                for (int i = 0; i < Rows && first + i < entries.Count; i++)
+                {
+                    var e = entries[first + i];
+                    int place = first + i + 1;
+                    string col = e.you ? blood : place == 1 ? gold : e.ghost ? faint : null;
+                    string row = $"{place}.   {(e.ghost ? "† " : "")}{e.nick}{(e.you ? "   (you)" : "")}" +
+                                 $"      {e.value}{(mode == "endless" ? " m" : "")}";
+                    sb.AppendLine(col == null ? row : $"<color=#{col}>{row}</color>");
+                }
                 list.text = sb.ToString();
             });
             Gothic.Back(root, () => { Destroy(panel); ShowMenu(); });

@@ -96,6 +96,17 @@ namespace TrustIssues
             yield return new WaitForSecondsRealtime(1.2f);
             yield return Shot("bestiary");
 
+            // Both leaderboard states, because they are genuinely different screens:
+            // ranked (your row highlighted mid-table, with the rival above you named)
+            // and unranked (never scored — the board still has to look alive).
+            root.DevOpenLeaderboard("endless", 655);
+            yield return new WaitForSecondsRealtime(1.0f);
+            yield return Shot("leaderboard_endless");
+
+            root.DevOpenLeaderboard("castle", 0);
+            yield return new WaitForSecondsRealtime(1.0f);
+            yield return Shot("leaderboard_castle_unranked");
+
             // The castle map, with progress faked to the floor being shot, so the
             // "you are here" glow can be checked against the right seal.
             root.DevOpenCastle(_floor - 1);
