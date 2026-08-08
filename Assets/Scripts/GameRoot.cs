@@ -1796,7 +1796,14 @@ namespace TrustIssues
                 if (status == null) return;
                 if (entries.Count == 0)
                 {
-                    status.text = "No souls ranked yet — be the first.\n(or the leaderboard server isn't live yet)";
+                    // Two genuinely different situations, and they must not share a
+                    // line. While the ranking server is down the board CANNOT fill
+                    // up, so "be the first" is a lie that leaves the player waiting
+                    // on something that will never happen — and the old copy leaked
+                    // the server's status to them, which is our problem, not theirs.
+                    status.text = Analytics.ServerLive
+                        ? "No souls ranked yet — be the first."
+                        : "The chronicle is sealed.\nRankings return in a coming update.";
                     return;
                 }
                 status.text = "";
@@ -6535,7 +6542,14 @@ namespace TrustIssues
             {
                 if (list == null) return;
                 if (entries.Count == 0)
-                { list.text = "No souls ranked yet — be the first.\n(or the leaderboard server isn't live yet)"; return; }
+                {
+                    // Same rule as the skinned board above: never promise a race
+                    // the player can't enter, and never leak our server status.
+                    list.text = Analytics.ServerLive
+                        ? "No souls ranked yet — be the first."
+                        : "The chronicle is sealed.\nRankings return in a coming update.";
+                    return;
+                }
                 var sb = new System.Text.StringBuilder();
                 for (int i = 0; i < entries.Count && i < 12; i++)
                     sb.AppendLine($"{i + 1}.   {entries[i].nick}      {entries[i].value}" +

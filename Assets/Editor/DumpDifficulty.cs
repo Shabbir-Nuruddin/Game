@@ -164,6 +164,7 @@ public static class DumpDifficulty
 
         DumpBloodMoon();
         DumpGenerated();
+        DumpTrapCoverage();
         Debug.Log("DIFFICULTY_DONE -> Builds/difficulty.csv");
     }
 
@@ -293,6 +294,48 @@ public static class DumpDifficulty
         }
         t.AppendLine($"{name,7} | {n,6} | {sumTraps / n,9:F1} | {sumUntel / n,9:F1} | " +
                      $"{worstGap,9:F1} | {sumScore / n,9:F1} | {worstScore,11:F1}");
+    }
+
+    /// <summary>
+    /// Every trap in the Bestiary has to be EARNABLE. A page unlocks the first
+    /// time that trap kills you, so a trap type sitting in Codex.Entries that no
+    /// level actually builds is a collection nobody on earth can complete —
+    /// invisible from inside the game, and exactly the kind of thing a player
+    /// grinds for hours before working out it was never possible. This walks
+    /// every hand-built floor, all five Blood Moon nights and a wide sample of
+    /// generated content, and reports which book pages are reachable where.
+    /// </summary>
+    static void DumpTrapCoverage()
+    {
+        var seen = new Dictionary<TrapType, List<string>>();
+        void Note(Level lvl, string where)
+        {
+            if (lvl == null) return;
+            foreach (var t in lvl.Traps)
+            {
+                if (!seen.TryGetValue(t.type, out var list)) seen[t.type] = list = new List<string>();
+                if (!list.Contains(where)) list.Add(where);
+            }
+        }
+
+        for (int f = 1; f <= Floors; f++) Note(GetFloor(f), "castle");
+        for (int n = 1; n <= 5; n++) Note(Levels.BloodMoonNight(20260809 * 31 + (n - 1) * 7919, n), "bloodmoon");
+        for (int i = 0; i < 240; i++) Note(Levels.Generate(9001 + i * 7919, Mathf.Min(7, 1 + i / 2), false, i), "endless");
+        for (int i = 0; i < 120; i++) Note(Levels.Generate(4200 + i * 101, Mathf.Min(3, 2 + i / 2), race: true), "versus");
+
+        var t2 = new StringBuilder();
+        t2.AppendLine("bestiary page | reachable in");
+        var unreachable = new List<string>();
+        foreach (var entry in Codex.Entries)
+        {
+            bool found = seen.TryGetValue(entry, out var where);
+            t2.AppendLine($"{entry,-14}| {(found ? string.Join(" ", where.ToArray()) : "NOWHERE")}");
+            if (!found) unreachable.Add(entry.ToString());
+        }
+        Debug.Log($"TRAP_COVERAGE ({Codex.Entries.Length} book pages)\n" + t2);
+        Debug.Log(unreachable.Count == 0
+            ? "TRAP_COVERAGE_OK — every Bestiary page can actually be earned in play"
+            : $"TRAP_COVERAGE_PROBLEMS — unearnable pages: {string.Join(", ", unreachable.ToArray())}");
     }
 
     /// <summary>
