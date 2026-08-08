@@ -368,11 +368,15 @@ namespace TrustIssues
             }
         }
 
-        static Sprite _grad;
         /// <summary>A soft vertical gradient sprite for backdrops (1 world unit).</summary>
+        // Cached PER COLOUR PAIR. It used to be a single static sprite, so the second
+        // caller silently got the first caller's colours — which is why the landing's
+        // ground fog came out as a hard-edged copy of the sky.
+        static readonly System.Collections.Generic.Dictionary<(Color, Color), Sprite> _grads = new();
+
         public static Sprite Gradient(Color top, Color bottom)
         {
-            if (_grad != null) return _grad;
+            if (_grads.TryGetValue((top, bottom), out var cached) && cached != null) return cached;
             int h = 64;
             var tex = new Texture2D(1, h);
             for (int y = 0; y < h; y++)
@@ -380,8 +384,9 @@ namespace TrustIssues
             tex.Apply();
             tex.wrapMode = TextureWrapMode.Clamp;
             tex.filterMode = FilterMode.Bilinear;
-            _grad = Sprite.Create(tex, new Rect(0, 0, 1, h), new Vector2(0.5f, 0.5f), h);
-            return _grad;
+            var sprite = Sprite.Create(tex, new Rect(0, 0, 1, h), new Vector2(0.5f, 0.5f), h);
+            _grads[(top, bottom)] = sprite;
+            return sprite;
         }
 
         /// <summary>A coloured rectangle: a SpriteRenderer scaled to size (world units).</summary>

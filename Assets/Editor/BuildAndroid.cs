@@ -43,6 +43,19 @@ namespace TrustIssues.EditorTools
             int previousVersionCode = PlayerSettings.Android.bundleVersionCode;
             PlayerSettings.Android.bundleVersionCode = previousVersionCode + 1;
 
+            // SIGNING. The project may be pointed at the real upload keystore for a
+            // Play Store release, and that keystore's password is not available to a
+            // headless build — Unity fails with "Unable to sign the Android
+            // application" and writes nothing. A sideload build only needs the debug
+            // keystore, so the release settings are parked for the duration of the
+            // build and put back afterwards, whether it succeeds or not.
+            bool hadCustomKeystore = PlayerSettings.Android.useCustomKeystore;
+            string keystorePath = PlayerSettings.Android.keystoreName;
+            string keyalias = PlayerSettings.Android.keyaliasName;
+            PlayerSettings.Android.useCustomKeystore = false;
+            PlayerSettings.Android.keystoreName = "";
+            PlayerSettings.Android.keyaliasName = "";
+
             var options = new BuildPlayerOptions
             {
                 scenes = new[] { "Assets/scene.unity" },
@@ -51,6 +64,11 @@ namespace TrustIssues.EditorTools
                 options = BuildOptions.None,
             };
             BuildReport report = BuildPipeline.BuildPlayer(options);
+
+            PlayerSettings.Android.useCustomKeystore = hadCustomKeystore;
+            PlayerSettings.Android.keystoreName = keystorePath;
+            PlayerSettings.Android.keyaliasName = keyalias;
+
             Debug.Log($"Android build: {report.summary.result}, " +
                       $"{report.summary.totalSize / (1024 * 1024)} MB -> {options.locationPathName}");
             if (report.summary.result == BuildResult.Succeeded)

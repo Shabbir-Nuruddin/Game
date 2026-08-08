@@ -1,0 +1,24 @@
+MUSIC CREDITS
+
+All music in Trust Issues is by Kevin MacLeod (incompetech.com),
+licensed under Creative Commons: By Attribution 4.0.
+http://creativecommons.org/licenses/by/4.0/
+
+TRACKS USED
+
+  Main menu ................ Gymnopedie No 1
+  The Castle (1-10) ........ Ossuary 1 - A Beginning
+  The Crypt (11-20) ........ Bump in the Night
+  The Swamp (21-30) ........ Deep Haze
+  The Throne (31-40) ....... Grim Idol
+  Blood Moon ............... Nightmare Machine
+  Multiplayer arena ........ Dark Times
+  Custom maps .............. Myst on the Moor
+
+This attribution is required by the licence. It is shown here, in the
+Play Store listing, and in the project's MUSIC_CREDITS.md file.
+
+SOUND EFFECTS AND ART
+
+Everything else in the game - the vampire, the castle, the traps, the
+interface and every sound that is not music - was made for Trust Issues.

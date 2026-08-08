@@ -102,6 +102,16 @@ namespace TrustIssues
             yield return new WaitForSecondsRealtime(1.0f);
             yield return Shot("castle");
 
+            // Every settings tab, because they are four different layouts sharing one
+            // frame and only the one you last opened would otherwise be checked.
+            string[] tabs = { "audio", "controls", "difficulty", "legal" };
+            for (int t = 0; t < tabs.Length; t++)
+            {
+                root.DevOpenSettings(t);
+                yield return new WaitForSecondsRealtime(0.8f);
+                yield return Shot("settings_" + tabs[t]);
+            }
+
             root.DevOpenLobby();
             yield return new WaitForSecondsRealtime(1.0f);
             yield return Shot("lobby");

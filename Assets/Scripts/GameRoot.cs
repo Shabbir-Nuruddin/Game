@@ -1476,6 +1476,7 @@ namespace TrustIssues
             if (_mode == Mode.Versus) { Net.Leave(); ClearGhosts(); _mode = Mode.Curated; }
             Memory.RunEndedCleanly();   // back at the menu = not a rage-quit
             Rumor.Disarm();
+            _wipeArmed = false;          // leaving Settings always disarms the wipe
             _state = State.Menu;
             _onBack = BackFromMainMenu;  // top level: back arms "press again to quit"
             Time.timeScale = 1f;
@@ -1491,240 +1492,183 @@ namespace TrustIssues
             // reassigning _menuPanel orphaned it. This was the "map stays" bug.
             if (_menuPanel != null) Destroy(_menuPanel);
 
-            // A lighter wash than the sub-screens: the animated vampire backdrop
-            // (built next) should read clearly through it, while the solid-coloured
-            // buttons stay legible on top.
-            _menuPanel = Overlay(new Color(0.05f, 0.02f, 0.06f, 0.45f), out var root);
+            _menuPanel = Overlay(Crimson.Night, out var root);
 
-            // NIGHTLY TITHE granted up front so BOTH the skinned and classic layouts
-            // read a balance that already includes today's payout.
+            // NIGHTLY TITHE granted up front so the balance shown already includes
+            // today's payout.
             int tithe = Currency.GrantDailyIfDue();
 
-            // Production menu: HD artwork supplies the gothic scenery and empty
-            // ornamental plates; BuildMainMenuV2 adds every interactive label live.
-            if (Skin.Background(root, "menu_bg_v2") != null)
-            {
-                BuildMainMenuV2(root);
-                TrackMenuShown();
-                return;
-            }
-
-            // Animated menu backdrop (blood moon, drifting fog, bats, lightning).
-            // Parented under the menu panel, so it's torn down automatically with
-            // every screen transition — no leak into gameplay.
-            BuildMenuScene(root);
-            Gothic.FrameOnly(root, 18f);
-
-            // Title — blood red with a near-black shadow, sat up near the top so the
-            // button stack has room beneath it.
-            var titleShadow = Theme.Label(root, Theme.Title, 108, Theme.Ink,
-                new Vector2(0.5f, 0.5f), new Vector2(6, 356), new Vector2(1700, 220));
-            titleShadow.font = Theme.TitleFont;
-            var title = Theme.Label(root, Theme.Title, 108, Theme.Player,
-                new Vector2(0.5f, 0.5f), new Vector2(0, 362), new Vector2(1700, 220));
-            title.font = Theme.TitleFont;
-            StartCoroutine(Pulse(title.transform));
-
-            // THE button. One click into the game — new players go straight to
-            // floor 1, returners resume. Pulses like the title so the eye lands
-            // on it first; the mode grid below is for players who want to choose.
-            var play = Gothic.Button(root, $"CONTINUE — FLOOR {Mathf.Max(1, CastleUnlocked + 1)}",
-                new Vector2(0, 174), new Vector2(760, 108), PlayNow, true, 45);
-            StartCoroutine(Pulse(play.transform));
-
-            // Difficulty selector — tap to cycle Casual → Normal → Nightmare.
-            MakeDifficultyChip(root, new Vector2(0, 91), new Vector2(460, 52));
-
-            // Mode buttons, demoted to a compact grid under PLAY so a brand-new
-            // player still has one obvious first action. Endless is present in the
-            // fallback menu as well as the painted production menu.
-            var dim = new Vector2(410, 70);
-            Gothic.Button(root, "BLOOD MOON", new Vector2(-215, 18), dim, StartDaily, false, 29);
-            Gothic.Button(root, "THE CASTLE", new Vector2(215, 18), dim, ShowLevelSelect, false, 29);
-            Gothic.Button(root, "ENDLESS NIGHTS", new Vector2(-215, -62), dim, StartEndless, true, 28);
-            Gothic.Button(root, "MULTIPLAYER", new Vector2(215, -62), dim, ShowVersusLobby, false, 28);
-
-            // (NIGHTLY TITHE was granted up top so both layouts share one payout.)
-
-            // Secondary row — Wardrobe / Bestiary / Settings / Leaderboard.
-            // Five buttons at 260 wide on a 260 pitch were EDGE-TO-EDGE with zero
-            // gap, and Theme.Label sets horizontalOverflow=Overflow — so the long
-            // captions ("BESTIARY 12/30", "LEADERBOARD") spilled straight over their
-            // neighbours. Narrower buttons on the same pitch give every caption a
-            // gutter to overflow into.
-            var sdim = new Vector2(285, 64);
-            Gothic.Button(root, "WARDROBE", new Vector2(-450, -190), sdim, ShowWardrobe, false, 23);
-            Gothic.Button(root, $"BESTIARY {Codex.KnownCount()}/{Codex.Total}", new Vector2(-150, -190), sdim, ShowCodex, false, 20);
-            Gothic.Button(root, "SETTINGS", new Vector2(150, -190), sdim, ShowSettings, false, 23);
-            Gothic.Button(root, "LEADERBOARD", new Vector2(450, -190), sdim, () => ShowLeaderboard("daily"), false, 20);
-
-            BuildMenuNotices(root, tithe);
+            // THE LANDING, as the art pass draws it. The painted menu (menu_bg_v2) is a
+            // picture of the OLD layout — a CONTINUE plate, no record button, shards
+            // instead of blood — so it can't wear this one; the screen is built in code
+            // from the same red-and-black vocabulary as the map and settings.
+            BuildLanding(root, tithe);
             TrackMenuShown();
         }
 
-        void BuildMainMenuV2(Transform root)
-        {
-            Text continueText = Skin.LiveText(root, $"CONTINUE — FLOOR {Mathf.Max(1, CastleUnlocked + 1)}",
-                0.275f, 0.302f, 0.725f, 0.391f, 45, Gothic.Bone);
-            if (Theme.MenuFont != null) continueText.font = Theme.MenuFont;
-            continueText.fontStyle = FontStyle.Bold;
-            Skin.Fit(continueText, 45, 24);
-            Skin.Zone(root, 0.265f, 0.285f, 0.735f, 0.405f, PlayNow, "continue");
+        // Which face the record plate is showing. Tapping it flips between your best
+        // depth and the "no depth recorded" taunt — the design's own interaction, and
+        // the reason a first-time player sees a challenge instead of three dashes.
+        bool _recordFlipped;
 
-            Text difficultyText = Skin.LiveText(root, MenuDifficultyCaption(), 0.345f, 0.426f, 0.655f, 0.484f,
-                28, Gothic.Bone);
-            if (Theme.MenuFont != null) difficultyText.font = Theme.MenuFont;
-            Skin.Fit(difficultyText, 28, 15);
-            Skin.Zone(root, 0.335f, 0.405f, 0.665f, 0.482f, () =>
+        /// <summary>
+        /// THE LANDING. Black night, one red moon, the title, and three ways down:
+        /// tonight's Blood Moon, the Castle you're partway through, and Endless.
+        /// Your deepest run is its own plate on the left — off the Endless button,
+        /// where it used to hide — and everything transient lives along the bottom.
+        /// </summary>
+        void BuildLanding(Transform root, int tithe)
+        {
+            Crimson.Backdrop(root, 340f, -40f, true, 3);
+
+            // ---- Title ------------------------------------------------------------
+            var top = new Vector2(0.5f, 1f);
+            var shadow = Theme.Label(root, Theme.Title, 104, Theme.Hex("480610"), top,
+                new Vector2(6, -168), new Vector2(1700, 200));
+            shadow.font = Theme.TitleFont; shadow.raycastTarget = false;
+            var title = Theme.Label(root, Theme.Title, 104, Theme.Hex("F2ECE1"), top,
+                new Vector2(0, -162), new Vector2(1700, 200));
+            title.font = Theme.TitleFont; title.raycastTarget = false;
+            if (!Options.ReducedMotion) StartCoroutine(Pulse(title.transform));
+            Crimson.Line(root, "DESCEND  ·  DISTRUST  ·  DIE", 26, Crimson.Gold,
+                new Vector2(0, -262), new Vector2(1200, 44), TextAnchor.MiddleCenter, top)
+                .fontStyle = FontStyle.Bold;
+
+            // ---- The three ways down -----------------------------------------------
+            // Blood Moon and the Castle sit side by side with their own state written
+            // underneath them; Endless is the wide crimson plate below, because it's
+            // the run you come back for.
+            var mid = new Vector2(0.5f, 0.5f);
+            Crimson.Btn(root, "BLOOD MOON", mid, new Vector2(-250, 128), new Vector2(430, 96),
+                StartDaily, false, 30, $"TONIGHT  ·  {DailyLen} FLOORS", true);
+            Crimson.Btn(root, "THE CASTLE", mid, new Vector2(250, 128), new Vector2(430, 96),
+                ShowLevelSelect, false, 30,
+                $"FLOOR {Mathf.Min(CastleUnlocked + 1, Levels.Count)} / {Levels.Count}", true);
+            Crimson.Btn(root, "ENDLESS NIGHTS", mid, new Vector2(0, -10), new Vector2(880, 92),
+                StartEndless, true, 34);
+
+            // ---- YOUR DEEPEST NIGHT -------------------------------------------------
+            int deepest = PlayerPrefs.GetInt("best_endless_distance", 0);
+            bool has = deepest > 0 && !_recordFlipped;
+            // A wide bar UNDER the three ways down rather than a card floating off the
+            // left edge: on a narrow screen the centred buttons and a left-anchored
+            // plate walk straight into each other.
+            var plate = Crimson.Panel_(root, mid, new Vector2(-330, -168),
+                                       new Vector2(640, 190), Theme.Hex("1B0C16"), Crimson.Rail);
+            Crimson.Line(plate.transform, "YOUR DEEPEST NIGHT", 19, Crimson.Mute,
+                new Vector2(28, -30), new Vector2(400, 30), TextAnchor.MiddleLeft, new Vector2(0f, 1f))
+                .fontStyle = FontStyle.Bold;
+            if (has)
             {
-                Diff.Current = (Difficulty)(((int)Diff.Current + 1) % 3);
-                if (!Audio.Muted) Audio.Play("click", 0.6f);
-                difficultyText.text = MenuDifficultyCaption();
-            }, "difficulty");
+                Crimson.Line(plate.transform, $"{deepest:N0}m", 50, Crimson.GoldLit,
+                    new Vector2(28, -86), new Vector2(300, 62), TextAnchor.MiddleLeft, new Vector2(0f, 1f))
+                    .fontStyle = FontStyle.Bold;
+                Crimson.Line(plate.transform, DepthTitle(deepest), 20, Crimson.BloodHot,
+                    new Vector2(28, -134), new Vector2(340, 30), TextAnchor.MiddleLeft, new Vector2(0f, 1f))
+                    .fontStyle = FontStyle.Bold;
+                Crimson.Btn(plate.transform, "SHARE", new Vector2(1f, 0.5f), new Vector2(-110, -14),
+                    new Vector2(180, 62), () => StartCoroutine(ShareCard.CaptureAndShare(
+                        "trust_issues_depth.png",
+                        $"I got {deepest}m down in TRUST ISSUES before the castle took me.")),
+                    false, 22);
+            }
+            else
+            {
+                Crimson.Line(plate.transform, "— — —", 38, Crimson.Dead,
+                    new Vector2(28, -84), new Vector2(200, 52), TextAnchor.MiddleLeft, new Vector2(0f, 1f));
+                Crimson.Line(plate.transform, "no depth recorded. the castle isn't impressed.",
+                    20, Crimson.Mute, new Vector2(28, -122), new Vector2(360, 56),
+                    TextAnchor.UpperLeft, new Vector2(0f, 1f));
+                Crimson.Btn(plate.transform, "SET ONE", new Vector2(1f, 0.5f), new Vector2(-110, -14),
+                    new Vector2(190, 62), StartEndless, false, 21);
+            }
 
-            MenuLabel(root, "BLOOD MOON", 0.318f, 0.523f, 0.484f, 0.568f, 30);
-            MenuLabel(root, "THE CASTLE", 0.575f, 0.523f, 0.742f, 0.568f, 30);
-            MenuLabel(root, "ENDLESS NIGHTS", 0.318f, 0.630f, 0.484f, 0.678f, 28);
-            MenuLabel(root, "MULTIPLAYER", 0.575f, 0.630f, 0.742f, 0.678f, 29);
+            // ---- What the castle remembers about you --------------------------------
+            // The greeting is shown HERE, not in the notice stack, so it reads as the
+            // castle talking to you rather than as one more banner along the bottom.
+            string greet = Memory.MenuGreeting();
+            Crimson.Line(root, greet ?? "\"You came back. The stairs remember your weight.\"",
+                24, Theme.Hex("9B848C"), new Vector2(30, -168), new Vector2(600, 172),
+                TextAnchor.MiddleLeft, mid);
 
-            Skin.Zone(root, 0.248f, 0.492f, 0.493f, 0.589f, StartDaily, "bloodmoon");
-            Skin.Zone(root, 0.505f, 0.492f, 0.752f, 0.589f, ShowLevelSelect, "castle");
-            Skin.Zone(root, 0.248f, 0.600f, 0.493f, 0.703f, StartEndless, "endless");
-            Skin.Zone(root, 0.505f, 0.600f, 0.752f, 0.703f, ShowVersusLobby, "multiplayer");
+            // ---- The footer ----------------------------------------------------------
+            // The design's three buttons, plus the two it dropped: Multiplayer and the
+            // Leaderboard are working features, and a feature you can't reach is a
+            // feature you don't have.
+            var bot = new Vector2(0.5f, 0f);
+            var fdim = new Vector2(300, 68);
+            Crimson.Btn(root, "WARDROBE", bot, new Vector2(-620, 200), fdim, ShowWardrobe, false, 22);
+            Crimson.Btn(root, $"BESTIARY {Codex.KnownCount()}/{Codex.Total}", bot, new Vector2(-310, 200), fdim,
+                ShowCodex, false, 20);
+            Crimson.Btn(root, "MULTIPLAYER", bot, new Vector2(0, 200), fdim, ShowVersusLobby, false, 21);
+            Crimson.Btn(root, "LEADERBOARD", bot, new Vector2(310, 200), fdim,
+                () => ShowLeaderboard("daily"), false, 20);
+            Crimson.Btn(root, "SETTINGS", bot, new Vector2(620, 200), fdim, ShowSettings, false, 22);
 
-            Skin.Zone(root, 0.125f, 0.718f, 0.315f, 0.827f, ShowWardrobe, "wardrobe");
-            Skin.Zone(root, 0.315f, 0.718f, 0.520f, 0.827f, ShowCodex, "bestiary");
-            Skin.Zone(root, 0.520f, 0.718f, 0.690f, 0.827f, ShowSettings, "settings");
-            Skin.Zone(root, 0.690f, 0.718f, 0.875f, 0.827f, () => ShowLeaderboard("daily"), "leaderboard");
+            // Balance top-left, streak top-right, exactly as the design frames them.
+            Crimson.BloodCounter(root, new Vector2(0f, 1f), new Vector2(190, -56), 30);
+            if (Meta.Streak > 0 && Meta.StreakAlive)
+            {
+                var s = Crimson.Panel_(root, new Vector2(1f, 1f), new Vector2(-170, -56),
+                                       new Vector2(280, 58), Crimson.Panel, Crimson.Rail);
+                Crimson.Line(s.transform, $"STREAK {Meta.Streak} NIGHTS", 21, Crimson.Gold,
+                    Vector2.zero, new Vector2(260, 40)).fontStyle = FontStyle.Bold;
+            }
 
-            MenuLabel(root, "WARDROBE", 0.195f, 0.754f, 0.310f, 0.804f, 23);
-            MenuLabel(root, $"BESTIARY {Codex.KnownCount()}/{Codex.Total}", 0.382f, 0.754f, 0.515f, 0.804f, 21);
-            MenuLabel(root, "SETTINGS", 0.580f, 0.754f, 0.685f, 0.804f, 23);
-            MenuLabel(root, "LEADERBOARD", 0.745f, 0.754f, 0.865f, 0.804f, 21);
+            // The transient stack (tithe, curse, greeting) keeps the bottom rail.
+            BuildMenuNotices(root, tithe);
 
-            string status = Meta.Streak > 0 && Meta.StreakAlive
-                ? $"BLOOD MOON STREAK: {Meta.Streak} DAYS — THE CASTLE REMEMBERS."
-                : "THE CASTLE IS WAITING. TRUST NO ONE.";
-            var statusText = Skin.LiveText(root, status, 0.235f, 0.846f, 0.765f, 0.903f,
-                24, Theme.Exit);
-            if (Theme.MenuFont != null) statusText.font = Theme.MenuFont;
-            Skin.Fit(statusText, 24, 13);
+            // The record plate flips between its two faces on tap — but only once
+            // there's something to flip to, so a real record never hides itself by
+            // accident on a mis-tap.
+            if (deepest > 0)
+            {
+                var edge = plate.GetComponent<Image>();
+                edge.raycastTarget = true;          // the plate itself has to catch the tap
+                var flip = plate.gameObject.AddComponent<Button>();
+                flip.targetGraphic = edge;
+                flip.onClick.AddListener(() => { _recordFlipped = !_recordFlipped; ShowMenu(); });
+            }
         }
 
-        Text MenuLabel(Transform root, string text, float x0, float top0, float x1, float top1, int size)
-        {
-            var label = Skin.LiveText(root, text, x0, top0, x1, top1, size, Gothic.Bone);
-            if (Theme.MenuFont != null) label.font = Theme.MenuFont;
-            label.fontStyle = FontStyle.Bold;
-            return Skin.Fit(label, size, Mathf.Max(12, size / 2));
-        }
+        // A title for how deep you've been. Local, honest, and no server needed —
+        // the design's "RANK 412" would need a live leaderboard behind it.
+        static string DepthTitle(int metres) =>
+            metres >= 2000 ? "THE CASTLE'S EQUAL"
+          : metres >= 1200 ? "ABYSS WALKER"
+          : metres >= 700 ? "DEEP DWELLER"
+          : metres >= 300 ? "STAIR-TREADER"
+          : "TOURIST";
 
-        // ---- Bottom notice stack -------------------------------------------
-        // Everything transient lives here. These were previously pinned to fixed y
-        // values 30px apart, so any two showing at once ran into each other. Stacking
-        // them means only the notices that apply are laid out, each a fixed step below
-        // the last, so no combination of them can ever overlap anything. Shared by the
-        // classic and skinned menus (the artwork must leave this bottom strip clear).
+
+
+        // ---- The notice strip --------------------------------------------------
+        // Everything transient — tonight's tithe, a live streak, a curse someone laid
+        // on you. Stacked UPWARDS from just above the footer row so no combination of
+        // them can collide with a button or with each other. The castle's greeting is
+        // NOT here: the landing gives it its own line beside the moon.
         void BuildMenuNotices(Transform root, int tithe)
         {
             var notices = new System.Collections.Generic.List<(string text, int size, Color col)>();
             if (tithe > 0)
-                notices.Add(($"NIGHTLY TITHE: +{tithe} BLOOD SHARDS", 28, Theme.Coin));
+                notices.Add(($"NIGHTLY TITHE:  +{tithe} BLOOD", 26, Crimson.Gold));
             if (Meta.Streak > 0 && Meta.StreakAlive)
-                notices.Add(($"BLOOD MOON STREAK: {Meta.Streak} DAYS — keep it alive", 27, Theme.Coin));
+                notices.Add(($"BLOOD MOON STREAK: {Meta.Streak} NIGHTS — keep it alive", 24, Crimson.Gold));
             if (Curse.Pending != null)
                 notices.Add(($"{Curse.Pending.nick} CURSED YOU from floor {Curse.Pending.floor + 1} of {Curse.Pending.mode}. Break it.",
-                             25, new Color(1f, 0.35f, 0.4f, 0.95f)));
-            string greet = Memory.MenuGreeting();
-            if (greet != null)
+                             24, Crimson.BloodLit));
+            if (Memory.MenuGreeting() != null && !_greetTracked)
             {
-                notices.Add((greet, 23, new Color(1f, 0.55f, 0.55f, 0.8f)));
-                if (!_greetTracked)
-                {
-                    _greetTracked = true;
-                    Analytics.Track("haunt_greeting", new System.Collections.Generic.Dictionary<string, object>());
-                }
+                _greetTracked = true;
+                Analytics.Track("haunt_greeting", new System.Collections.Generic.Dictionary<string, object>());
             }
             for (int i = 0; i < notices.Count; i++)
-                Theme.Label(root, notices[i].text, notices[i].size, notices[i].col,
-                    new Vector2(0.5f, 0.5f), new Vector2(0, -332 - i * 46), new Vector2(1400, 42));
+                Crimson.Line(root, notices[i].text, notices[i].size, notices[i].col,
+                    new Vector2(0, 296 + (notices.Count - 1 - i) * 40), new Vector2(1400, 38),
+                    TextAnchor.MiddleCenter, new Vector2(0.5f, 0f));
         }
 
-        // ==================== SKINNED MAIN MENU ====================
-        // Renders the exact main-menu artwork (Resources/ui/menu_bg) with only the
-        // live pieces on top: transparent tap-zones over every drawn button, and live
-        // text over the spots whose value changes (the Continue floor, the difficulty
-        // value, the Shop balance, the Bestiary count). Positions are fractions of the
-        // screen measured from the top-left of the mockup, so they scale with the art.
-        //
-        // The artwork should leave those four dynamic spots' TEXT blank (frame/icon
-        // only) so the live text below doesn't double up; every other button keeps its
-        // painted label and just gets an invisible tap-zone.
-        // The menu's difficulty line in the artwork's own two-tone lettering: the
-        // label in bone, the value in candle gold — matching the painted pill.
-        static string MenuDifficultyCaption() =>
-            $"<color=#{ColorUtility.ToHtmlStringRGB(Gothic.Bone)}>DIFFICULTY:</color>  " +
-            $"<color=#{ColorUtility.ToHtmlStringRGB(Theme.Coin)}>{Diff.Name.ToUpperInvariant()}</color>";
 
-        void BuildSkinnedMenu(Transform root, int tithe)
-        {
-            // ---- CONTINUE — FLOOR N ------------------------------------------
-            // The painting says "CONTINUE — FLOOR 1" forever. Clear 12 floors and the
-            // menu still promised floor 1, and the biggest button on the screen was
-            // the one telling the lie. Chip the painted line and write the real one:
-            // the plate's interior is near-black down its middle (the red glow lives
-            // out at the ornate end-caps), so the chip lands invisibly.
-            Skin.Chip(root, 0.325f, 0.320f, 0.675f, 0.370f, new Color(0.043f, 0.008f, 0.004f));
-            var cont = Skin.LiveText(root, PlayNowCaption(), 0.30f, 0.320f, 0.70f, 0.370f, 46, Gothic.Bone);
-            if (Theme.MenuFont != null) cont.font = Theme.MenuFont;
-            Skin.Fit(cont, 46, 22);
-            Skin.Zone(root, 0.30f, 0.29f, 0.70f, 0.40f, PlayNow, "continue");
-
-            // ---- DIFFICULTY: <live> -------------------------------------------
-            // Same story: the pill cycled the setting but the painted word never
-            // moved, so the tap looked broken. Now the caption follows the setting.
-            Text diffText = null;
-            Skin.Chip(root, 0.340f, 0.428f, 0.660f, 0.464f, new Color(0.024f, 0.016f, 0.012f));
-            Skin.Zone(root, 0.40f, 0.405f, 0.60f, 0.47f, () =>
-            {
-                Diff.Current = (Difficulty)(((int)Diff.Current + 1) % 3);
-                if (!Audio.Muted) Audio.Play("click", 0.6f);
-                if (diffText != null) diffText.text = MenuDifficultyCaption();
-            }, "difficulty");
-            diffText = Skin.LiveText(root, MenuDifficultyCaption(), 0.33f, 0.428f, 0.67f, 0.464f, 30, Color.white);
-            if (Theme.MenuFont != null) diffText.font = Theme.MenuFont;
-            Skin.Fit(diffText, 30, 15);
-
-            Skin.Zone(root, 0.255f, 0.50f, 0.475f, 0.58f, StartDaily,      "bloodmoon");
-            Skin.Zone(root, 0.525f, 0.50f, 0.745f, 0.58f, ShowLevelSelect, "castle");
-            Skin.Zone(root, 0.255f, 0.595f, 0.475f, 0.675f, StartEndless,    "endless");
-            Skin.Zone(root, 0.525f, 0.595f, 0.745f, 0.675f, ShowVersusLobby, "multiplayer");
-
-            // ---- WARDROBE -------------------------------------------------------
-            // The artwork misspells it as "WARIROBE". Repainting the mockup would mean
-            // regenerating the whole menu image, so the word is chipped out and set
-            // again correctly in the footer bar's own lettering. Measured off the
-            // painted label: x 0.305-0.376 on the 1600x900 mockup.
-            var wardrobeWord = Skin.LiveValue(root, "WARDROBE", 0.298f, 0.757f, 0.384f, 0.789f,
-                27, Gothic.Bone, new Color(0.039f, 0.024f, 0.020f));
-            if (Theme.MenuFont != null) wardrobeWord.font = Theme.MenuFont;
-            Skin.Fit(wardrobeWord, 27, 13);
-
-            // ---- BESTIARY n/19 -------------------------------------------------
-            // The footer's painted "1/19" was frozen too. Only the count is replaced —
-            // the word BESTIARY and its icon are left exactly as painted.
-            var codexNum = Skin.LiveValue(root, $"{Codex.KnownCount()}/{Codex.Total}",
-                0.528f, 0.757f, 0.585f, 0.788f, 27, Theme.Coin,
-                new Color(0.039f, 0.024f, 0.020f));
-            if (Theme.MenuFont != null) codexNum.font = Theme.MenuFont;
-            Skin.Fit(codexNum, 27, 14);
-
-            // Bottom bar. The former shop cell is deliberately inert.
-            Skin.Zone(root, 0.235f, 0.70f, 0.395f, 0.795f, ShowWardrobe, "wardrobe");
-            Skin.Zone(root, 0.405f, 0.70f, 0.605f, 0.795f, ShowCodex,    "bestiary");
-            Skin.Zone(root, 0.615f, 0.70f, 0.755f, 0.795f, ShowSettings, "settings");
-            Skin.Zone(root, 0.765f, 0.70f, 0.955f, 0.795f, () => ShowLeaderboard("daily"), "leaderboard");
-        }
 
         // ==================== SKINNED SUB-SCREENS ====================
         // Each paints its exact artwork and lays invisible tap-zones over the buttons
@@ -1897,26 +1841,6 @@ namespace TrustIssues
         bool _menuShownTracked;  // same contract for the funnel's menu_shown
         bool _firstInputTracked; // ...and for the first gameplay keypress
 
-        // A compact difficulty chip that cycles Casual → Normal → Nightmare in place,
-        // recolouring + relabelling itself. Shown on the menu and (via the same helper)
-        // the Settings screen, so the choice is always one tap away.
-        void MakeDifficultyChip(Transform root, Vector2 pos, Vector2 size)
-        {
-            Button btn = null;
-            System.Func<string> cap = () => $"DIFFICULTY:  {Diff.Name}";
-            System.Func<Color> col = () =>
-                Diff.Current == Difficulty.Casual ? new Color(0.16f, 0.40f, 0.22f)
-              : Diff.Current == Difficulty.Nightmare ? new Color(0.52f, 0.07f, 0.10f)
-              : new Color(0.30f, 0.26f, 0.34f);
-            btn = Theme.Button(root, cap(), col(), Color.white, 28,
-                new Vector2(0.5f, 0.5f), pos, size, () =>
-                {
-                    Diff.Current = (Difficulty)(((int)Diff.Current + 1) % 3);
-                    if (!Audio.Muted) Audio.Play("click", 0.6f);
-                    var img = btn.GetComponent<Image>(); if (img != null) img.color = col();
-                    var t = btn.GetComponentInChildren<Text>(); if (t != null) t.text = cap();
-                });
-        }
 
         // ==================== TRAP CODEX (BESTIARY) ====================
         // A persistent book of every trap. Each page is revealed the first time the
@@ -2086,178 +2010,34 @@ namespace TrustIssues
             Skin.Fit(lore, 14, 9);
         }
 
-        // ==================== ANIMATED MENU BACKDROP ====================
-        // A looping vampire scene built from existing sprites, layered above the
-        // dark wash but behind the title/buttons. All elements are UI children of
-        // the menu panel, so destroying the panel (every transition) stops their
-        // coroutines automatically — they bail the moment their target is null.
-        //
-        // TODO: optional licensed video loop — swap/overlay a UnityEngine.Video
-        // .VideoPlayer rendering to a RawImage here without touching the layout.
-        void BuildMenuScene(Transform root)
-        {
-            // A real layered environment rather than one flattened menu screenshot.
-            // Every plane has its own depth, tint and subtle motion.
-            MenuSceneLayer(root, "Sky", "bg_sky", new Color(0.30f, 0.08f, 0.13f, 0.95f), 2f, 0.11f);
-            MenuSceneLayer(root, "FarRuins", "bg_far", new Color(0.32f, 0.12f, 0.16f, 0.88f), 4f, 0.16f);
-            MenuSceneLayer(root, "Castle", "bg_castle", new Color(0.42f, 0.16f, 0.18f, 0.96f), 7f, 0.20f);
-            MenuSceneLayer(root, "MidRuins", "bg_mid", new Color(0.28f, 0.10f, 0.14f, 0.96f), 10f, 0.25f);
-            MenuSceneLayer(root, "Foreground", "bg_near", new Color(0.18f, 0.055f, 0.08f, 1f), 14f, 0.30f);
 
-            // Blood moon, upper area, with a slow scale pulse (reuses Pulse).
-            var moon = new GameObject("Moon", typeof(RectTransform));
-            moon.transform.SetParent(root, false);
-            var mImg = moon.AddComponent<Image>();
-            mImg.sprite = Theme.Moon;
-            mImg.color = new Color(0.78f, 0.12f, 0.14f, 0.9f);
-            var mrt = mImg.rectTransform;
-            mrt.anchorMin = mrt.anchorMax = new Vector2(0.5f, 0.5f);
-            mrt.pivot = new Vector2(0.5f, 0.5f);
-            mrt.anchoredPosition = new Vector2(560, 250);
-            mrt.sizeDelta = new Vector2(300, 300);
-            StartCoroutine(Pulse(moon.transform));
 
-            // A low band of drifting fog along the bottom of the screen.
-            var fogSprite = Assets.Sprite("bg_fog");
-            for (int i = 0; i < 2; i++)
-            {
-                var fog = new GameObject("Fog" + i, typeof(RectTransform));
-                fog.transform.SetParent(root, false);
-                var fImg = fog.AddComponent<Image>();
-                fImg.sprite = fogSprite != null ? fogSprite : Theme.Square;
-                fImg.color = new Color(0.35f, 0.1f, 0.16f, 0.22f);
-                var frt = fImg.rectTransform;
-                frt.anchorMin = new Vector2(0f, 0f); frt.anchorMax = new Vector2(0f, 0f);
-                frt.pivot = new Vector2(0.5f, 0.5f);
-                frt.sizeDelta = new Vector2(1400, 360);
-                StartCoroutine(MenuFog(frt, i * 1400f));
-            }
 
-            // A handful of bats gliding across the night sky.
-            for (int i = 0; i < 5; i++)
-            {
-                var bat = new GameObject("Bat" + i, typeof(RectTransform));
-                bat.transform.SetParent(root, false);
-                var bImg = bat.AddComponent<Image>();
-                bImg.sprite = Theme.Bat;
-                bImg.color = new Color(0.08f, 0.05f, 0.08f, 0.9f);
-                var brt = bImg.rectTransform;
-                brt.anchorMin = brt.anchorMax = new Vector2(0.5f, 0.5f);
-                brt.pivot = new Vector2(0.5f, 0.5f);
-                StartCoroutine(MenuBat(brt, i));
-            }
 
-            // Occasional pale lightning flash over the whole backdrop.
-            var flash = new GameObject("Lightning", typeof(RectTransform));
-            flash.transform.SetParent(root, false);
-            var lImg = flash.AddComponent<Image>();
-            lImg.color = new Color(0.8f, 0.78f, 0.85f, 0f);
-            lImg.raycastTarget = false;
-            var lrt = lImg.rectTransform;
-            lrt.anchorMin = Vector2.zero; lrt.anchorMax = Vector2.one;
-            lrt.offsetMin = lrt.offsetMax = Vector2.zero;
-            StartCoroutine(MenuLightning(lImg));
-        }
-
-        void MenuSceneLayer(Transform root, string objectName, string spriteName, Color tint,
-            float drift, float speed)
-        {
-            var sprite = Assets.Sprite(spriteName);
-            if (sprite == null) return;
-            var go = new GameObject(objectName, typeof(RectTransform));
-            go.transform.SetParent(root, false);
-            var image = go.AddComponent<Image>();
-            image.sprite = sprite; image.color = tint; image.raycastTarget = false;
-            var rt = image.rectTransform;
-            rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
-            rt.offsetMin = new Vector2(-45, -24); rt.offsetMax = new Vector2(45, 24);
-            StartCoroutine(MenuLayerDrift(rt, drift, speed));
-        }
-
-        IEnumerator MenuLayerDrift(RectTransform rt, float distance, float speed)
-        {
-            float phase = Random.value * Mathf.PI * 2f;
-            while (rt != null)
-            {
-                float x = Mathf.Sin(Time.unscaledTime * speed + phase) * distance;
-                float y = Mathf.Cos(Time.unscaledTime * speed * 0.63f + phase) * distance * 0.18f;
-                rt.anchoredPosition = new Vector2(x, y);
-                yield return null;
-            }
-        }
-
-        // Fog band: scroll left, wrapping by its own width so two copies tile.
-        IEnumerator MenuFog(RectTransform rt, float startX)
-        {
-            float x = startX;
-            while (rt != null)
-            {
-                x -= 14f * Time.unscaledDeltaTime;
-                if (x <= -1400f) x += 2800f;
-                rt.anchoredPosition = new Vector2(x, 120f);
-                yield return null;
-            }
-        }
-
-        // One bat: drift across the screen on a gentle sine bob, then respawn off
-        // the opposite edge at a new height/speed. Index just staggers the start.
-        IEnumerator MenuBat(RectTransform rt, int index)
-        {
-            var rng = new System.Random(index * 7 + 13);
-            float t = (float)rng.NextDouble() * 6f;
-            while (rt != null)
-            {
-                float dir = (index % 2 == 0) ? 1f : -1f;
-                float speed = 90f + (float)rng.NextDouble() * 70f;
-                float y = 120f + (float)rng.NextDouble() * 320f;
-                float size = 34f + (float)rng.NextDouble() * 26f;
-                float x = dir > 0 ? -1100f : 1100f;
-                rt.sizeDelta = new Vector2(size, size * 0.5f);
-                rt.localScale = new Vector3(dir, 1f, 1f);
-                while (rt != null && x * dir < 1100f)
-                {
-                    x += dir * speed * Time.unscaledDeltaTime;
-                    t += Time.unscaledDeltaTime;
-                    rt.anchoredPosition = new Vector2(x, y + Mathf.Sin(t * 3f) * 22f);
-                    yield return null;
-                }
-            }
-        }
-
-        // Lightning: mostly dark, with a brief double-flash at random intervals.
-        IEnumerator MenuLightning(Image img)
-        {
-            var rng = new System.Random(91);
-            while (img != null)
-            {
-                yield return new WaitForSecondsRealtime(4f + (float)rng.NextDouble() * 7f);
-                for (int strike = 0; strike < 2 && img != null; strike++)
-                {
-                    float peak = 0.28f + (float)rng.NextDouble() * 0.12f;
-                    for (float a = peak; a > 0f && img != null; a -= Time.unscaledDeltaTime * 1.6f)
-                    {
-                        var c = img.color; c.a = a; img.color = c;
-                        yield return null;
-                    }
-                    if (img != null) { var c = img.color; c.a = 0f; img.color = c; }
-                    yield return new WaitForSecondsRealtime(0.12f);
-                }
-            }
-        }
 
         // ==================== SETTINGS ====================
+        // Which settings tab is open. Kept between rebuilds — flipping a switch
+        // redraws the screen and you should land back where you were.
+        int _settingsTab;
+
         void ShowSettings()
         {
             Audio.Play("click");
             _state = State.Menu;
             if (_menuPanel != null) Destroy(_menuPanel);
-            _menuPanel = Overlay(new Color(Theme.Sky.r, Theme.Sky.g, Theme.Sky.b, 0.92f), out var root);
+            _menuPanel = Overlay(Crimson.Night, out var root);
             _onBack = ShowMenu;
 
-            BuildCompactSettings(root);
+            BuildSettings(root);
         }
 
-        void BuildCompactSettings(Transform root)
+        /// <summary>
+        /// SETTINGS, in four banner tabs: the noise, the feel of the controls, how cruel
+        /// the castle should be, and the legal shelf. The difficulty picker used to be a
+        /// chip on the main menu that cycled on tap and told you nothing about what it
+        /// changed; here it's three cards that say what each one does.
+        /// </summary>
+        void BuildSettings(Transform root)
         {
             // The phone release has one supported movement scheme. Clear preferences
             // from older builds that exposed arrows, pads and replay-ghost switches.
@@ -2266,31 +2046,190 @@ namespace TrustIssues
             PlayerPrefs.SetInt("opt_replay_ghost", 0);
             PlayerPrefs.Save();
 
-            Gothic.Backdrop(root);
-            Gothic.Heading(root, "SETTINGS", "AUDIO AND LEGAL");
-            Gothic.PlateAt(root, new Vector2(0, 28), new Vector2(1120, 660), Gothic.Plate);
+            Crimson.Backdrop(root, 460f, 240f, false, 0);
 
-            Theme.Label(root, "AUDIO", 38, Gothic.Bone,
-                new Vector2(0.5f, 0.5f), new Vector2(0, 268), new Vector2(900, 54));
-            MakeVolumeSlider(root, new Vector2(0, 190), "MUSIC",
-                () => Audio.MusicVol, v => Audio.MusicVol = v);
-            MakeVolumeSlider(root, new Vector2(0, 105), "SFX",
-                () => Audio.SfxVol, v => Audio.SfxVol = v);
-            MakeVolumeSlider(root, new Vector2(0, 20), "VOICE",
-                () => Voice.Volume, v => Voice.Volume = v);
+            var top = new Vector2(0f, 1f);
+            var mark = Crimson.Img(root, "Mark", Gothic.Diamond, Color.white);
+            Crimson.Place(mark, top, new Vector2(70, -62), Vector2.one * 22f);
+            Crimson.Line(root, "SETTINGS", 40, Crimson.Bone, new Vector2(104, -62), new Vector2(500, 56),
+                TextAnchor.MiddleLeft, top).fontStyle = FontStyle.Bold;
+            Crimson.BloodCounter(root, new Vector2(1f, 1f), new Vector2(-190, -62), 26);
 
-            Theme.Label(root, "MOVEMENT:  JOYSTICK", 26, Gothic.Faint,
-                new Vector2(0.5f, 0.5f), new Vector2(0, -55), new Vector2(900, 46));
-            Gothic.Button(root, "PRIVACY POLICY", new Vector2(-290, -150), new Vector2(500, 92),
-                () => ShowLegalDocument("PRIVACY POLICY", "legal/privacy"), false, 32);
-            Gothic.Button(root, "TERMS OF USE", new Vector2(290, -150), new Vector2(500, 92),
-                () => ShowLegalDocument("TERMS OF USE", "legal/terms"), false, 32);
+            string[] tabs = { "AUDIO", "CONTROLS", "DIFFICULTY", "DATA & LEGAL" };
+            _settingsTab = Mathf.Clamp(_settingsTab, 0, tabs.Length - 1);
+            Crimson.Tabs(root, tabs, _settingsTab, i => { _settingsTab = i; ShowSettings(); },
+                         new Vector2(0.5f, 1f), new Vector2(0, -160), 1560f, 66f);
 
-            Theme.Label(root, "Music by Kevin MacLeod (incompetech.com) - licensed under Creative Commons BY 4.0",
-                18, new Color(1, 1, 1, 0.42f), new Vector2(0.5f, 0.5f),
-                new Vector2(0, -230), new Vector2(1050, 34));
-            Gothic.Back(root, ShowMenu);
+            // The body panel every tab draws into.
+            var body = Crimson.Panel_(root, new Vector2(0.5f, 0.5f), new Vector2(0, -30),
+                                      new Vector2(1560, 640), Theme.Hex("180A12"), Crimson.Rail);
+
+            switch (_settingsTab)
+            {
+                case 0: BuildAudioTab(body.transform); break;
+                case 1: BuildControlsTab(body.transform); break;
+                case 2: BuildDifficultyTab(body.transform); break;
+                default: BuildLegalTab(body.transform); break;
+            }
+
+            Crimson.Btn(root, "‹  BACK", new Vector2(0.5f, 0f), new Vector2(0, 74),
+                        new Vector2(360, 76), ShowMenu, true, 28);
         }
+
+        // ---- AUDIO: the noise on the left, the feel on the right -----------------
+        void BuildAudioTab(Transform body)
+        {
+            var tl = new Vector2(0f, 1f);
+            Crimson.Line(body, "THE NOISE", 24, Crimson.Gold, new Vector2(360, -50),
+                new Vector2(600, 34), TextAnchor.MiddleLeft, tl).fontStyle = FontStyle.Bold;
+
+            Crimson.BloodSlider(body, tl, new Vector2(360, -140), 620f, "MUSIC",
+                "organ, distant, never cheerful", () => Audio.MusicVol, v => Audio.MusicVol = v);
+            Crimson.BloodSlider(body, tl, new Vector2(360, -290), 620f, "SCREAMS & STEEL",
+                "the part that tells you what hit you", () => Audio.SfxVol, v => Audio.SfxVol = v);
+            Crimson.BloodSlider(body, tl, new Vector2(360, -440), 620f, "THE CASTLE'S VOICE",
+                "it only speaks when something matters", () => Voice.Volume, v => Voice.Volume = v);
+
+            Crimson.Line(body, "THE FEEL", 24, Crimson.Gold, new Vector2(-420, -50),
+                new Vector2(600, 34), TextAnchor.MiddleLeft, new Vector2(1f, 1f)).fontStyle = FontStyle.Bold;
+
+            var tr = new Vector2(1f, 1f);
+            Crimson.Toggle(body, tr, new Vector2(-330, -120), 560f, "SCREEN SHAKE",
+                () => Options.Shake, v => Options.Shake = v);
+            Crimson.Toggle(body, tr, new Vector2(-330, -196), 560f, "BLOOD SPATTER",
+                () => Options.Spatter, v => Options.Spatter = v);
+            Crimson.Toggle(body, tr, new Vector2(-330, -272), 560f, "RUMBLE",
+                () => Options.Haptics, v => Options.Haptics = v);
+            Crimson.Toggle(body, tr, new Vector2(-330, -348), 560f, "REDUCED MOTION",
+                () => Options.ReducedMotion, v => Options.ReducedMotion = v);
+
+            Crimson.Line(body, "Music by Kevin MacLeod (incompetech.com), licensed CC BY 4.0. " +
+                               "Full attribution lives under DATA & LEGAL, where it belongs.",
+                19, Theme.Hex("7E6C74"), new Vector2(-330, -450), new Vector2(540, 100),
+                TextAnchor.UpperLeft, tr);
+        }
+
+        // ---- CONTROLS: how the stick behaves, and which hand it belongs to -------
+        void BuildControlsTab(Transform body)
+        {
+            var tl = new Vector2(0f, 1f);
+            Crimson.Line(body, "TOUCH", 24, Crimson.Gold, new Vector2(360, -50),
+                new Vector2(600, 34), TextAnchor.MiddleLeft, tl).fontStyle = FontStyle.Bold;
+
+            Crimson.Card(body, tl, new Vector2(240, -190), new Vector2(360, 190),
+                "FLOATING STICK", "thumb lands anywhere, the stick comes to you",
+                Options.FloatingStick, () => { Options.FloatingStick = true; ApplyControlChange(); });
+            Crimson.Card(body, tl, new Vector2(640, -190), new Vector2(360, 190),
+                "FIXED STICK", "always bottom-left, muscle memory",
+                !Options.FloatingStick, () => { Options.FloatingStick = false; ApplyControlChange(); });
+
+            Crimson.Toggle(body, tl, new Vector2(440, -350), 760f, "LEFT-HANDED MIRROR",
+                () => Options.LeftHanded, v => { Options.LeftHanded = v; ApplyControlChange(); });
+
+            Crimson.Line(body, "Movement is the joystick. The arrows and D-pads were cut — " +
+                               "one scheme, tuned properly, beats four that nearly work.",
+                20, Theme.Hex("7E6C74"), new Vector2(80, -440), new Vector2(720, 90),
+                TextAnchor.UpperLeft, tl);
+
+            // A still of where the controls actually land, so the choice above is a
+            // picture and not a paragraph.
+            var tr = new Vector2(1f, 1f);
+            var preview = Crimson.Panel_(body, tr, new Vector2(-330, -280), new Vector2(560, 440),
+                                         Theme.Hex("0A0410"), Crimson.Iron);
+            Crimson.Line(preview.transform, "LIVE PREVIEW", 19, Crimson.Rail, new Vector2(0, -26),
+                new Vector2(400, 30), TextAnchor.MiddleCenter, new Vector2(0.5f, 1f));
+            bool lefty = Options.LeftHanded;
+            var stick = Crimson.Img(preview, "Stick", Crimson.Ring, Crimson.BloodHot);
+            Crimson.Place(stick, new Vector2(lefty ? 0.78f : 0.22f, 0.22f), Vector2.zero, Vector2.one * 120f);
+            var jump = Crimson.Img(preview, "Jump", Crimson.Ring, Crimson.Gold);
+            Crimson.Place(jump, new Vector2(lefty ? 0.22f : 0.78f, 0.22f), Vector2.zero, Vector2.one * 100f);
+            var hero = Assets.Sprite("vamp_idle");
+            if (hero != null)
+            {
+                var h = Crimson.Img(preview, "Hero", hero, Color.white);
+                h.preserveAspect = true;
+                Crimson.Place(h, new Vector2(0.5f, 0.55f), Vector2.zero, new Vector2(110, 150));
+            }
+        }
+
+        // A control setting changed shape or corner — the pads have to be rebuilt,
+        // not just re-flagged (see RebuildTouchControls).
+        void ApplyControlChange()
+        {
+            if (_touchPanel != null) RebuildTouchControls();
+            ShowSettings();
+        }
+
+        // ---- DIFFICULTY: three cards that say what they change ------------------
+        void BuildDifficultyTab(Transform body)
+        {
+            var tl = new Vector2(0f, 1f);
+            Crimson.Line(body, "HOW CRUEL SHOULD THE CASTLE BE", 24, Crimson.Gold,
+                new Vector2(70, -50), new Vector2(900, 34), TextAnchor.MiddleLeft, tl)
+                .fontStyle = FontStyle.Bold;
+
+            string[] names = { "MORTAL", "CURSED", "BLOODLET" };
+            string[] notes =
+            {
+                "Eight hearts, gentler bosses, and no sunrise chasing you down the hall.",
+                "As intended. Five hearts, the traps lie, and the castle learns from your deaths.",
+                "Three hearts, one-shot bosses, and every trap the castle knows about you.",
+            };
+            for (int i = 0; i < 3; i++)
+            {
+                int d = i;
+                Crimson.Card(body, tl, new Vector2(320 + i * 480f, -240), new Vector2(440, 280),
+                    names[i], notes[i], (int)Diff.Current == i,
+                    () => { Diff.Current = (Difficulty)d; ShowSettings(); });
+            }
+
+            string[] flavour =
+            {
+                "\"Mercy. How disappointing.\"",
+                "\"Good. You want it to mean something.\"",
+                "\"You will not survive this. Begin.\"",
+            };
+            Crimson.Line(body, flavour[(int)Diff.Current], 26, Crimson.Body,
+                new Vector2(0, 90), new Vector2(1300, 60), TextAnchor.MiddleCenter, new Vector2(0.5f, 0f));
+        }
+
+        // ---- DATA & LEGAL --------------------------------------------------------
+        void BuildLegalTab(Transform body)
+        {
+            var tl = new Vector2(0f, 1f);
+            Crimson.Line(body, "DATA & LEGAL", 24, Crimson.Gold, new Vector2(70, -50),
+                new Vector2(600, 34), TextAnchor.MiddleLeft, tl).fontStyle = FontStyle.Bold;
+
+            Crimson.Btn(body, "PRIVACY POLICY", tl, new Vector2(410, -140), new Vector2(660, 92),
+                () => ShowLegalDocument("PRIVACY POLICY", "legal/privacy"), false, 26);
+            Crimson.Btn(body, "TERMS OF USE", tl, new Vector2(1120, -140), new Vector2(660, 92),
+                () => ShowLegalDocument("TERMS OF USE", "legal/terms"), false, 26);
+            Crimson.Btn(body, "MUSIC CREDITS (CC-BY)", tl, new Vector2(410, -250), new Vector2(660, 92),
+                () => ShowLegalDocument("MUSIC CREDITS", "legal/music"), false, 26);
+
+            // WIPE SAVE, behind a confirm. The castle forgetting you is the one
+            // irreversible button on the screen, so it can't be a single tap.
+            var warn = Crimson.Panel_(body, new Vector2(0.5f, 0f), new Vector2(0, 150),
+                                      new Vector2(1380, 140), Theme.Hex("16050C"), Crimson.BloodDeep);
+            Crimson.Line(warn.transform,
+                "Erase every floor, every death, every drop of blood. The castle forgets you.",
+                23, Crimson.Body, new Vector2(40, 0), new Vector2(880, 90),
+                TextAnchor.MiddleLeft, new Vector2(0f, 0.5f));
+            Crimson.Btn(warn.transform, _wipeArmed ? "TAP AGAIN TO ERASE" : "WIPE SAVE",
+                new Vector2(1f, 0.5f), new Vector2(-190, 0), new Vector2(330, 76),
+                () =>
+                {
+                    if (!_wipeArmed) { _wipeArmed = true; ShowSettings(); return; }
+                    PlayerPrefs.DeleteAll();
+                    PlayerPrefs.Save();
+                    _wipeArmed = false;
+                    _mapSel = -1;
+                    ShowMenu();
+                }, _wipeArmed, 22);
+        }
+
+        // First tap arms WIPE SAVE, second one does it. Reset whenever settings closes.
+        bool _wipeArmed;
 
         void ShowLegalDocument(string title, string resourceName)
         {
@@ -2356,77 +2295,7 @@ namespace TrustIssues
             Gothic.Back(root, ShowSettings);
         }
 
-        // A labelled 0–100% volume slider backed by getter/setter delegates. Built
-        // from a UnityEngine.UI.Slider so it can be dragged or clicked anywhere on
-        // the track. Layout per row: [NAME]   [====track====]   [ 70% ].
-        void MakeVolumeSlider(Transform root, Vector2 pos, string name,
-            System.Func<float> get, System.Action<float> set)
-        {
-            var c = new Vector2(0.5f, 0.5f);
-            Theme.Label(root, name, 30, Color.white, c,
-                pos + new Vector2(-360, 0), new Vector2(220, 50), TextAnchor.MiddleRight);
 
-            // Track container (the Slider component lives here).
-            var sgo = new GameObject("Slider_" + name, typeof(RectTransform));
-            sgo.transform.SetParent(root, false);
-            var srt = sgo.GetComponent<RectTransform>();
-            srt.anchorMin = srt.anchorMax = c; srt.pivot = c;
-            srt.anchoredPosition = pos; srt.sizeDelta = new Vector2(440, 38);
-            var slider = sgo.AddComponent<Slider>();
-
-            // Background bar.
-            var bgImg = new GameObject("BG", typeof(RectTransform)).AddComponent<Image>();
-            bgImg.transform.SetParent(sgo.transform, false);
-            bgImg.color = new Color(0.16f, 0.14f, 0.2f, 0.95f);
-            StretchBand(bgImg.rectTransform, 0.32f);
-
-            // Fill (red, grows with value).
-            var fillArea = new GameObject("FillArea", typeof(RectTransform)).GetComponent<RectTransform>();
-            fillArea.transform.SetParent(sgo.transform, false);
-            StretchBand(fillArea, 0.32f);
-            var fillImg = new GameObject("Fill", typeof(RectTransform)).AddComponent<Image>();
-            fillImg.transform.SetParent(fillArea, false);
-            fillImg.color = Theme.Player;
-            var fr = fillImg.rectTransform;
-            fr.anchorMin = new Vector2(0, 0); fr.anchorMax = new Vector2(1, 1);
-            fr.offsetMin = fr.offsetMax = Vector2.zero;
-
-            // Handle.
-            var handleArea = new GameObject("HandleArea", typeof(RectTransform)).GetComponent<RectTransform>();
-            handleArea.transform.SetParent(sgo.transform, false);
-            handleArea.anchorMin = new Vector2(0, 0); handleArea.anchorMax = new Vector2(1, 1);
-            handleArea.offsetMin = new Vector2(14, 0); handleArea.offsetMax = new Vector2(-14, 0);
-            var handleImg = new GameObject("Handle", typeof(RectTransform)).AddComponent<Image>();
-            handleImg.transform.SetParent(handleArea, false);
-            handleImg.color = Theme.Coin;
-            var hr = handleImg.rectTransform;
-            hr.sizeDelta = new Vector2(26, 0);   // width fixed; Slider stretches it to the track height
-
-            slider.targetGraphic = handleImg;
-            slider.fillRect = fr;
-            slider.handleRect = hr;
-            slider.direction = Slider.Direction.LeftToRight;
-            slider.minValue = 0f; slider.maxValue = 1f;
-            slider.SetValueWithoutNotify(get());
-
-            var pct = Theme.Label(root, Mathf.RoundToInt(get() * 100f) + "%", 28, Theme.Coin, c,
-                pos + new Vector2(300, 0), new Vector2(120, 50), TextAnchor.MiddleLeft);
-
-            slider.onValueChanged.AddListener(v =>
-            {
-                set(v);
-                pct.text = Mathf.RoundToInt(v * 100f) + "%";
-            });
-        }
-
-        // Anchor a child as a horizontal band centred vertically in its parent,
-        // occupying the middle `frac` of the height (used for slider bg/fill bars).
-        static void StretchBand(RectTransform rt, float frac)
-        {
-            rt.anchorMin = new Vector2(0f, 0.5f - frac / 2f);
-            rt.anchorMax = new Vector2(1f, 0.5f + frac / 2f);
-            rt.offsetMin = rt.offsetMax = Vector2.zero;
-        }
 
         // Short, darkly-funny premise shown before a new game.
         void ShowStory()
@@ -2482,23 +2351,33 @@ namespace TrustIssues
         ///   • WHAT'S COMING — bosses sit bigger on the road, milestone floors
         ///     are marked, and locked floors are visible but dead.
         /// </summary>
+        // THE ROAD DOWN — which floor's plate is showing. Kept between rebuilds so
+        // tapping a floor doesn't lose your place.
+        int _mapSel = -1;
+
         void ShowLevelSelect()
         {
             Audio.Play("click");
             _state = State.Menu;
             if (_menuPanel != null) Destroy(_menuPanel);
-            _menuPanel = Overlay(new Color(0.030f, 0.014f, 0.026f, 1f), out var root);
+            _menuPanel = Overlay(Crimson.Night, out var root);
             _onBack = ShowMenu;
 
-            // The painted castle stays as the BACKDROP. It's a fixed picture of a
-            // 40-seal grid, so it can't be the map any more, but it's the right
-            // wall to hang the road on — dimmed so the live nodes read on top.
-            var art = Skin.Background(root, "castle_bg");
-            if (art != null) art.color = new Color(0.34f, 0.32f, 0.38f, 1f);
-            else Gothic.Backdrop(root);
+            // Red and black only. The painted 40-seal grid can't be the map any more
+            // (it's a picture of a list, and this is a road), so the screen is built
+            // from the night itself: black earth, one red moon, the castle ridge.
+            Crimson.Backdrop(root, 520f, 150f, true, 3);
 
             int unlocked = CastleUnlocked;
             int count = Levels.Count;
+            if (_mapSel < 0 || _mapSel >= count) _mapSel = Mathf.Min(unlocked, count - 1);
+
+            // THE NEMESIS: the floor that has killed you most wears the gold crown.
+            // A tie goes to the shallower floor — the first wall you hit is the one
+            // that actually stopped you.
+            int nemesis = -1, worst = 2;
+            for (int i = 0; i < count; i++)
+                if (FloorDeaths(i) > worst) { worst = FloorDeaths(i); nemesis = i; }
 
             // ---- The scroll viewport --------------------------------------------
             var viewGo = new GameObject("MapViewport", typeof(RectTransform));
@@ -2506,10 +2385,10 @@ namespace TrustIssues
             var view = viewGo.GetComponent<RectTransform>();
             view.anchorMin = view.anchorMax = new Vector2(0.5f, 0.5f);
             view.pivot = new Vector2(0.5f, 0.5f);
-            view.anchoredPosition = new Vector2(0, 30);
-            view.sizeDelta = new Vector2(1180, 760);
+            view.anchoredPosition = new Vector2(0, 10);
+            view.sizeDelta = new Vector2(1800, 840);
             var viewImg = viewGo.AddComponent<Image>();
-            viewImg.color = new Color(0.02f, 0.01f, 0.02f, 0.55f);   // must be raycastable to catch the drag
+            viewImg.color = new Color(0, 0, 0, 0.001f);   // invisible, but raycastable so it catches the drag
             viewGo.AddComponent<RectMask2D>();
 
             var contentGo = new GameObject("MapRoad", typeof(RectTransform));
@@ -2519,41 +2398,59 @@ namespace TrustIssues
             content.anchorMax = new Vector2(0.5f, 0f);
             content.pivot = new Vector2(0.5f, 0f);
 
-            // ---- Node placement: a sine road, floor 1 at the bottom --------------
+            // ---- Node placement: a road through the grounds ----------------------
             // The wave is what stops 40 evenly-spaced discs reading as a spreadsheet:
             // the eye follows a curve, and the switchback gives each floor its own
-            // spot on the wall rather than a row and a column.
-            const float RowSpacing = 168f;   // vertical distance between floors
-            const float Swing = 300f;        // how far the road leans off centre
-            const float BottomPad = 130f, TopPad = 190f;
+            // spot on the wall rather than a row and a column. The whole road leans
+            // RIGHT of centre so the selection plate can sit over the bottom-left of
+            // the screen without ever covering a floor.
+            const float RowSpacing = 196f;   // vertical distance between floors
+            const float Swing = 250f;        // how far the road leans off its centre
+            const float RoadX = 320f;        // ...and where that centre is
+            const float BottomPad = 150f, TopPad = 210f;
             float roadH = BottomPad + (count - 1) * RowSpacing + TopPad;
-            content.sizeDelta = new Vector2(1180, roadH);
+            content.sizeDelta = new Vector2(1800, roadH);
 
             var pos = new Vector2[count];
             for (int i = 0; i < count; i++)
-                pos[i] = new Vector2(Mathf.Sin(i * 0.62f) * Swing, BottomPad + i * RowSpacing);
+                pos[i] = new Vector2(RoadX + Mathf.Sin(i * 0.62f) * Swing, BottomPad + i * RowSpacing);
 
-            // ---- The blood trail linking the floors ------------------------------
-            // Drawn first so every node sits on top of it.
+            // ---- The road itself --------------------------------------------------
+            // Dried blood on black earth: a wide dark bed, a lighter track laid over
+            // it, and iron fence posts down the side. Drawn from short segments
+            // between floors, so the road bends with the switchback instead of being
+            // a dotted line pretending to be one.
             for (int i = 0; i < count - 1; i++)
             {
                 bool walked = i < unlocked;
-                for (int d = 1; d <= 6; d++)
+                var a = pos[i]; var b = pos[i + 1];
+                int steps = 9;
+                for (int d = 0; d <= steps; d++)
                 {
-                    var p = Vector2.Lerp(pos[i], pos[i + 1], d / 7f);
-                    var dot = new GameObject("Dot", typeof(RectTransform));
-                    dot.transform.SetParent(content, false);
-                    var di = dot.AddComponent<Image>();
-                    di.sprite = Theme.Disc;
-                    di.raycastTarget = false;
-                    di.color = walked ? new Color(0.88f, 0.72f, 0.25f, 0.50f)   // walked — candle gold
-                                      : new Color(0.55f, 0.10f, 0.14f, 0.26f);  // ahead  — faint blood
-                    var drt = di.rectTransform;
-                    drt.anchorMin = drt.anchorMax = new Vector2(0.5f, 0f);
-                    drt.pivot = new Vector2(0.5f, 0.5f);
-                    drt.anchoredPosition = p;
-                    drt.sizeDelta = new Vector2(walked ? 13 : 10, walked ? 13 : 10);
+                    var p = Vector2.Lerp(a, b, d / (float)steps);
+                    // The bed — always there, always nearly black.
+                    var bed = Crimson.Img(content, "Bed", Theme.Disc, Theme.Hex("12070E"));
+                    var brt = bed.rectTransform;
+                    brt.anchorMin = brt.anchorMax = new Vector2(0.5f, 0f);
+                    brt.pivot = new Vector2(0.5f, 0.5f);
+                    brt.anchoredPosition = p;
+                    brt.sizeDelta = new Vector2(46, 46);
+                    // The track — dried blood where you've walked, near-nothing ahead.
+                    var track = Crimson.Img(content, "Track", Theme.Disc,
+                        walked ? Theme.Hex("5A1522") : new Color(0.17f, 0.07f, 0.10f, 0.55f));
+                    var trt = track.rectTransform;
+                    trt.anchorMin = trt.anchorMax = new Vector2(0.5f, 0f);
+                    trt.pivot = new Vector2(0.5f, 0.5f);
+                    trt.anchoredPosition = p;
+                    trt.sizeDelta = new Vector2(30, 30);
                 }
+                // One iron post per stretch, off to the side of the road.
+                var post = Crimson.Img(content, "Post", null, Crimson.Iron);
+                var prt = post.rectTransform;
+                prt.anchorMin = prt.anchorMax = new Vector2(0.5f, 0f);
+                prt.pivot = new Vector2(0.5f, 0.5f);
+                prt.anchoredPosition = Vector2.Lerp(a, b, 0.5f) + new Vector2(i % 2 == 0 ? -74f : 74f, 0f);
+                prt.sizeDelta = new Vector2(4, 40);
             }
 
             // ---- World banners: the road passes through four parts of the castle --
@@ -2561,12 +2458,14 @@ namespace TrustIssues
             {
                 int firstFloor = wI * FloorsPerWorld;
                 if (firstFloor >= count) break;
-                var tint = ThemeMoon[Mathf.Clamp(wI, 0, ThemeMoon.Length - 1)];
-                var banner = Theme.Label(content, ThemeNames[Mathf.Clamp(wI, 0, ThemeNames.Length - 1)],
-                    30, new Color(tint.r, tint.g, tint.b, unlocked >= firstFloor ? 0.80f : 0.30f),
-                    new Vector2(0.5f, 0f), new Vector2(0, pos[firstFloor].y - 88f), new Vector2(900, 44));
-                banner.raycastTarget = false;
-                if (Theme.MenuFont != null) banner.font = Theme.MenuFont;
+                // Sat ON the road, between the world's gate and its first floor. Out at
+                // the left margin it collided with the selection plate.
+                var banner = Crimson.Line(content,
+                    ThemeNames[Mathf.Clamp(wI, 0, ThemeNames.Length - 1)], 28,
+                    unlocked >= firstFloor ? Crimson.Gold : Crimson.Dead,
+                    new Vector2(RoadX + 300f, pos[firstFloor].y - 40f), new Vector2(400, 44),
+                    TextAnchor.MiddleLeft, new Vector2(0.5f, 0f));
+                banner.fontStyle = FontStyle.Bold;
             }
 
             // ---- The floors ------------------------------------------------------
@@ -2577,76 +2476,27 @@ namespace TrustIssues
                 bool locked = idx > unlocked;
                 bool cleared = idx < unlocked;
                 bool here = idx == unlocked;
+                // Every tenth floor is an EVENT: 20/30/40 are the bosses, 10 is the
+                // exam. Both are built as gates so they read from across the screen —
+                // but the caption tells the truth about which one it is.
                 bool boss = BossTierForFloor(idx) > 0;
-                bool milestone = (idx + 1) % FloorsPerWorld == 0;
-                float sz = boss ? 132f : milestone ? 118f : 100f;
+                bool gate = (idx + 1) % FloorsPerWorld == 0;
+                string state = locked ? "lock" : here ? "now" : "done";
 
-                var go = new GameObject("Floor" + (idx + 1), typeof(RectTransform));
-                go.transform.SetParent(content, false);
-                var img = go.AddComponent<Image>();
-                img.sprite = Theme.Disc;
-                img.color = locked ? new Color(0.17f, 0.15f, 0.19f, 0.95f)
-                          : cleared ? new Color(0.86f, 0.68f, 0.24f, 1f)      // sealed in gold
-                                    : new Color(0.88f, 0.23f, 0.26f, 1f);     // the live edge
-                var rt = img.rectTransform;
-                rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0f);
-                rt.pivot = new Vector2(0.5f, 0.5f);
-                rt.anchoredPosition = pos[i];
-                rt.sizeDelta = new Vector2(sz, sz);
+                var node = Crimson.Medal(content, pos[i], idx + 1, state, gate,
+                    idx == nemesis, idx == _mapSel, () => { _mapSel = idx; ShowLevelSelect(); });
+                if (here) hereNode = node;
 
-                // THE RING. Only the live floor gets one, and it sits OUTSIDE the
-                // disc so it reads at a glance while scrolling past.
-                if (here)
-                {
-                    var ring = new GameObject("Ring", typeof(RectTransform));
-                    ring.transform.SetParent(go.transform, false);
-                    var ri = ring.AddComponent<Image>();
-                    ri.sprite = Theme.Disc;
-                    ri.color = new Color(1f, 0.88f, 0.55f, 0.85f);
-                    ri.raycastTarget = false;
-                    var rrt = ri.rectTransform;
-                    rrt.anchorMin = rrt.anchorMax = new Vector2(0.5f, 0.5f);
-                    rrt.pivot = new Vector2(0.5f, 0.5f);
-                    rrt.anchoredPosition = Vector2.zero;
-                    rrt.sizeDelta = new Vector2(sz + 22f, sz + 22f);
-                    ring.transform.SetAsFirstSibling();       // behind the disc = a rim, not a cover
-                    hereNode = rt;
-                    StartCoroutine(Pulse(go.transform));
-                }
-
-                if (!locked)
-                {
-                    var btn = go.AddComponent<Button>();
-                    btn.targetGraphic = img;
-                    btn.onClick.AddListener(() => StartGame(idx));
-                }
-
-                var num = Theme.Label(go.transform, (idx + 1).ToString(),
-                    Mathf.RoundToInt(42 * sz / 120f),
-                    locked ? new Color(1, 1, 1, 0.28f) : Theme.Ink,
-                    new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(sz, sz));
-                num.raycastTarget = false;
-
-                // Boss / exam marker above the disc.
-                string tag = boss ? "BOSS" : milestone ? "EXAM" : null;
-                if (tag != null)
-                {
-                    var t = Theme.Label(go.transform, tag, 21,
-                        locked ? new Color(1, 1, 1, 0.30f) : new Color(1f, 0.86f, 0.5f, 0.95f),
-                        new Vector2(0.5f, 0.5f), new Vector2(0, sz * 0.70f), new Vector2(220, 32));
-                    t.raycastTarget = false;
-                }
-
-                // WHAT IT COST. Only floors that have actually killed you carry a
-                // number — a row of honest zeros would just be noise.
+                // The caption under the floor — what it is, or what it cost.
                 int fd = FloorDeaths(idx);
-                if (fd > 0)
-                {
-                    var d = Theme.Label(go.transform, fd == 1 ? "1 death" : fd + " deaths", 21,
-                        new Color(0.92f, 0.34f, 0.36f, 0.92f),
-                        new Vector2(0.5f, 0.5f), new Vector2(0, -sz * 0.72f), new Vector2(240, 32));
-                    d.raycastTarget = false;
-                }
+                string cap = locked ? "SEALED"
+                           : here ? "YOU ARE HERE"
+                           : gate ? (boss ? "BOSS GATE" : "THE EXAM")
+                           : fd > 0 ? (fd == 1 ? "1 DEATH" : fd + " DEATHS")
+                           : "CLEARED";
+                Crimson.Line(node, cap, 19,
+                    here ? Crimson.BloodLit : gate ? Crimson.Gold : locked ? Crimson.Dead : Crimson.Rail,
+                    new Vector2(0, -(gate ? 106f : 74f)), new Vector2(240, 30)).fontStyle = FontStyle.Bold;
             }
 
             // ---- Wire the scroll -------------------------------------------------
@@ -2672,21 +2522,86 @@ namespace TrustIssues
                 scroll.verticalNormalizedPosition = target;
             }
 
-            // ---- Frame ------------------------------------------------------------
-            var title = Theme.Label(root, "THE CASTLE", 62, Theme.Player,
-                new Vector2(0.5f, 0.5f), new Vector2(0, 452), new Vector2(1400, 96));
-            if (Theme.TitleFont != null) title.font = Theme.TitleFont;
-            title.raycastTarget = false;
+            // ---- Header: the title, and what the climb has cost so far -------------
+            var top = new Vector2(0f, 1f);
+            var mark = Crimson.Img(root, "Mark", Gothic.Diamond, Color.white);
+            Crimson.Place(mark, top, new Vector2(56, -58), Vector2.one * 22f);
+            var title = Crimson.Line(root, "THE CASTLE", 44, Crimson.Bone,
+                new Vector2(88, -58), new Vector2(520, 60), TextAnchor.MiddleLeft, top);
+            title.fontStyle = FontStyle.Bold;
 
             int totalDeaths = 0;
             for (int i = 0; i < count; i++) totalDeaths += FloorDeaths(i);
-            var sub = Theme.Label(root,
-                $"floor {Mathf.Min(unlocked + 1, count)} of {count}   •   {totalDeaths} deaths so far   •   drag to climb",
-                24, new Color(1, 1, 1, 0.50f),
-                new Vector2(0.5f, 0.5f), new Vector2(0, 400), new Vector2(1100, 38));
-            sub.raycastTarget = false;
+            Crimson.Line(root,
+                $"FLOOR {Mathf.Min(unlocked + 1, count)} OF {count}  ·  {totalDeaths} " +
+                (totalDeaths == 1 ? "DEATH" : "DEATHS"),
+                22, Crimson.Mute, new Vector2(88, -104), new Vector2(700, 36), TextAnchor.MiddleLeft, top);
 
-            Gothic.Back(root, ShowMenu);
+            // ---- World tabs: jump the road to a part of the castle ------------------
+            // Not a filter — the road is one continuous climb. Tapping a world scrolls
+            // there, and a world you haven't reached is dead type, so the tabs double
+            // as a progress bar for the whole descent.
+            for (int wI = 0; wI < 4 && wI * FloorsPerWorld < count; wI++)
+            {
+                int first = wI * FloorsPerWorld;
+                bool reached = unlocked >= first;
+                System.Action jump = null;
+                if (reached) jump = () => { _mapSel = first; ShowLevelSelect(); };
+                Crimson.Btn(root, ThemeNames[Mathf.Clamp(wI, 0, ThemeNames.Length - 1)],
+                    new Vector2(1f, 1f), new Vector2(-820 + wI * 200f, -66), new Vector2(190, 54),
+                    jump, false, 20, null, false, reached);
+            }
+
+            // ---- The selection plate ------------------------------------------------
+            // Tap a floor and this is what the castle says about it. It sits over the
+            // bottom-left of the screen, which the road deliberately leaves empty.
+            int sel = _mapSel;
+            bool selLocked = sel > unlocked, selHere = sel == unlocked;
+            bool selBoss = BossTierForFloor(sel) > 0;
+            bool selGate = (sel + 1) % FloorsPerWorld == 0;
+            var plate = Crimson.Panel_(root, new Vector2(0f, 0f), new Vector2(410, 330),
+                                       new Vector2(740, 330), Crimson.Plate, Crimson.BloodDeep);
+
+            var kindMark = Crimson.Img(plate, "Kind", Gothic.Diamond, Color.white);
+            Crimson.Place(kindMark, new Vector2(0f, 1f), new Vector2(34, -34), Vector2.one * 18f);
+            Crimson.Line(plate.transform,
+                selLocked ? "SEALED FLOOR" : selHere ? "CURRENT FLOOR"
+                          : selGate ? (selBoss ? "BOSS GATE" : "THE EXAM") : "CLEARED",
+                20, Crimson.Mute, new Vector2(60, -34), new Vector2(520, 32),
+                TextAnchor.MiddleLeft, new Vector2(0f, 1f)).fontStyle = FontStyle.Bold;
+
+            Crimson.Line(plate.transform, (sel + 1).ToString(), 46, Crimson.Bone,
+                new Vector2(38, -88), new Vector2(90, 60), TextAnchor.MiddleLeft, new Vector2(0f, 1f))
+                .fontStyle = FontStyle.Bold;
+            Crimson.Line(plate.transform, Floors.Name(sel).ToUpperInvariant(), 28, Theme.Hex("E9D6C4"),
+                new Vector2(112, -88), new Vector2(660, 56), TextAnchor.MiddleLeft, new Vector2(0f, 1f))
+                .fontStyle = FontStyle.Bold;
+
+            Crimson.Line(plate.transform, Floors.Rule(sel, !selLocked), 23, Crimson.Body,
+                new Vector2(38, -168), new Vector2(740, 80), TextAnchor.UpperLeft, new Vector2(0f, 1f));
+
+            int selDeaths = FloorDeaths(sel);
+            float selBest = FloorBest(sel);
+            string stat = selLocked
+                ? $"CLEAR FLOOR {sel} TO BREAK THE SEAL"
+                : selBest > 0f
+                    ? $"{selDeaths} DEATHS  ·  BEST {Mathf.FloorToInt(selBest / 60f)}:{Mathf.FloorToInt(selBest % 60f):00}"
+                    : selDeaths > 0 ? $"{selDeaths} DEATHS  ·  NEVER CLEARED" : "NEVER ATTEMPTED";
+            Crimson.Line(plate.transform, stat, 20, Crimson.Mute,
+                new Vector2(38, -262), new Vector2(480, 34), TextAnchor.MiddleLeft, new Vector2(0f, 1f));
+
+            int enter = sel;
+            System.Action descend = null;
+            if (!selLocked) descend = () => StartGame(enter);
+            Crimson.Btn(plate.transform, selLocked ? "SEALED" : selHere ? "DESCEND" : "REVISIT",
+                new Vector2(1f, 0f), new Vector2(-120, 52), new Vector2(212, 62),
+                descend, selHere, 22, null, false, !selLocked);
+
+            Crimson.BloodCounter(root, new Vector2(1f, 0f), new Vector2(-210, 74), 28);
+            // BACK lives in the top-right, out of the road's way and clear of the
+            // selection plate that owns the bottom-left corner.
+            Crimson.Btn(root, "‹  BACK", new Vector2(1f, 1f), new Vector2(-140, -150), new Vector2(220, 60),
+                        ShowMenu, false, 22);
         }
 
         // ==================== MAP EDITOR ====================
@@ -3004,7 +2919,9 @@ namespace TrustIssues
         // Public camera shake (used by the boss for hits / enrage / defeat).
         public void ShakeCam(float amount, float dur)
         {
-            if (_cam != null) StartCoroutine(Juice.Shake(_cam.transform, amount, dur));
+            // Settings > SCREEN SHAKE. Off means off everywhere — the boss beats and
+            // the death punch route through here too.
+            if (_cam != null && Options.Shake) StartCoroutine(Juice.Shake(_cam.transform, amount, dur));
         }
 
         // Cinematic dolly punch-in toward a world point (2.5D only): eases in and
@@ -3679,6 +3596,14 @@ namespace TrustIssues
             ShowLevelSelect();
         }
 
+        // Open Settings on a given tab, so a screenshot run can check all four of
+        // them rather than only whichever one happened to be remembered.
+        public void DevOpenSettings(int tab)
+        {
+            _settingsTab = tab;
+            ShowSettings();
+        }
+
         void BeginRun(int levelIndex)
         {
             // Hard guarantee: whatever state timeScale was left in (a stray
@@ -3881,6 +3806,20 @@ namespace TrustIssues
         // the scar is the point.
         const string FloorDeathKey = "ti_fd_";
         static int FloorDeaths(int idx) => PlayerPrefs.GetInt(FloorDeathKey + idx, 0);
+
+        // Fastest clean run of one castle floor, in seconds. 0 = never cleared. The
+        // map's selection plate reads it back as "BEST 1:42" — a floor you've beaten
+        // is worth returning to only if the screen gives you a number to beat.
+        const string FloorBestKey = "ti_fb_";
+        static float FloorBest(int idx) => PlayerPrefs.GetFloat(FloorBestKey + idx, 0f);
+        static void RecordFloorBest(int idx, float seconds)
+        {
+            if (seconds <= 0f) return;
+            float prev = FloorBest(idx);
+            if (prev > 0f && prev <= seconds) return;
+            PlayerPrefs.SetFloat(FloorBestKey + idx, seconds);
+            PlayerPrefs.Save();
+        }
         static void AddFloorDeath(int idx)
         {
             PlayerPrefs.SetInt(FloorDeathKey + idx, FloorDeaths(idx) + 1);
@@ -5922,7 +5861,7 @@ namespace TrustIssues
             // (Handheld only exists on the phone platforms — a desktop/dev build
             // won't compile against it at all, hence the guard as well as the check.)
 #if UNITY_ANDROID || UNITY_IOS
-            if (Application.isMobilePlatform && PlayerPrefs.GetInt("opt_haptics", 1) == 1)
+            if (Application.isMobilePlatform && Options.Haptics)
                 Handheld.Vibrate();
 #endif
             _floorDeaths++;
@@ -6012,12 +5951,17 @@ namespace TrustIssues
             if (_player != null)
             {
                 Fx.Explosion(deathPos, 1.7f);     // a quick blast under the gore
-                GoreBurst(deathPos);
-                BloodSplash(deathPos);
+                // Settings > BLOOD SPATTER. The blast and the death animation stay —
+                // you still need to see that you died — but the gore comes off.
+                if (Options.Spatter)
+                {
+                    GoreBurst(deathPos);
+                    BloodSplash(deathPos);
+                }
                 _player.PlayDeath();
                 _player.Freeze();
             }
-            StartCoroutine(Juice.Shake(_cam.transform, 0.45f, 0.22f));
+            if (Options.Shake) StartCoroutine(Juice.Shake(_cam.transform, 0.45f, 0.22f));
             CinematicPunch(deathPos, 0.18f, 0.3f);   // 2.5D: a quick lean toward the kill
             // NEAR-INSTANT retry — the heart of the "just one more try" loop.
             yield return new WaitForSecondsRealtime(0.18f);
@@ -6284,6 +6228,7 @@ namespace TrustIssues
             if (_levelIndex + 1 < Levels.Count)
             {
                 int clearedFloor = _levelIndex + 1;
+                RecordFloorBest(_levelIndex, LevelDurationMs / 1000f);
                 _levelIndex++;
                 PlayerPrefs.SetInt("ti_level", _levelIndex);
                 UnlockCastle(_levelIndex);     // beating a floor unlocks the next
@@ -6294,7 +6239,8 @@ namespace TrustIssues
                 else
                     StartCoroutine(FloorClearedFlash());
             }
-            else { UnlockCastle(Levels.Count - 1); Badges.Award("castle_clear"); TrackRunComplete(); _state = State.Win; Audio.Play("win", 0.7f); StartCoroutine(WinRoutine()); }
+            else { RecordFloorBest(_levelIndex, LevelDurationMs / 1000f);
+                   UnlockCastle(Levels.Count - 1); Badges.Award("castle_clear"); TrackRunComplete(); _state = State.Win; Audio.Play("win", 0.7f); StartCoroutine(WinRoutine()); }
         }
 
         // The player finished the whole mode (last night / last castle floor).
