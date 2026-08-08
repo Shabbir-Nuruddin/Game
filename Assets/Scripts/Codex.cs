@@ -26,11 +26,15 @@ namespace TrustIssues
         // the whole book without earning it — WITHOUT touching real progress. Turning
         // it back off instantly restores the true locked/unlocked state (the locked
         // silhouette look), so it's a safe look-around toggle, not a cheat that sticks.
-        // Defaults ON right now so the book opens fully unlocked for review; the toggle
-        // on the Bestiary screen locks it back.
+        // DEFAULTS OFF FOR RELEASE. It was defaulted ON as a review convenience so
+        // the whole book could be flipped through while the art was being made —
+        // but that shipped a brand-new player a Bestiary reading 19/19 on first
+        // launch, which throws away the discovery loop the book exists for (and
+        // made the store screenshot advertise a completed collection). The toggle
+        // is still on the Bestiary screen, so looking around costs one tap.
         public static bool PreviewAll
         {
-            get => PlayerPrefs.GetInt("codex_preview_all", 1) == 1;
+            get => PlayerPrefs.GetInt("codex_preview_all", 0) == 1;
             set { PlayerPrefs.SetInt("codex_preview_all", value ? 1 : 0); PlayerPrefs.Save(); }
         }
 

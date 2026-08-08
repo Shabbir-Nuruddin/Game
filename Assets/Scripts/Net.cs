@@ -202,13 +202,28 @@ namespace TrustIssues
         Action<string> _onError;
         bool _connecting;
 
+        // How long we wait for Photon before telling the player it isn't happening.
+        // Without this the lobby could sit on "connecting…" forever: some failure
+        // modes (no DNS, captive-portal wifi, a blocked UDP port) never produce a
+        // callback at all, and _connecting stayed true, so the button was dead for
+        // the rest of the session. A dead button reads as a broken game.
+        const float ConnectTimeout = 15f;
+        float _connectDeadline;
+
         public void Connect(string code, Action onJoined, Action<string> onError)
         {
             _code = code; _onJoined = onJoined; _onError = onError;
 
             if (PhotonNetwork.InRoom) { JoinNamed(); return; }
             if (_connecting) return;
+
+            // Say the obvious thing immediately rather than making them wait out a
+            // 15-second timeout to be told they have no internet.
+            if (Application.internetReachability == NetworkReachability.NotReachable)
+            { Fail("You're offline — multiplayer needs a connection."); return; }
+
             _connecting = true;
+            _connectDeadline = Time.realtimeSinceStartup + ConnectTimeout;
 
             // Stay connected even when this window/tab loses focus — without this,
             // a second (unfocused) instance pauses and gets a TimeoutDisconnect,
@@ -241,6 +256,8 @@ namespace TrustIssues
         public override void OnJoinedRoom()
         {
             _connecting = false;
+            _connectDeadline = 0f;
+            _onError = null;              // succeeded — a late callback must not report a failure
             Net.SetSeedFromCode(PhotonNetwork.CurrentRoom.Name);
             var cb = _onJoined; _onJoined = null;
             cb?.Invoke();
@@ -255,19 +272,41 @@ namespace TrustIssues
             Net.OnRosterChanged?.Invoke();
         }
 
-        public override void OnJoinRoomFailed(short code, string msg)
-        {
-            _connecting = false;
-            _onError?.Invoke("Couldn't join: " + msg);
-        }
+        public override void OnJoinRoomFailed(short code, string msg) => Fail("Couldn't join: " + msg);
+
+        // JoinOrCreateRoom can fail on the CREATE half too (a room that vanished
+        // between the join attempt and the create). That callback was missing, so
+        // this path left _connecting stuck true forever — every later press of the
+        // button hit the `if (_connecting) return` guard and did nothing at all.
+        public override void OnCreateRoomFailed(short code, string msg) => Fail("Couldn't host: " + msg);
 
         public override void OnDisconnected(DisconnectCause cause)
         {
-            if (_connecting)
-            {
-                _connecting = false;
-                _onError?.Invoke("Disconnected: " + cause);
-            }
+            if (_connecting) Fail("Disconnected: " + cause);
+        }
+
+        /// <summary>
+        /// The ONE way a connection attempt ends badly. Every failure path must go
+        /// through here: it clears the in-flight flag (so the player can just press
+        /// the button again) and reports once — the callback is consumed, so a
+        /// timeout followed by a late Photon callback can't double-report.
+        /// </summary>
+        void Fail(string reason)
+        {
+            _connecting = false;
+            _connectDeadline = 0f;
+            _onJoined = null;
+            var cb = _onError; _onError = null;
+            cb?.Invoke(reason);
+        }
+
+        void Update()
+        {
+            if (!_connecting || _connectDeadline <= 0f) return;
+            if (Time.realtimeSinceStartup < _connectDeadline) return;
+            // Give up and hand the player back a working button.
+            PhotonNetwork.Disconnect();
+            Fail("Couldn't reach the server. Check your connection and try again.");
         }
 
         public void LeaveAll()

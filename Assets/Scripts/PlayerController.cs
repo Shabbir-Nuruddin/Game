@@ -61,6 +61,9 @@ namespace TrustIssues
 
         Rigidbody2D _rb;
         BoxCollider2D _col;
+        // Ground-check scratch space, allocated once (see FixedUpdate).
+        readonly RaycastHit2D[] _groundHits = new RaycastHit2D[4];
+        ContactFilter2D _groundFilter;
         Transform _visual;       // child we squash/stretch (so physics box is stable)
         float _coyote, _buffer;
         bool _jumpHeld;          // jump key/button still down — releasing mid-rise cuts the jump
@@ -418,13 +421,16 @@ namespace TrustIssues
 
             // Ground check: cast our own collider a hair toward whatever surface
             // gravity currently calls "down" (the ceiling, when inverted).
-            var filter = new ContactFilter2D { useTriggers = false };
-            filter.SetLayerMask(Physics2D.AllLayers);
-            var hits = new RaycastHit2D[4];
-            int n = _col.Cast(Vector2.down * GravDir, filter, hits, 0.08f);
+            // Reused buffers: this runs 50x a second for the whole session, and
+            // allocating a fresh hit array every physics step is pure garbage for
+            // the collector to sweep up — on a low-end phone that shows up as
+            // periodic hitches, which in a precision platformer is a death.
+            _groundFilter.useTriggers = false;
+            _groundFilter.SetLayerMask(Physics2D.AllLayers);
+            int n = _col.Cast(Vector2.down * GravDir, _groundFilter, _groundHits, 0.08f);
             _grounded = false;
             for (int i = 0; i < n; i++)
-                if (hits[i].collider != null && hits[i].normal.y * GravDir > 0.5f) { _grounded = true; break; }
+                if (_groundHits[i].collider != null && _groundHits[i].normal.y * GravDir > 0.5f) { _grounded = true; break; }
             if (_grounded) _coyote = coyoteTime;
 
             // Landing dust on a real impact (juice).
