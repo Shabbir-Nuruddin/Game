@@ -47,3 +47,9 @@ node_modules/
 # Upload keystore — NEVER commit. Losing control of this means losing the app.
 *.keystore
 *.jks
+
+# Throwaway debug output, not part of the game:
+# screenshot-harness PNGs, the story-interlude log, and scratch scenes.
+Shots/
+CodexStoryInterludes.log
+Assets/trust issues/
