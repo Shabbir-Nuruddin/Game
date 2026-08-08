@@ -413,6 +413,18 @@ namespace TrustIssues
             int style = endlessRhythm < 0 ? 0 : endlessRhythm % 5;
             int segments = endlessRhythm < 0 ? Mathf.Clamp(5 + difficulty, 5, 11)
                 : new[] { 8, 6, 9, 11, 7 }[style];
+
+            // THE TROLL RHYTHM, ENFORCED (see the doctrine above L21). The x-ray
+            // caught this generator averaging 5.2 UNTELEGRAPHED traps per chunk,
+            // with the worst roll scoring 14.8 expected deaths — the dice were
+            // free to put a lie on every single platform, and a chunk where every
+            // platform lies is not a troll level, it is a memory test with no
+            // honest ground to form the instinct on. Two hard rules now hold:
+            // a blind trap costs from a per-chunk BUDGET (~one per three
+            // platforms), and two blind beats can never sit back to back.
+            int blindBudget = Mathf.Max(1, Mathf.CeilToInt(segments / 3f));
+            bool lastWasBlind = false;
+
             for (int i = 0; i < segments; i++)
             {
                 // A wide GLIDE gap: too far for a plain jump, crossable with bat form.
@@ -420,28 +432,46 @@ namespace TrustIssues
                 int fakeChance = endlessRhythm < 0 ? 18 + difficulty * 3
                     : new[] { 20, 12, 18, 32, 8 }[style] + difficulty;
                 bool longGap = difficulty >= 3 && !lastWasLong && rng.Next(100) < glideChance;
+                bool blindHere = false;   // has this platform already lied to you?
+
                 if (longGap) { b.Gap(6.0f + (float)rng.NextDouble() * 0.7f); lastWasLong = true; }
-                else if (difficulty >= 1 && rng.Next(100) < fakeChance) { b.FakeFloor(2f); lastWasLong = false; }
+                // A lying floor IS a blind trap — it spends from the same budget as
+                // one, which is what stops a chunk becoming a row of trapdoors.
+                else if (difficulty >= 1 && blindBudget > 0 && !lastWasBlind
+                         && rng.Next(100) < fakeChance)
+                { b.FakeFloor(2f); lastWasLong = false; blindBudget--; blindHere = true; }
                 else { b.Gap(2.4f + (float)rng.NextDouble() * 0.5f); lastWasLong = false; }
 
                 // A wider platform after a glide gap = a fair landing + meter refill.
                 float p = b.Plat((longGap ? 4.6f : 3.6f) + (float)rng.NextDouble() * 1.3f);
 
                 var first = NextHazard(pool, rng, ref reverseUsed);
+                if (Blind(first))
+                {
+                    // Out of budget, or the player has had no honest ground since
+                    // the last lie — downgrade to something they can see coming.
+                    // They still die here; they just get to feel it was their fault.
+                    if (blindHere || lastWasBlind || blindBudget <= 0) first = Telegraphed(pool, rng);
+                    else { blindBudget--; blindHere = true; }
+                }
                 PlaceHazard(b, first, p);
 
                 // A second hazard deeper in, for variety — but NEVER pair anything
                 // with a Crusher. A Crusher demands you stay LOW (jump and the block
                 // slams you), while almost every other hazard demands you JUMP OVER
                 // it. Combine the two and the platform is physically impossible.
-                // We also keep the rage-teleport (WarpBack) solo.
+                // We also keep the rage-teleport (WarpBack) solo. The partner is
+                // always TELEGRAPHED and never lands on a platform that already
+                // hides something: a blind trap you're stacked on top of reads as a
+                // bug, not a joke.
                 int pairChance = endlessRhythm < 0 ? 30 : new[] { 24, 18, 28, 42, 12 }[style];
-                if (difficulty >= 4 && !Soloist(first) && rng.Next(100) < pairChance)
+                if (difficulty >= 4 && !Soloist(first) && !blindHere && rng.Next(100) < pairChance)
                 {
-                    var second = NextHazard(pool, rng, ref reverseUsed);
+                    var second = Telegraphed(pool, rng);
                     if (!Soloist(second))
                         PlaceHazard(b, second, p + 1.6f);
                 }
+                lastWasBlind = blindHere;
             }
             b.Gap(2.4f);
             var generated = b.Finish();
@@ -450,6 +480,184 @@ namespace TrustIssues
             if (endlessRhythm >= 0)
                 generated.Traps.RemoveAll(t => t.type == TrapType.RealExit);
             return generated;
+        }
+
+        // ── BLOOD MOON — FIVE AUTHORED NIGHTS ───────────────────────────────
+        // Blood Moon used to be Generate(seed, 1 + night), i.e. the same dice the
+        // Endless mode rolls. That is why nobody finished it: at difficulty 4 the
+        // pool opens ALL AT ONCE (saws, flame jets, warp runes, reversed controls,
+        // invisible surprises) and the generator was free to stack a blind trap on
+        // every platform and pair them on top. Night 5 routinely built 13+ hazards
+        // with 7 of them unavoidable-on-sight — an ~14 expected-death floor, run
+        // one-hit, on a life pool of 7.
+        //
+        // A daily mode has to be FINISHABLE TONIGHT or it is not a daily mode, so
+        // the five nights are now authored beat by beat, exactly like a Castle
+        // floor, and the seed only varies the spacing:
+        //
+        //   night 1   ~1.8   spikes only. The handshake — and the flight tutorial.
+        //   night 2   ~3.5   THE FLOOR LIES (fake floors) + growing spikes.
+        //   night 3   ~4.8   FROM ABOVE (pendulum, chandelier).
+        //   night 4   ~6.2   THE CASTLE BITES (saw, dart, flame jet).
+        //   night 5   ~7.6   THE MOON TAKES (holy water, crusher, one Reverse).
+        //
+        // For scale: the Castle ramps 1.3 → 8.6 across FORTY floors. Blood Moon
+        // covers nearly the same range in five, so night for night it always sits
+        // a step above the Castle — which is the point — but it now opens below
+        // Castle floor 5 instead of above Castle floor 19.
+        //
+        // THE RULES THIS TABLE KEEPS (see THE TROLL RHYTHM above L21):
+        //   • every night opens on honest ground with no hazard on it;
+        //   • ONE new trap family per night, and it is always revealed ALONE on a
+        //     wide platform, never in a pair and never straight after a blind one;
+        //   • never two untelegraphed beats back to back;
+        //   • REST beats carry a checkpoint — two of them from night 3 — so a
+        //     death costs a third of a night, not the whole climb.
+        // ─────────────────────────────────────────────────────────────────────
+        const int GapNormal = 0, GapGlide = 1, GapFake = 2;
+
+        struct Beat
+        {
+            public int gap;              // how you arrive: walk, glide, or a lying floor
+            public TrapType? hazard;     // the one thing on this platform (null = clean)
+            public TrapType? extra;      // a SECOND telegraphed hazard, deeper in
+            public bool rest;            // wide clean platform + checkpoint
+        }
+
+        static Beat Walk(TrapType? h = null, TrapType? extra = null)
+            => new Beat { gap = GapNormal, hazard = h, extra = extra };
+        static Beat Glide(TrapType? h = null)
+            => new Beat { gap = GapGlide, hazard = h };
+        static Beat Lie()                       // the floor that isn't there
+            => new Beat { gap = GapFake };
+        static Beat Rest()
+            => new Beat { gap = GapNormal, rest = true };
+
+        static Beat[] NightScore(int n)
+        {
+            switch (n)
+            {
+                // NIGHT 1 — FIRST BLOOD. Nothing here can kill you without showing
+                // itself first. Beat 3 is a glide gap on purpose: it is the only
+                // thing in the mode that TEACHES the bat, so it sits early, alone,
+                // with a fat landing pad and nothing waiting on the other side.
+                case 1: return new[]
+                {
+                    Walk(),                              // honest ground
+                    Walk(TrapType.SpikeStatic),
+                    Glide(),                             // fly, land clean
+                    Rest(),
+                    Walk(TrapType.SpikeStatic),
+                    Walk(TrapType.LateSpike),            // NEW: the spike that waits
+                };
+                // NIGHT 2 — THE FLOOR LIES. The mode's first blind beat, and the
+                // whole game's thesis. Two of them, spaced as far apart as the
+                // night allows, with the checkpoint between.
+                case 2: return new[]
+                {
+                    Walk(),
+                    Lie(),                               // NEW: blind — the floor goes
+                    Walk(TrapType.GrowSpike),            // NEW: telegraphed, rises under you
+                    Rest(),
+                    Glide(),
+                    Walk(TrapType.SpikeStatic),
+                    Lie(),                               // blind #2, well after the first
+                };
+                // NIGHT 3 — FROM ABOVE. The ceiling joins in. Pendulum first (fully
+                // visible, learn the timing), chandelier later (the blind version of
+                // the same idea) — the reveal-then-betray pairing the game runs on.
+                case 3: return new[]
+                {
+                    Walk(),
+                    Walk(TrapType.Pendulum),             // NEW: telegraphed swing
+                    Walk(TrapType.SpikeStatic, TrapType.GrowSpike),
+                    Rest(),
+                    Lie(),                               // blind
+                    Glide(),
+                    Walk(TrapType.GrowSpike, TrapType.SpikeStatic),
+                    Rest(),
+                    Walk(TrapType.Chandelier),           // NEW: blind ceiling drop, solo
+                    Walk(TrapType.Pendulum, TrapType.SpikeStatic),
+                };
+                // NIGHT 4 — THE CASTLE BITES. The machinery night: saw, dart, flame.
+                // Two blind beats (dart, one lying floor) with four platforms of
+                // honest ground between them.
+                case 4: return new[]
+                {
+                    Walk(),
+                    Walk(TrapType.Saw),                  // NEW: telegraphed, on a cycle
+                    Walk(TrapType.GrowSpike, TrapType.SpikeStatic),
+                    Rest(),
+                    Walk(TrapType.Dart),                 // NEW: blind, fires from the wall
+                    Glide(),
+                    Walk(TrapType.FlameJet),             // NEW: telegraphed eruption
+                    Walk(TrapType.SpikeStatic, TrapType.LateSpike),
+                    Walk(TrapType.Pendulum),
+                    Rest(),
+                    Lie(),                               // blind
+                    Walk(TrapType.Saw, TrapType.SpikeStatic),
+                    Walk(TrapType.FlameJet),
+                };
+                // NIGHT 5 — THE MOON TAKES. The climax, and the ONLY floor in the
+                // mode that steals your controls. Reverse lands second-to-last, on
+                // a clean wide platform, right after a checkpoint — so the run's
+                // hardest idea costs you seconds, not the night.
+                default: return new[]
+                {
+                    Walk(),
+                    Walk(TrapType.HolyWater),            // NEW: telegraphed, pulses
+                    Walk(TrapType.Pendulum, TrapType.SpikeStatic),
+                    Rest(),
+                    Walk(TrapType.Crusher),              // NEW: blind, always solo
+                    Glide(),
+                    Walk(TrapType.Saw, TrapType.SpikeStatic),
+                    Walk(TrapType.FlameJet, TrapType.GrowSpike),
+                    Lie(),                               // blind
+                    Rest(),
+                    Walk(TrapType.Reverse),              // the climax — one, only one
+                    Walk(TrapType.HolyWater, TrapType.SpikeStatic),
+                    Walk(TrapType.Saw),
+                    Walk(TrapType.LateSpike),
+                };
+            }
+        }
+
+        /// <summary>
+        /// Build one authored Blood Moon night. The BEATS are fixed (that is the
+        /// difficulty contract); the seed only shifts gap and platform widths, so
+        /// tonight's castle is laid out differently from last night's without ever
+        /// changing how hard it is or which trap teaches what.
+        /// </summary>
+        public static Level BloodMoonNight(int seed, int night)
+        {
+            var rng = new System.Random(seed);
+            var b = new B();
+            b.Plat(6.5f);   // the door: long, empty, honest — always
+
+            foreach (var beat in NightScore(Mathf.Clamp(night, 1, 5)))
+            {
+                switch (beat.gap)
+                {
+                    // Too far to jump, comfortable to glide. Blood Moon is a flight
+                    // mode and this is where it says so.
+                    case GapGlide: b.Gap(5.4f + (float)rng.NextDouble() * 0.5f); break;
+                    // A "floor" that drops out from under you. It IS the gap.
+                    case GapFake:  b.FakeFloor(2.2f); break;
+                    default:       b.Gap(2.3f + (float)rng.NextDouble() * 0.45f); break;
+                }
+
+                // Landing pads are deliberately wider than the Endless generator's
+                // (3.6): you need room to land, read the platform and commit. Rest
+                // pads and glide landings are wider still.
+                float w = (beat.rest ? 5.6f : beat.gap == GapGlide ? 5.0f : 4.2f)
+                        + (float)rng.NextDouble() * 0.9f;
+                float p = b.Plat(w);
+
+                if (beat.rest) { b.Checkpoint(p); continue; }
+                if (beat.hazard.HasValue) PlaceHazard(b, beat.hazard.Value, p);
+                if (beat.extra.HasValue)  PlaceHazard(b, beat.extra.Value, p + 1.8f);
+            }
+            return b.Finish();
         }
 
         // Pick a hazard, but allow at most ONE inverted-controls trap per level —
@@ -493,6 +701,31 @@ namespace TrustIssues
                           l.Add(TrapType.Reverse); }                                       // inverted controls (rare)
             if (d >= 5) { l.Add(TrapType.ArrowRain); l.Add(TrapType.BatSwoop); }
             return l;
+        }
+
+        /// <summary>
+        /// Traps that kill with NO tell the first time you meet them — the game's
+        /// comedy and its entire death count. Kept in lockstep with the difficulty
+        /// x-ray's own list, because the generator's budget and the audit that
+        /// grades it have to agree on what "blind" means.
+        /// </summary>
+        internal static bool Blind(TrapType t) =>
+            t == TrapType.FakeFloor || t == TrapType.Surprise || t == TrapType.FakeExit ||
+            t == TrapType.Faller || t == TrapType.Chandelier || t == TrapType.Crusher ||
+            t == TrapType.Dart || t == TrapType.WarpBack || t == TrapType.Reverse;
+
+        /// <summary>A hazard from this pool you can actually SEE coming.</summary>
+        static TrapType Telegraphed(List<TrapType> pool, System.Random rng)
+        {
+            // Walk from a random offset so the choice stays varied without
+            // allocating a filtered copy every platform.
+            int start = rng.Next(pool.Count);
+            for (int i = 0; i < pool.Count; i++)
+            {
+                var t = pool[(start + i) % pool.Count];
+                if (!Blind(t)) return t;
+            }
+            return TrapType.SpikeStatic;   // early tiers are spikes anyway
         }
 
         // Hazards that must stand ALONE on a platform: crushers (stay-low), the

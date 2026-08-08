@@ -3092,7 +3092,7 @@ namespace TrustIssues
                              : Skins.Current.airJumps > 0 ? "   •   double-jump" : "";
                 ShowHint(_isMobile
                     ? "‹ › move   •   JUMP   •   trust nothing"
-                    : $"← → / A D move   •   {Controls.Name(Controls.Jump)} jump   •   hold {Controls.Name(Controls.Fly)} to glide" + extra + "   •   R restart   •   trust nothing",
+                    : $"← → / A D move   •   {Controls.Name(Controls.Jump)} jump   •   tap {Controls.Name(Controls.Fly)} to fly" + extra + "   •   R restart   •   trust nothing",
                     Memory.IsFirstSession ? 6f : 2.5f);   // first-timers get time to actually read it
             }
             else
@@ -3116,7 +3116,7 @@ namespace TrustIssues
             var left = now.Date.AddDays(1) - now;   // until tonight's run rotates
             ShowBanner($"TONIGHT'S BLOOD MOON — {now:MMM d}",
                        $"rumor: \"{Rumor.CrypticLine}\" • resets in {(int)left.TotalHours}h {left.Minutes}m");
-            ShowHint($"BLOOD MOON — {Diff.StartHearts + 2} lives, +1 per night. Fall too many times and the night just resets. Jump, then hold {Controls.Name(Controls.Fly)}/FLY to glide as a bat.");
+            ShowHint($"BLOOD MOON — {Diff.StartHearts + 2} lives, +1 per night. Fall too many times and the night just resets. Tap {Controls.Name(Controls.Fly)}/FLY to take off and glide as a bat — no jump needed.");
         }
 
         void StartEndless()
@@ -3127,7 +3127,7 @@ namespace TrustIssues
             _endlessSeed = new System.Random().Next(1, 1000000);
             BeginRun(0);
             ShowBanner("ENDLESS NIGHT", "one road • no finish • how far can you survive?");
-            ShowHint($"Risk paths hide extra lives. A life revives you at safe ground behind your fall. Jump, then hold {Controls.Name(Controls.Fly)}/FLY to glide.");
+            ShowHint($"Risk paths hide extra lives. A life revives you at safe ground behind your fall. Tap {Controls.Name(Controls.Fly)}/FLY to take off and glide.");
         }
 
         // ==================== VERSUS (multiplayer) ====================
@@ -3291,7 +3291,7 @@ namespace TrustIssues
             UpdateVersusScore();
             BeginRun(0);
             ShowBanner($"ROOM {Net.RoomCode}", $"race to the coffin • a win is a point • FIRST TO {VersusMatchPoints} takes the match");
-            ShowHint($"Race to the coffin, then a NEW track loads. Tap the SABOTAGE buttons to troll your rival. Jump, hold {Controls.Name(Controls.Fly)} to glide.");
+            ShowHint($"Race to the coffin, then a NEW track loads. Tap the SABOTAGE buttons to troll your rival. Tap {Controls.Name(Controls.Fly)} to take off and glide.");
         }
 
         // Match score across rounds (continuous multiplayer).
@@ -3673,17 +3673,16 @@ namespace TrustIssues
         {
             switch (_mode)
             {
-                // Blood Moon ramp EASED (analytics: nobody was finishing it): was
-                // 2+idx, which opened at difficulty 2 and hit the meanest tier
-                // (saws, flame jets, reversed controls, PAIRED hazards) by night 3.
-                // Now 1+idx — night 1 is a gentle spikes-only intro and the brutal
-                // paired/reverse tier holds off until night 4, with the climax on 5.
+                // Blood Moon is no longer a dice roll. Easing the generator's
+                // difficulty NUMBER was never enough — the generator can still put
+                // a blind trap on every platform, so the five nights are authored
+                // beat by beat in Levels.BloodMoonNight (one new trap family per
+                // night, never two blind beats in a row, rest platforms carrying
+                // real checkpoints). The seed only varies the spacing, so tonight
+                // looks different from last night without being harder.
                 case Mode.Daily:
-                {
-                    var night = Levels.Generate(DailySeed() * 31 + _levelIndex * 7919, 1 + _levelIndex);
-                    AddMidCheckpoint(night);   // a death costs HALF a night, not all of it
-                    return night;
-                }
+                    return Levels.BloodMoonNight(DailySeed() * 31 + _levelIndex * 7919,
+                                                 _levelIndex + 1);
                 // Endless ramps every two hidden generation chunks and caps at
                 // tier 7. The five rhythm profiles keep deep runs varied without
                 // escalating into procedurally impossible layouts.
@@ -3692,13 +3691,18 @@ namespace TrustIssues
                     Mathf.Min(7, 1 + _levelIndex / 2), false, _levelIndex);
                 // Versus: a shared race track, identical for everyone in the room.
                 // The room code + ROUND number seed it, so each round is a fresh
-                // (still deterministic) layout and the match runs continuously. Kept
-                // EASY (difficulty 1) so it stays a fun race, not a rage level.
-                case Mode.Versus:  return Levels.Generate(Net.Seed + _versusRound * 101, 2, race: true);
-                                   // SIMPLE by design (difficulty 2, never ramps): spikes to jump,
-                                   // the odd overhead bat, occasional falling floor — beatable so the
-                                   // SABOTAGE buttons (curse/snuff/quake) are the real fun. Same seed
-                                   // for both players → identical, fair track.
+                // (still deterministic) layout and the match runs continuously.
+                //
+                // The hazard SET never grows — the race pool is spikes, one saw,
+                // the odd overhead bat, and falling floors, full stop. A hard track
+                // plus sabotage buttons is unbeatable, and the sabotage (curse /
+                // snuff / quake) is the actual game here. What DOES grow is the
+                // track: rounds 1-2 are short and flat so the first race anyone
+                // ever runs is winnable, and from round 3 it lengthens by a beat
+                // and starts opening glide gaps — so a long match escalates instead
+                // of replaying the same seven jumps with new numbers.
+                case Mode.Versus:  return Levels.Generate(Net.Seed + _versusRound * 101,
+                                                          Mathf.Min(3, 2 + _versusRound / 2), race: true);
                 // A player-built map. CustomMap.ToLevel goes through the same B
                 // builder as every hand-made floor, so it inherits the ceiling
                 // vault, the stage camera and the beatability guarantees.
@@ -3716,53 +3720,10 @@ namespace TrustIssues
         // exam instead. The tier-1 Ghoul is benched, not deleted — he can come
         // back as an Endless mini-boss. Floors 20/30/40 keep their bosses as
         // world-capping spectacles once the player is invested.
-        /// <summary>
-        /// Drop a checkpoint on the platform nearest the middle of a generated
-        /// night. Blood Moon is one-hit AND life-limited AND has no mid-level
-        /// safety, so every death replayed the whole night from the door — the
-        /// tedium that made a 5-night run feel impossible rather than hard. Half a
-        /// night is still a real punishment; a whole one just made people quit.
-        /// </summary>
-        static void AddMidCheckpoint(Level lvl)
-        {
-            if (lvl == null || lvl.Platforms.Count == 0) return;
-            float minX = float.MaxValue, maxX = float.MinValue;
-            foreach (var p in lvl.Platforms)
-            { minX = Mathf.Min(minX, p.pos.x); maxX = Mathf.Max(maxX, p.pos.x); }
-            float mid = (minX + maxX) / 2f;
-
-            // Land it on a real platform (never over a pit), and never on the very
-            // first or last one — a checkpoint at the door or the exit is pointless.
-            // Generate() puts each platform's hazard at the platform CENTRE (and a
-            // second at centre+1.6), so the centre is exactly where a checkpoint
-            // must NOT go: an audit of all five nights found it buried in a spike
-            // every single time. Walk candidate spots across each platform and take
-            // the first that is genuinely clear of every hazard.
-            var order = new System.Collections.Generic.List<int>();
-            for (int i = 1; i < lvl.Platforms.Count - 1; i++) order.Add(i);
-            order.Sort((a, b) => Mathf.Abs(lvl.Platforms[a].pos.x - mid)
-                        .CompareTo(Mathf.Abs(lvl.Platforms[b].pos.x - mid)));
-
-            foreach (int i in order)
-            {
-                var plat = lvl.Platforms[i];
-                float half = plat.size.x / 2f;
-                // Left edge inward first — the hazard sits centre-and-right.
-                for (float off = 0.75f; off < plat.size.x - 0.5f; off += 0.45f)
-                {
-                    float x = plat.pos.x - half + off;
-                    bool clear = true;
-                    foreach (var t in lvl.Traps)
-                        if (t.type != TrapType.RealExit && Mathf.Abs(t.pos.x - x) < 1.15f)
-                        { clear = false; break; }
-                    if (!clear) continue;
-                    lvl.Traps.Add(new TrapSpec(TrapType.Checkpoint, x, -2f, 1f, 1.6f));
-                    return;
-                }
-            }
-            // No clear spot anywhere (very dense night) — better no checkpoint than
-            // one hidden inside a spike.
-        }
+        // (The old AddMidCheckpoint helper is gone: it hunted for one hazard-free
+        // spot in a procedurally generated night, which on a dense night meant NO
+        // checkpoint at all. Blood Moon nights now author their own rest platforms
+        // — two of them from night 3 — so the safety is designed, not searched for.)
 
         static int BossTierForFloor(int idx)
         {
