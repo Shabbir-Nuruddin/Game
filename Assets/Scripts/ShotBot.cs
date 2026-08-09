@@ -80,6 +80,18 @@ namespace TrustIssues
             var root = GameRoot.I;
             if (root == null) { Debug.Log("SHOTBOT_NO_ROOT"); Application.Quit(); yield break; }
 
+            root.DevOpenWardrobe();
+            yield return new WaitForSecondsRealtime(1.2f);
+            yield return Shot("wardrobe");
+
+            root.DevOpenAuraWardrobe();
+            yield return new WaitForSecondsRealtime(1.2f);
+            yield return Shot("wardrobe_aura");
+
+            root.DevOpenOutfitWardrobe();
+            yield return new WaitForSecondsRealtime(1.2f);
+            yield return Shot("wardrobe_outfit");
+
             root.DevStartFloor(_floor - 1);
             yield return new WaitForSecondsRealtime(1.6f);   // let the player land and the camera settle
             Probe();

@@ -3025,7 +3025,7 @@ namespace TrustIssues
 
         // `hold` = seconds before the fade starts. A brand-new player reading a
         // controls hint for the first time needs more than the veteran default.
-        void ShowHint(string msg, float hold = 2.5f)
+        public void ShowHint(string msg, float hold = 2.5f)
         {
             var t = Theme.Label(Theme.Canvas.transform, msg, 34, new Color(1, 1, 1, 0.7f),
                 new Vector2(0.5f, 0f), new Vector2(0, 80), new Vector2(1400, 60));
@@ -3614,6 +3614,20 @@ namespace TrustIssues
         {
             if (myScore > 0) Leaderboard.Submit(mode, myScore);
             ShowLeaderboard(mode);
+        }
+
+        public void DevOpenWardrobe() => ShowWardrobe();
+
+        public void DevOpenAuraWardrobe()
+        {
+            ShowWardrobe();
+            FindFirstObjectByType<WardrobeUI>()?.DevSelectTab(1);
+        }
+
+        public void DevOpenOutfitWardrobe()
+        {
+            ShowWardrobe();
+            FindFirstObjectByType<WardrobeUI>()?.DevSelectTab(2);
         }
 
         // Open the race lobby with something typed into both boxes, so a screenshot
@@ -6607,10 +6621,10 @@ namespace TrustIssues
         void ShowWardrobe()
         {
             Audio.Play("click");
-            var c = new Vector2(0.5f, 0.5f);
+            var c = new Vector2(0.5f, 0.5f); // retained for the legacy fallback block below
             var panel = Overlay(new Color(0.04f, 0.02f, 0.06f, 0.92f), out var root);
             _onBack = () => { Destroy(panel); ShowMenu(); };
-            BuildWardrobeTabs(root, panel);
+            WardrobeUI.Build(root, panel, _onBack);
             return;
 #pragma warning disable CS0162
             if (Skin.Background(root, "wardrobe_bg") != null) { BuildSkinnedWardrobe(root, panel); return; }

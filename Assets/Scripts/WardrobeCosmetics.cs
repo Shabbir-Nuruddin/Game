@@ -27,22 +27,22 @@ namespace TrustIssues
             new Def { id="blood", name="Blood Mist", hint="Reach Castle Floor 20", color=Theme.Hex("D52732"), unlocked=()=>Castle(20) },
             new Def { id="ember", name="Ember Wake", hint="Reach Endless Nights Floor 15", color=Theme.Hex("EF6B24"), unlocked=()=>Endless(15) },
             new Def { id="ecto", name="Ectoplasm", hint="Reach Endless Nights Floor 20", color=Theme.Hex("23B7C8"), unlocked=()=>Endless(20) },
-            new Def { id="skill", name="Skill Issue", hint="Discover 10 Different Traps", color=Theme.Hex("D64A9A"), unlocked=()=>Codex.KnownCount() >= 10 },
+            new Def { id="skill", name="Skill Issue", hint="Die to 10 Different Traps", color=Theme.Hex("D64A9A"), unlocked=()=>Codex.KnownCount() >= 10 },
             new Def { id="easy", name="Easy, BTW", hint="Clear Castle Floor 40", color=Theme.Hex("64BC45"), unlocked=()=>Castle(40) },
-            new Def { id="plan", name="All Part of the Plan", hint="Complete Bestiary", color=Theme.Hex("C7A15B"), unlocked=()=>Codex.KnownCount() >= Codex.Total },
+            new Def { id="plan", name="All Part of the Plan", hint="Complete the Bestiary (19/19)", color=Theme.Hex("C7A15B"), unlocked=()=>Codex.KnownCount() >= Codex.Total },
         };
 
         public static readonly List<Def> Outfits = new()
         {
-            new Def { id="classic", name="Classic", hint="Default Outfit", color=Color.white, unlocked=()=>true },
+            new Def { id="classic", name="Classic Heir", hint="Default Outfit", color=Color.white, unlocked=()=>true },
             new Def { id="velvet", name="Royal Velvet", hint="Reach Castle Floor 8", color=Theme.Hex("A62D43"), unlocked=()=>Castle(8) },
             new Def { id="shadow", name="Shadow Cloak", hint="Reach Endless Nights Floor 10", color=Theme.Hex("58658B"), unlocked=()=>Endless(10) },
-            new Def { id="hunter", name="Blood Hunter", hint="Maintain a 5-Night Blood Moon Streak", color=Theme.Hex("C62C35"), unlocked=()=>Meta.Streak >= 5 },
+            new Def { id="hunter", name="Blood Hunter", hint="Reach Blood Moon Night 5", color=Theme.Hex("C62C35"), unlocked=()=>Meta.Streak >= 5 },
             new Def { id="tuxedo", name="Noble Tuxedo", hint="Reach Castle Floor 18", color=Theme.Hex("85709F"), unlocked=()=>Castle(18) },
             new Def { id="frost", name="Frost Regalia", hint="Reach Endless Nights Floor 15", color=Theme.Hex("72C9EA"), unlocked=()=>Endless(15) },
             new Def { id="infernal", name="Infernal Finery", hint="Reach Castle Floor 28", color=Theme.Hex("E35A22"), unlocked=()=>Castle(28) },
             new Def { id="void", name="Void Ensemble", hint="Reach Endless Nights Floor 22", color=Theme.Hex("7243B7"), unlocked=()=>Endless(22) },
-            new Def { id="bone", name="Bone Majesty", hint="Complete Bestiary", color=Theme.Hex("C9BEA7"), unlocked=()=>Codex.KnownCount() >= Codex.Total },
+            new Def { id="bone", name="Bone Majesty", hint="Complete Bestiary (19/19)", color=Theme.Hex("C9BEA7"), unlocked=()=>Codex.KnownCount() >= Codex.Total },
             new Def { id="regent", name="Eternal Regent", hint="Clear Castle Floor 40", color=Theme.Hex("CF2930"), unlocked=()=>Castle(40) },
         };
 
