@@ -14,10 +14,11 @@ namespace TrustIssues
     /// Backend contract (add to the analytics Express/Postgres app):
     ///   POST {Host}/score
     ///        body: { "mode":"daily|endless|castle", "nick":"Heir-123",
-    ///                "value": 12, "day": 20260621 }
+    ///                "value": 12, "day": 20260621, "device":"<anon id>" }
     ///        - daily/castle: value = deaths (LOWER is better)
     ///        - endless:      value = distance in metres (HIGHER is better)
-    ///        store the BEST value per (nick, mode[, day]).
+    ///        store the BEST value per (mode, device[, day]) — device, not nick,
+    ///        because generated nicknames collide between players.
     ///   GET  {Host}/leaderboard?mode=daily&scope=today|all  -> { "entries":[ {"nick","value"} ... ] }
     ///        sorted best-first, top ~20.
     /// </summary>
@@ -26,6 +27,17 @@ namespace TrustIssues
         // Same host as Analytics.Endpoint (just different paths).
         public const string Host = "https://trust-issues-analytics.onrender.com";
 
+        /// <summary>
+        /// The leaderboard's OWN on/off switch, deliberately separate from
+        /// <see cref="Analytics.ServerLive"/>. A shared board only sends a
+        /// nickname and a distance — the thing the player asked to be ranked on —
+        /// whereas turning the analytics switch on starts uploading behavioural
+        /// telemetry and changes what the Play "Data safety" form has to say.
+        /// Set this true once the server at <see cref="Host"/> is deployed and
+        /// answering /healthz, and everyone's distances start ranking together.
+        /// </summary>
+        public const bool Online = true;
+
         [Serializable] public class Entry
         {
             public string nick; public int value;
@@ -33,7 +45,11 @@ namespace TrustIssues
             public bool you;     // this row is the person holding the phone
         }
         [Serializable] class Page { public Entry[] entries; }
-        [Serializable] class ScoreBody { public string mode; public string nick; public int value; public int day; }
+        // `device` is the anonymous per-install id. The server keys the best score
+        // on it rather than on the nickname, because nicknames are generated and
+        // two players WILL collide — without this, the second "Heir-412" to post
+        // silently overwrites the first one's distance.
+        [Serializable] class ScoreBody { public string mode; public string nick; public int value; public int day; public string device; }
 
         // ── THE HOUSE DEAD ───────────────────────────────────────────────────
         // An empty leaderboard is worse than no leaderboard: it tells a new
@@ -93,15 +109,21 @@ namespace TrustIssues
         public static List<Entry> Board(string mode, List<Entry> online = null)
         {
             var list = new List<Entry>();
+            int mine = LocalBest(mode);
             if (online != null)
                 foreach (var e in online)
-                    if (e != null && !string.IsNullOrEmpty(e.nick)) list.Add(e);
+                {
+                    if (e == null || string.IsNullOrEmpty(e.nick)) continue;
+                    // Our own server row is dropped: the local best below is the same
+                    // score (or newer), and keeping both would print the player twice.
+                    if (e.nick == Meta.Nick) continue;
+                    list.Add(e);
+                }
 
             int[] values = mode == "endless" ? GhostEndless : mode == "castle" ? GhostCastle : GhostDaily;
             for (int i = 0; i < GhostNames.Length && i < values.Length; i++)
                 list.Add(new Entry { nick = GhostNames[i], value = values[i], ghost = true });
 
-            int mine = LocalBest(mode);
             if (mine >= 0) list.Add(new Entry { nick = Meta.Nick, value = mine, you = true });
 
             list.Sort((a, b) => HigherIsBetter(mode)
@@ -137,17 +159,24 @@ namespace TrustIssues
             // ALWAYS record locally first. The board has to work on a plane, in a
             // dead zone, and — right now — with no server behind it at all.
             RecordLocal(mode, value);
-            var body = new ScoreBody { mode = mode, nick = Meta.Nick, value = value, day = Today };
+            var body = new ScoreBody { mode = mode, nick = Meta.Nick, value = value,
+                                       day = Today, device = Analytics.DeviceId };
             // No server, no request. See Analytics.ServerLive.
-            if (!Analytics.ServerLive) return;
+            if (!Online || _serverDown) return;
             Runner.StartCoroutine(PostScore(body));
         }
 
+        // One failed call parks the network for the rest of the session. Without
+        // this, every board open costs another 8-second stare at a dead host.
+        static bool _serverDown;
+
         public static void Fetch(string mode, string scope, Action<List<Entry>> onResult)
         {
-            // Offline or no server: hand back the local board immediately rather
-            // than an empty list. The caller gets the same shape either way.
-            if (!Analytics.ServerLive) { onResult?.Invoke(Board(mode)); return; }
+            // The local board is ALWAYS drawn first, so the table is on screen the
+            // instant the screen opens instead of after a network round-trip.
+            onResult?.Invoke(Board(mode));
+            if (!Online || _serverDown) return;
+            // Then the live scores arrive and the caller redraws with them merged in.
             Runner.StartCoroutine(GetPage(mode, scope, onResult));
         }
 
@@ -175,6 +204,7 @@ namespace TrustIssues
                 try { var p = JsonUtility.FromJson<Page>(req.downloadHandler.text); if (p?.entries != null) list.AddRange(p.entries); }
                 catch { /* malformed / route not live yet */ }
             }
+            else { _serverDown = true; yield break; }   // already showed the local board
             // Merge whatever the server gave us with the house dead and the
             // player's own best, so a slow or half-empty server still shows a
             // board worth looking at.

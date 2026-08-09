@@ -79,15 +79,22 @@ app.post('/score', async (req, res) => {
     const nick = String(b.nick || 'Heir').slice(0, 24);
     const value = Number.parseInt(b.value, 10);
     const day = Number.parseInt(b.day, 10) || 0;
+    // Identity is the device, not the nickname (nicknames collide). Old clients
+    // that don't send one fall back to the nick so they still rank.
+    const device = String(b.device || nick).slice(0, 64);
     if (!mode || !Number.isFinite(value)) return res.status(400).end();
+    // Reject impossible numbers so one tampered client can't own the board
+    // forever. 200 km of Endless is far past anything a human run produces.
+    if (value < 0 || value > 200000) return res.status(400).end();
     const higherBetter = mode === 'endless';
     await pool.query(
-      `INSERT INTO scores (mode, nick, day, value) VALUES ($1,$2,$3,$4)
-       ON CONFLICT (mode, nick, day) DO UPDATE
-         SET value = CASE WHEN $5 THEN GREATEST(scores.value, EXCLUDED.value)
+      `INSERT INTO scores (mode, nick, device, day, value) VALUES ($1,$2,$3,$4,$5)
+       ON CONFLICT (mode, device, day) DO UPDATE
+         SET value = CASE WHEN $6 THEN GREATEST(scores.value, EXCLUDED.value)
                           ELSE LEAST(scores.value, EXCLUDED.value) END,
+             nick = EXCLUDED.nick,
              updated_at = now()`,
-      [mode, nick, day, value, higherBetter],
+      [mode, nick, device, day, value, higherBetter],
     );
     res.status(204).end();
   } catch (err) {

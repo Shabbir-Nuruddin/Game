@@ -21,15 +21,22 @@ CREATE INDEX IF NOT EXISTS idx_events_time    ON events (received_at);
 -- daily Blood Moon; endless/castle pass today's date too but are read with
 -- scope=all. value = deaths (lower better) for daily/castle, floor reached
 -- (higher better) for endless.
+-- Identity is the anonymous DEVICE id, not the nickname: nicknames are generated
+-- by the game and two players will eventually share one, which would make them
+-- overwrite each other's best distance.
 CREATE TABLE IF NOT EXISTS scores (
   id         bigserial PRIMARY KEY,
   mode       text NOT NULL,
   nick       text NOT NULL,
+  device     text NOT NULL DEFAULT '',
   day        integer NOT NULL DEFAULT 0,
   value      integer NOT NULL,
-  updated_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (mode, nick, day)
+  updated_at timestamptz NOT NULL DEFAULT now()
 );
+-- Migration for databases created before `device` existed.
+ALTER TABLE scores ADD COLUMN IF NOT EXISTS device text NOT NULL DEFAULT '';
+ALTER TABLE scores DROP CONSTRAINT IF EXISTS scores_mode_nick_day_key;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_scores_identity ON scores (mode, device, day);
 CREATE INDEX IF NOT EXISTS idx_scores_lookup ON scores (mode, day, value);
 
 -- Death echoes: where real players died, so OTHER players see their tombstones

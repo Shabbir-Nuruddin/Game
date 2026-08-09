@@ -1791,9 +1791,19 @@ namespace TrustIssues
             const int MaxRows = 8;
             Skin.Chip(root, 0.178f, RowsTop, 0.832f, RowsBot, BoardInterior);
 
+            // The rows live in their own full-screen holder: Fetch draws the offline
+            // board first and then redraws with the live scores, so the old rows have
+            // to be cleared or the two passes print on top of each other.
+            var rowsGo = new GameObject("rows", typeof(RectTransform));
+            var rows = (RectTransform)rowsGo.transform;
+            rows.SetParent(root, false);
+            rows.anchorMin = Vector2.zero; rows.anchorMax = Vector2.one;
+            rows.offsetMin = Vector2.zero; rows.offsetMax = Vector2.zero;
+
             Leaderboard.Fetch(mode, mode == "daily" ? "today" : "all", entries =>
             {
-                if (status == null) return;
+                if (status == null || rows == null) return;
+                for (int i = rows.childCount - 1; i >= 0; i--) Destroy(rows.GetChild(i).gameObject);
                 int rank = Leaderboard.MyRank(entries);
                 // The line above the table does the motivating: it names where the
                 // player stands and who is directly in front of them, which is the
@@ -1824,9 +1834,9 @@ namespace TrustIssues
                     var col = e.you ? Theme.Player : place == 1 ? Theme.Coin
                             : e.ghost ? Gothic.Faint : Gothic.Bone;
                     string name = (e.ghost ? "† " : "") + e.nick + (e.you ? "   (you)" : "");
-                    BoardCell(root, $"{place}", 0.185f, t0, 0.255f, t1, col);
-                    BoardCell(root, name, 0.285f, t0, 0.560f, t1, col, TextAnchor.MiddleLeft);
-                    BoardCell(root, e.value + (mode == "endless" ? " m" : ""),
+                    BoardCell(rows, $"{place}", 0.185f, t0, 0.255f, t1, col);
+                    BoardCell(rows, name, 0.285f, t0, 0.560f, t1, col, TextAnchor.MiddleLeft);
+                    BoardCell(rows, e.value + (mode == "endless" ? " m" : ""),
                         0.600f, t0, 0.820f, t1, col);
                 }
             });
