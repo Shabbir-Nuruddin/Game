@@ -91,6 +91,26 @@ namespace TrustIssues
             root.DevOpenOutfitWardrobe();
             yield return new WaitForSecondsRealtime(1.2f);
             yield return Shot("wardrobe_outfit");
+            root.DevCloseOverlay();
+            yield return new WaitForSecondsRealtime(0.4f);
+
+            // Equip each avatar in turn and respawn, so a shot run proves the
+            // character sprite genuinely changes with the Wardrobe rather than
+            // only the card art doing so.
+            Skins.DevUnlockAll = true;   // otherwise a locked avatar quietly equips The Heir
+            foreach (var s in Skins.All)
+            {
+                Skins.Equip(s.id);
+                // Floor 1 is the flat two-trap trial: the character stays put at the
+                // spawn, so every skin lands in the same pixels and the shots can be
+                // laid side by side.
+                root.DevStartFloor(0);
+                yield return new WaitForSecondsRealtime(0.8f);
+                ProbeSkin(s.id);
+                yield return Shot("skin_" + s.id);
+            }
+            Skins.DevUnlockAll = false;
+            Skins.Equip("heir");
 
             root.DevStartFloor(_floor - 1);
             yield return new WaitForSecondsRealtime(1.6f);   // let the player land and the camera settle
@@ -141,6 +161,28 @@ namespace TrustIssues
 
             Debug.Log("SHOTBOT_DONE " + _dir);
             Application.Quit();
+        }
+
+        // Which art is the live character actually wearing? A screenshot can't settle
+        // this on its own — death echoes put several differently-coloured vampires on
+        // screen at once, and a costume that failed to load still leaves a vampire
+        // standing there. The texture name is unambiguous.
+        static void ProbeSkin(string expected)
+        {
+            var pc = Object.FindFirstObjectByType<PlayerController>();
+            if (pc == null) { Debug.Log("SHOTBOT_SKIN " + expected + " NO_PLAYER"); return; }
+            var sr = pc.GetComponentInChildren<SpriteRenderer>();
+            var tex = sr != null && sr.sprite != null ? sr.sprite.texture : null;
+            var cam = Camera.main;
+            string where = "";
+            if (cam != null && sr != null)
+            {
+                var sp = cam.WorldToScreenPoint(sr.bounds.center);
+                where = $" screen=({sp.x:F0},{Screen.height - sp.y:F0}) size={sr.bounds.size}";
+            }
+            Debug.Log($"SHOTBOT_SKIN {expected} tex={(tex != null ? tex.name : "NONE")} " +
+                      $"frame={SkinArt.Frame(expected)} hasArt={SkinArt.Has(expected)} " +
+                      $"tint={(sr != null ? sr.color.ToString() : "-")}{where}");
         }
 
         // What the camera can actually SEE, and where the scenery sits inside it.

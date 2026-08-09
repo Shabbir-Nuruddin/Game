@@ -3594,8 +3594,23 @@ namespace TrustIssues
         // nothing calls them unless that flag is on the command line.
         public void DevStartFloor(int levelIndex)
         {
+            DevCloseOverlay();
             _mode = Mode.Curated;
             BeginRun(Mathf.Clamp(levelIndex, 0, Levels.Count - 1));
+        }
+
+        /// <summary>Tear down any full-screen menu panel. Overlays paint over the
+        /// whole camera, so without this every screenshot taken after one is opened
+        /// is a picture of that menu — which is how a run of "level" shots came back
+        /// as ten identical Wardrobes. This destroys the panels directly rather than
+        /// firing _onBack, because at the main menu Back arms "press again to quit"
+        /// and a second call would close the game mid-itinerary.</summary>
+        public void DevCloseOverlay()
+        {
+            if (Theme.Canvas == null) return;
+            foreach (var rt in Theme.Canvas.GetComponentsInChildren<RectTransform>(true))
+                if (rt != null && rt.parent == Theme.Canvas.transform && rt.name == "Overlay")
+                    Destroy(rt.gameObject);
         }
 
         public void DevWarp(float x)
@@ -4970,23 +4985,28 @@ namespace TrustIssues
             // grid where rows are directions; VampRow picks the side profile.
             // If the vampire ever "moonwalks" (faces backward while moving), flip
             // VampFaceLeft — that mirrors the base art to match the movement code.
-            const int VampRow = 3;          // bottom row = right-facing profile
             const bool VampFaceLeft = false; // set true if the chosen row faces left
             SpriteRenderer bodySr = null;
             Transform vis;
-            var vIdle  = Assets.Grid("vamp_idle_sheet", 64, VampRow);
-            var vRun   = Assets.Grid("vamp_run_sheet", 64, VampRow);
-            var vWalk  = Assets.Grid("vamp_walk_sheet", 64, VampRow);
-            var vDeath = Assets.Grid("vamp_death_sheet", 64, VampRow);
+
+            // Equipped cosmetic skin decides WHICH sheets to slice. Each skin has
+            // its own redressed art under Resources/art/skins/<id>/; SkinArt hands
+            // back the path prefix, frame size and row for whichever set exists, so
+            // a missing folder silently falls back to the shared vampire grid.
+            var skin = Skins.Current;
+            string skinPath = SkinArt.Prefix(skin.id);
+            int vampFrame = SkinArt.Frame(skin.id);
+            int vampRow = SkinArt.Row(skin.id);
+            var vIdle  = Assets.Grid(skinPath + "vamp_idle_sheet", vampFrame, vampRow);
+            var vRun   = Assets.Grid(skinPath + "vamp_run_sheet", vampFrame, vampRow);
+            var vWalk  = Assets.Grid(skinPath + "vamp_walk_sheet", vampFrame, vampRow);
+            var vDeath = Assets.Grid(skinPath + "vamp_death_sheet", vampFrame, vampRow);
             bool haveVamp = vIdle != null && vIdle.Length > 0;
 
             var pmIdle = Assets.Sheet("pinkman_idle", 32);
             var pmRun = Assets.Sheet("pinkman_run", 32);
             var pmJump = Assets.Sheet("pinkman_jump", 32);
             var beanie = Assets.Sprite("beanie_idle");
-
-            // Equipped cosmetic skin: choose the base sprite set, then tint it.
-            var skin = Skins.Current;
             bool wantPink = skin.pinkman && pmIdle != null && pmIdle.Length > 0;
             bool useVamp = haveVamp && !wantPink;
             Sprite firstFrame = useVamp ? vIdle[0]
@@ -5014,7 +5034,12 @@ namespace TrustIssues
                 b.transform.localPosition = new Vector3(0f, baseNudge - (footY - baseNudge) * (vk - 1f), 0f);
                 bodySr = b.AddComponent<SpriteRenderer>();
                 bodySr.sprite = firstFrame;
-                bodySr.color = WardrobeCosmetics.PlayerTint(Skins.Shade(skin));
+                // A skin with its own art already IS the costume — multiplying the
+                // avatar tint over it a second time would just re-flatten it. The
+                // outfit tint still applies, because outfits are a separate layer
+                // the art doesn't cover.
+                bodySr.color = WardrobeCosmetics.PlayerTint(
+                    SkinArt.Has(skin.id) ? Color.white : Skins.Shade(skin));
                 bodySr.sortingOrder = 5;
                 float h = firstFrame.bounds.size.y;
                 float s = (h > 0.0001f ? 1.35f / h : 1f) * vk;

@@ -75,7 +75,10 @@ namespace TrustIssues
             Sprite[] frames = null;
             if (tex != null && frame > 0)
             {
-                tex.filterMode = FilterMode.Point;
+                // 64px art is drawn well above 1:1 and wants crisp pixels; the
+                // higher-resolution per-skin sheets land near 1:1, where point
+                // sampling puts the stair-stepping straight back in.
+                tex.filterMode = frame > 64 ? FilterMode.Bilinear : FilterMode.Point;
                 int cols = Mathf.Max(1, tex.width / frame);
                 int rows = Mathf.Max(1, tex.height / frame);
                 int r = Mathf.Clamp(rowFromTop, 0, rows - 1);
