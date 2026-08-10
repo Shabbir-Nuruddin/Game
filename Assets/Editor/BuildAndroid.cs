@@ -49,28 +49,41 @@ namespace TrustIssues.EditorTools
             // application" and writes nothing. A sideload build only needs the debug
             // keystore, so the release settings are parked for the duration of the
             // build and put back afterwards, whether it succeeds or not.
+            // The park/restore MUST survive an abandoned build. An APK takes ~20
+            // minutes, so a run that gets cancelled or times out dies between these
+            // two points — and then the release keystore path is simply gone from
+            // ProjectSettings, with the NEXT build dutifully "restoring" the blanks.
+            // try/finally means a killed build leaves the settings untouched instead.
             bool hadCustomKeystore = PlayerSettings.Android.useCustomKeystore;
             string keystorePath = PlayerSettings.Android.keystoreName;
             string keyalias = PlayerSettings.Android.keyaliasName;
-            PlayerSettings.Android.useCustomKeystore = false;
-            PlayerSettings.Android.keystoreName = "";
-            PlayerSettings.Android.keyaliasName = "";
 
-            var options = new BuildPlayerOptions
+            const string apkPath = "Builds/TrustIssues.apk";
+            BuildReport report;
+            try
             {
-                scenes = new[] { "Assets/scene.unity" },
-                target = BuildTarget.Android,
-                locationPathName = "Builds/TrustIssues.apk",
-                options = BuildOptions.None,
-            };
-            BuildReport report = BuildPipeline.BuildPlayer(options);
+                PlayerSettings.Android.useCustomKeystore = false;
+                PlayerSettings.Android.keystoreName = "";
+                PlayerSettings.Android.keyaliasName = "";
 
-            PlayerSettings.Android.useCustomKeystore = hadCustomKeystore;
-            PlayerSettings.Android.keystoreName = keystorePath;
-            PlayerSettings.Android.keyaliasName = keyalias;
+                var options = new BuildPlayerOptions
+                {
+                    scenes = new[] { "Assets/scene.unity" },
+                    target = BuildTarget.Android,
+                    locationPathName = apkPath,
+                    options = BuildOptions.None,
+                };
+                report = BuildPipeline.BuildPlayer(options);
+            }
+            finally
+            {
+                PlayerSettings.Android.useCustomKeystore = hadCustomKeystore;
+                PlayerSettings.Android.keystoreName = keystorePath;
+                PlayerSettings.Android.keyaliasName = keyalias;
+            }
 
             Debug.Log($"Android build: {report.summary.result}, " +
-                      $"{report.summary.totalSize / (1024 * 1024)} MB -> {options.locationPathName}");
+                      $"{report.summary.totalSize / (1024 * 1024)} MB -> {apkPath}");
             if (report.summary.result == BuildResult.Succeeded)
             {
                 AssetDatabase.SaveAssets();
