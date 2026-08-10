@@ -1512,115 +1512,154 @@ namespace TrustIssues
         bool _recordFlipped;
 
         /// <summary>
-        /// THE LANDING. Black night, one red moon, the title, and three ways down:
-        /// tonight's Blood Moon, the Castle you're partway through, and Endless.
-        /// Your deepest run is its own plate on the left — off the Endless button,
-        /// where it used to hide — and everything transient lives along the bottom.
+        /// THE LANDING, wearing its painting (Resources/ui/landing_bg).
+        ///
+        /// The artwork supplies the night, the frame, the title and the tagline, and
+        /// NOTHING that can change: every number, every state and every button on this
+        /// screen is laid live over the picture. The one thing the picture gets wrong
+        /// is its painted START GAME plate — the game has three ways down, not one — so
+        /// a soft vignette swallows that spot and the three real buttons sit on it.
+        ///
+        /// Positions come from the design at 1600x900, converted into the canvas's
+        /// 1920x1080 reference space (x1.2, measured from the centre). No art file? The
+        /// old code-built night draws instead and every control still works.
         /// </summary>
         void BuildLanding(Transform root, int tithe)
         {
-            Crimson.Backdrop(root, 340f, -40f, true, 3);
-
-            // ---- Title ------------------------------------------------------------
-            var top = new Vector2(0.5f, 1f);
-            var shadow = Theme.Label(root, Theme.Title, 104, Theme.Hex("480610"), top,
-                new Vector2(6, -168), new Vector2(1700, 200));
-            shadow.font = Theme.TitleFont; shadow.raycastTarget = false;
-            var title = Theme.Label(root, Theme.Title, 104, Theme.Hex("F2ECE1"), top,
-                new Vector2(0, -162), new Vector2(1700, 200));
-            title.font = Theme.TitleFont; title.raycastTarget = false;
-            if (!Options.ReducedMotion) StartCoroutine(Pulse(title.transform));
-            Crimson.Line(root, "DESCEND  ·  DISTRUST  ·  DIE", 26, Crimson.Gold,
-                new Vector2(0, -262), new Vector2(1200, 44), TextAnchor.MiddleCenter, top)
-                .fontStyle = FontStyle.Bold;
-
-            // ---- The three ways down -----------------------------------------------
-            // Blood Moon and the Castle sit side by side with their own state written
-            // underneath them; Endless is the wide crimson plate below, because it's
-            // the run you come back for.
             var mid = new Vector2(0.5f, 0.5f);
-            Crimson.Btn(root, "BLOOD MOON", mid, new Vector2(-250, 128), new Vector2(430, 96),
-                StartDaily, false, 30, $"TONIGHT  ·  {DailyLen} FLOORS", true);
-            Crimson.Btn(root, "THE CASTLE", mid, new Vector2(250, 128), new Vector2(430, 96),
-                ShowLevelSelect, false, 30,
-                $"FLOOR {Mathf.Min(CastleUnlocked + 1, Levels.Count)} / {Levels.Count}", true);
-            Crimson.Btn(root, "ENDLESS NIGHTS", mid, new Vector2(0, -10), new Vector2(880, 92),
-                StartEndless, true, 34);
+            bool painted = Skin.Background(root, "landing_bg") != null;
 
-            // ---- YOUR DEEPEST NIGHT -------------------------------------------------
-            int deepest = PlayerPrefs.GetInt("best_endless_distance", 0);
-            bool has = deepest > 0 && !_recordFlipped;
-            // A wide bar UNDER the three ways down rather than a card floating off the
-            // left edge: on a narrow screen the centred buttons and a left-anchored
-            // plate walk straight into each other.
-            var plate = Crimson.Panel_(root, mid, new Vector2(-330, -168),
-                                       new Vector2(640, 190), Theme.Hex("1B0C16"), Crimson.Rail);
-            Crimson.Line(plate.transform, "YOUR DEEPEST NIGHT", 19, Crimson.Mute,
-                new Vector2(28, -30), new Vector2(400, 30), TextAnchor.MiddleLeft, new Vector2(0f, 1f))
-                .fontStyle = FontStyle.Bold;
-            if (has)
+            if (painted)
             {
-                Crimson.Line(plate.transform, $"{deepest:N0}m", 50, Crimson.GoldLit,
-                    new Vector2(28, -86), new Vector2(300, 62), TextAnchor.MiddleLeft, new Vector2(0f, 1f))
-                    .fontStyle = FontStyle.Bold;
-                Crimson.Line(plate.transform, DepthTitle(deepest), 20, Crimson.BloodHot,
-                    new Vector2(28, -134), new Vector2(340, 30), TextAnchor.MiddleLeft, new Vector2(0f, 1f))
-                    .fontStyle = FontStyle.Bold;
-                Crimson.Btn(plate.transform, "SHARE", new Vector2(1f, 0.5f), new Vector2(-110, -14),
-                    new Vector2(180, 62), () => StartCoroutine(ShareCard.CaptureAndShare(
-                        "trust_issues_depth.png",
-                        $"I got {deepest}m down in TRUST ISSUES before the castle took me.")),
-                    false, 22);
+                // Black out the painted START GAME plate. A radial fade rather than a
+                // rectangle: a hard-edged patch on a painting reads as a hole.
+                var hush = Crimson.Img(root, "CentreHush", Crimson.Halo, new Color(0.023f, 0.012f, 0.027f, 0.97f));
+                Crimson.Place(hush, mid, new Vector2(0, -95), new Vector2(1500, 620));
             }
             else
             {
-                Crimson.Line(plate.transform, "— — —", 38, Crimson.Dead,
-                    new Vector2(28, -84), new Vector2(200, 52), TextAnchor.MiddleLeft, new Vector2(0f, 1f));
-                Crimson.Line(plate.transform, "no depth recorded. the castle isn't impressed.",
-                    20, Crimson.Mute, new Vector2(28, -122), new Vector2(360, 56),
-                    TextAnchor.UpperLeft, new Vector2(0f, 1f));
-                Crimson.Btn(plate.transform, "SET ONE", new Vector2(1f, 0.5f), new Vector2(-110, -14),
-                    new Vector2(190, 62), StartEndless, false, 21);
+                Crimson.Backdrop(root, 340f, -40f, true, 3);
+                var top = new Vector2(0.5f, 1f);
+                var shadow = Theme.Label(root, Theme.Title, 104, Theme.Hex("480610"), top,
+                    new Vector2(6, -168), new Vector2(1700, 200));
+                shadow.font = Theme.TitleFont; shadow.raycastTarget = false;
+                var title = Theme.Label(root, Theme.Title, 104, Theme.Hex("F2ECE1"), top,
+                    new Vector2(0, -162), new Vector2(1700, 200));
+                title.font = Theme.TitleFont; title.raycastTarget = false;
+                if (!Options.ReducedMotion) StartCoroutine(Pulse(title.transform));
+                Crimson.Line(root, "DESCEND  ·  DISTRUST  ·  DIE", 26, Crimson.Gold,
+                    new Vector2(0, -262), new Vector2(1200, 44), TextAnchor.MiddleCenter, top)
+                    .fontStyle = FontStyle.Bold;
             }
 
-            // ---- What the castle remembers about you --------------------------------
-            // The greeting is shown HERE, not in the notice stack, so it reads as the
-            // castle talking to you rather than as one more banner along the bottom.
-            string greet = Memory.MenuGreeting();
-            Crimson.Line(root, greet ?? "\"You came back. The stairs remember your weight.\"",
-                24, Theme.Hex("9B848C"), new Vector2(30, -168), new Vector2(600, 172),
-                TextAnchor.MiddleLeft, mid);
+            // ---- The three ways down -----------------------------------------------
+            // Stacked, widest last: tonight's Blood Moon, the Castle you're partway
+            // through, then Endless — the run you actually come back for, so it gets
+            // the tallest plate at the bottom of the eye's travel.
+            Crimson.MetalBtn(root, "BLOOD MOON", mid, new Vector2(0, 25), new Vector2(768, 89),
+                StartDaily, 30, $"TONIGHT  ·  {DailyLen} FLOORS  ·  SHARED SEED");
+            Crimson.MetalBtn(root, "THE CASTLE", mid, new Vector2(0, -80), new Vector2(768, 89),
+                ShowLevelSelect, 30,
+                $"FLOOR {Mathf.Min(CastleUnlocked + 1, Levels.Count)} OF {Levels.Count}");
+            Crimson.MetalBtn(root, "ENDLESS NIGHTS", mid, new Vector2(0, -192), new Vector2(768, 101),
+                StartEndless, 38, "ONE RUN  ·  NO BOTTOM");
+
+            BuildRecordPlate(root, mid);
+            BuildCastlePlate(root, mid);
 
             // ---- The footer ----------------------------------------------------------
-            // The design's three buttons, plus the two it dropped: Multiplayer and the
+            // The design's three, plus the two it dropped: Multiplayer and the
             // Leaderboard are working features, and a feature you can't reach is a
             // feature you don't have.
-            var bot = new Vector2(0.5f, 0f);
-            var fdim = new Vector2(300, 68);
-            Crimson.Btn(root, "WARDROBE", bot, new Vector2(-620, 200), fdim, ShowWardrobe, false, 22);
-            Crimson.Btn(root, $"BESTIARY {Codex.KnownCount()}/{Codex.Total}", bot, new Vector2(-310, 200), fdim,
-                ShowCodex, false, 20);
-            Crimson.Btn(root, "MULTIPLAYER", bot, new Vector2(0, 200), fdim, ShowVersusLobby, false, 21);
-            Crimson.Btn(root, "LEADERBOARD", bot, new Vector2(310, 200), fdim,
-                () => ShowLeaderboard("daily"), false, 20);
-            Crimson.Btn(root, "SETTINGS", bot, new Vector2(620, 200), fdim, ShowSettings, false, 22);
+            var fdim = new Vector2(269, 62);
+            Crimson.MetalBtn(root, "WARDROBE", mid, new Vector2(-566, -338), fdim, ShowWardrobe, 20);
+            Crimson.MetalBtn(root, $"BESTIARY {Codex.KnownCount()}/{Codex.Total}", mid,
+                new Vector2(-283, -338), fdim, ShowCodex, 19);
+            Crimson.MetalBtn(root, "MULTIPLAYER", mid, new Vector2(0, -338), fdim, ShowVersusLobby, 20);
+            Crimson.MetalBtn(root, "LEADERBOARD", mid, new Vector2(283, -338), fdim,
+                () => ShowLeaderboard("daily"), 19);
+            Crimson.MetalBtn(root, "SETTINGS", mid, new Vector2(566, -338), fdim, ShowSettings, 20);
 
             // Balance top-left, streak top-right, exactly as the design frames them.
-            Crimson.BloodCounter(root, new Vector2(0f, 1f), new Vector2(190, -56), 30);
+            Crimson.BloodCounter(root, mid, new Vector2(-570, 449), 30);
             if (Meta.Streak > 0 && Meta.StreakAlive)
             {
-                var s = Crimson.Panel_(root, new Vector2(1f, 1f), new Vector2(-170, -56),
-                                       new Vector2(280, 58), Crimson.Panel, Crimson.Rail);
-                Crimson.Line(s.transform, $"STREAK {Meta.Streak} NIGHTS", 21, Crimson.Gold,
-                    Vector2.zero, new Vector2(260, 40)).fontStyle = FontStyle.Bold;
+                var s = Crimson.Panel_(root, mid, new Vector2(552, 449),
+                                       new Vector2(300, 58), Crimson.Panel, Crimson.Rail);
+                Crimson.Line(s.transform, $"{Meta.Streak}-NIGHT STREAK", 21, Crimson.Gold,
+                    Vector2.zero, new Vector2(280, 40)).fontStyle = FontStyle.Bold;
             }
 
-            // The transient stack (tithe, curse, greeting) keeps the bottom rail.
-            BuildMenuNotices(root, tithe);
+            BuildWelcomePlate(root);
+            BuildTithePlate(root, tithe);
+        }
 
-            // The record plate flips between its two faces on tap — but only once
-            // there's something to flip to, so a real record never hides itself by
-            // accident on a mis-tap.
+        /// <summary>
+        /// YOUR DEEPEST NIGHT — the left plate. Your best Endless depth, the title it
+        /// earns you, how far the next title is, and last night's number beside it.
+        /// Tapping it flips to the "no depth recorded" taunt and back, so a first-time
+        /// player is handed a challenge instead of three dashes.
+        /// </summary>
+        void BuildRecordPlate(Transform root, Vector2 mid)
+        {
+            int deepest = PlayerPrefs.GetInt("best_endless_distance", 0);
+            bool has = deepest > 0 && !_recordFlipped;
+            var plate = Crimson.Panel_(root, mid, new Vector2(-625, -46),
+                                       new Vector2(386, 330), Theme.Hex("13070E"), Crimson.Rail);
+            PlateHeader(plate, "ENDLESS NIGHTS  ·  YOUR RECORD");
+
+            if (has)
+            {
+                Crimson.Line(plate.transform, "YOUR DEEPEST NIGHT", 17, Crimson.Mute,
+                    new Vector2(0, 108), new Vector2(386, 26)).fontStyle = FontStyle.Bold;
+                Crimson.Line(plate.transform, $"{deepest:N0}m", 62, Crimson.GoldLit,
+                    new Vector2(0, 64), new Vector2(386, 70)).fontStyle = FontStyle.Bold;
+                Crimson.Line(plate.transform, DepthTitle(deepest), 22, Crimson.BloodHot,
+                    new Vector2(0, 18), new Vector2(386, 30)).fontStyle = FontStyle.Bold;
+
+                // The bar to the next title. It fills between the title you hold and
+                // the one above it, so it always says "this much further", never a
+                // meaningless fraction of some far-off maximum.
+                NextRank(deepest, out string next, out int at, out float pct);
+                var trough = Crimson.Img(plate.transform, "Trough", null, Theme.Hex("07030A"));
+                Crimson.Place(trough, mid, new Vector2(0, -14), new Vector2(330, 10));
+                var fill = Crimson.Img(trough.transform, "Fill", null, Crimson.BloodHot);
+                var frt = fill.rectTransform;
+                frt.anchorMin = new Vector2(0, 0); frt.anchorMax = new Vector2(pct, 1);
+                frt.offsetMin = frt.offsetMax = Vector2.zero;
+                Crimson.Line(plate.transform, next == null ? "THE DEEPEST TITLE IS YOURS" : $"NEXT  ·  {next}",
+                    16, Theme.Hex("7A625C"), new Vector2(-165, -36), new Vector2(240, 24),
+                    TextAnchor.MiddleLeft, mid);
+                if (next != null)
+                    Crimson.Line(plate.transform, $"{at:N0}m", 16, Theme.Hex("7A625C"),
+                        new Vector2(165, -36), new Vector2(120, 24), TextAnchor.MiddleRight, mid);
+
+                int last = PlayerPrefs.GetInt("last_endless_distance", 0);
+                Split(plate, "LAST RUN", last > 0 ? $"{last:N0}m" : "—",
+                            "DEEPEST FLOOR", PlayerPrefs.GetInt("best_endless", 0).ToString());
+
+                Crimson.Btn(plate.transform, "SHARE THE DEPTH", new Vector2(0.5f, 0f), new Vector2(0, 30),
+                    new Vector2(340, 54), () => StartCoroutine(ShareCard.CaptureAndShare(
+                        "trust_issues_depth.png",
+                        $"I got {deepest}m down in TRUST ISSUES before the castle took me.")),
+                    false, 20);
+            }
+            else
+            {
+                Crimson.Line(plate.transform, "YOUR DEEPEST NIGHT", 17, Crimson.Mute,
+                    new Vector2(0, 108), new Vector2(386, 26)).fontStyle = FontStyle.Bold;
+                Crimson.Line(plate.transform, "0m", 62, Crimson.Dead,
+                    new Vector2(0, 60), new Vector2(386, 70)).fontStyle = FontStyle.Bold;
+                Crimson.Line(plate.transform, "No depth recorded.\nThe castle isn't impressed yet.",
+                    21, Crimson.Mute, new Vector2(0, -6), new Vector2(330, 70));
+                Crimson.Line(plate.transform, "FIRST TITLE  ·  TOURIST AT 1m", 16, Theme.Hex("7A625C"),
+                    new Vector2(0, -62), new Vector2(330, 24));
+                Crimson.Btn(plate.transform, "SET A HIGH SCORE", new Vector2(0.5f, 0f), new Vector2(0, 30),
+                    new Vector2(340, 54), StartEndless, true, 20);
+            }
+
+            // Flip only once there's something to flip to, so a real record can never
+            // hide itself on a mis-tap.
             if (deepest > 0)
             {
                 var edge = plate.GetComponent<Image>();
@@ -1629,6 +1668,156 @@ namespace TrustIssues
                 flip.targetGraphic = edge;
                 flip.onClick.AddListener(() => { _recordFlipped = !_recordFlipped; ShowMenu(); });
             }
+        }
+
+        /// <summary>
+        /// The right plate: what the castle has to say to you. A returning player gets
+        /// the castle's greeting and the trap with their name on it; a new one gets the
+        /// three modes explained, because "BLOOD MOON" means nothing on night one.
+        /// </summary>
+        void BuildCastlePlate(Transform root, Vector2 mid)
+        {
+            var plate = Crimson.Panel_(root, mid, new Vector2(625, -46),
+                                       new Vector2(386, 330), Theme.Hex("13070E"), Crimson.Rail);
+            string greet = Memory.MenuGreeting();
+            int nem = Memory.Nemesis;
+            bool returning = greet != null || nem >= 0;
+            PlateHeader(plate, returning ? "THE CASTLE REMEMBERS" : "WHERE TO START");
+            if (greet != null && !_greetTracked)
+            {
+                _greetTracked = true;
+                Analytics.Track("haunt_greeting", new System.Collections.Generic.Dictionary<string, object>());
+            }
+
+            if (returning)
+            {
+                Crimson.Line(plate.transform, $"“{greet ?? "You came back. The stairs remember your weight."}”",
+                    23, Crimson.Body, new Vector2(0, 42), new Vector2(330, 150));
+                if (nem >= 0)
+                {
+                    // "TRAP THAT KILLS YOU MOST" wrapped onto the value underneath it
+                    // in a 170-wide column; the short label says the same thing.
+                    Split(plate, "YOUR NEMESIS", Codex.Title((TrapType)nem),
+                                 "DEATHS", PlayerPrefs.GetInt("ti_kill_" + nem, 0).ToString());
+                    Crimson.Line(plate.transform, "IT WEARS A CROWN UNTIL YOU BEAT IT",
+                        15, Theme.Hex("7A625C"), new Vector2(0, 16), new Vector2(364, 24),
+                        TextAnchor.MiddleCenter, new Vector2(0.5f, 0f));
+                }
+            }
+            else
+            {
+                string[] name = { "THE CASTLE", "BLOOD MOON", "ENDLESS NIGHTS" };
+                string[] note = { $"{Levels.Count} floors, hand-built to lie to you. Start here.",
+                                  $"{DailyLen} floors, the same layout for everyone, tonight only.",
+                                  "One run, no bottom. This is where your score lives." };
+                for (int i = 0; i < 3; i++)
+                {
+                    float y = -60 - i * 76;
+                    var pip = Crimson.Img(plate.transform, "Pip", Gothic.Diamond, Color.white);
+                    Crimson.Place(pip, new Vector2(0f, 1f), new Vector2(30, y - 4), Vector2.one * 16f);
+                    Crimson.Line(plate.transform, name[i], 19, Crimson.GoldLit,
+                        new Vector2(48, y), new Vector2(300, 24), TextAnchor.MiddleLeft, new Vector2(0f, 1f))
+                        .fontStyle = FontStyle.Bold;
+                    Crimson.Line(plate.transform, note[i], 18, Theme.Hex("A08A84"),
+                        new Vector2(48, y - 24), new Vector2(300, 48), TextAnchor.UpperLeft, new Vector2(0f, 1f));
+                }
+                Crimson.Line(plate.transform, "DYING PAYS. YOU EARN BLOOD EVERY TIME THE CASTLE WINS.",
+                    15, Theme.Hex("7A625C"), new Vector2(0, 14), new Vector2(340, 40),
+                    TextAnchor.MiddleCenter, new Vector2(0.5f, 0f));
+            }
+        }
+
+        // The gold-hairline header strip every landing plate wears.
+        static void PlateHeader(RectTransform plate, string title)
+        {
+            var strip = Crimson.Img(plate.transform, "Header", null, Theme.Hex("3C0710"));
+            var rt = strip.rectTransform;
+            rt.anchorMin = new Vector2(0, 1); rt.anchorMax = new Vector2(1, 1);
+            rt.pivot = new Vector2(0.5f, 1f);
+            rt.offsetMin = new Vector2(2, 0); rt.offsetMax = new Vector2(-2, -2);
+            rt.sizeDelta = new Vector2(rt.sizeDelta.x, 40);
+            var rail = Crimson.Img(strip.transform, "Rail", null, Crimson.Rail);
+            var rrt = rail.rectTransform;
+            rrt.anchorMin = new Vector2(0, 0); rrt.anchorMax = new Vector2(1, 0);
+            rrt.offsetMin = Vector2.zero; rrt.offsetMax = new Vector2(0, 2);
+            Crimson.Line(strip.transform, title, 17, Theme.Hex("D9B25E"), Vector2.zero,
+                new Vector2(360, 40)).fontStyle = FontStyle.Bold;
+        }
+
+        // The two-up statistic row at the foot of a landing plate.
+        static void Split(RectTransform plate, string leftCap, string leftVal, string rightCap, string rightVal)
+        {
+            var rule = Crimson.Img(plate.transform, "Rule", null, Theme.Hex("3A2220"));
+            Crimson.Place(rule, new Vector2(0.5f, 0f), new Vector2(0, 116), new Vector2(330, 2));
+            for (int s = 0; s < 2; s++)
+            {
+                float x = s == 0 ? -84 : 84;
+                Crimson.Line(plate.transform, s == 0 ? leftCap : rightCap, 14, Crimson.Mute,
+                    new Vector2(x, 96), new Vector2(170, 34), TextAnchor.MiddleCenter, new Vector2(0.5f, 0f));
+                Crimson.Line(plate.transform, s == 0 ? leftVal : rightVal, 22, Theme.Hex("C9B49A"),
+                    new Vector2(x, 66), new Vector2(170, 30), TextAnchor.MiddleCenter, new Vector2(0.5f, 0f))
+                    .fontStyle = FontStyle.Bold;
+            }
+        }
+
+        /// <summary>Bottom-left: who the castle thinks you are. Covers the painted plate.</summary>
+        void BuildWelcomePlate(Transform root)
+        {
+            var p = Crimson.Panel_(root, new Vector2(0.5f, 0.5f), new Vector2(-684, -462),
+                                   new Vector2(322, 74), Theme.Hex("14070C"), Crimson.Rail);
+            Crimson.Line(p.transform, Memory.IsFirstSession ? "FIRST DESCENT" : "WELCOME BACK,", 15,
+                Crimson.Mute, new Vector2(22, -16), new Vector2(240, 22),
+                TextAnchor.MiddleLeft, new Vector2(0f, 1f)).fontStyle = FontStyle.Bold;
+            Crimson.Line(p.transform, Meta.Nick.ToUpperInvariant(), 24, Crimson.BloodHot,
+                new Vector2(22, -46), new Vector2(270, 30),
+                TextAnchor.MiddleLeft, new Vector2(0f, 1f)).fontStyle = FontStyle.Bold;
+        }
+
+        /// <summary>
+        /// Bottom-right: the nightly tithe, drawn as the design's daily-reward plate —
+        /// a headline, seven pips for the streak, and a claim strip that says plainly
+        /// whether tonight's blood is already in your pocket. Covers the painted one.
+        /// </summary>
+        void BuildTithePlate(Transform root, int tithe)
+        {
+            var p = Crimson.Panel_(root, new Vector2(0.5f, 0.5f), new Vector2(667, -449),
+                                   new Vector2(356, 118), Theme.Hex("14070C"),
+                                   tithe > 0 ? Crimson.BloodHot : Crimson.Rail);
+            var tl = new Vector2(0f, 1f);
+            Crimson.Line(p.transform, $"NIGHTLY TITHE  ·  NIGHT {Mathf.Max(1, Meta.Streak)}", 14, Crimson.Mute,
+                new Vector2(20, -14), new Vector2(300, 22), TextAnchor.MiddleLeft, tl).fontStyle = FontStyle.Bold;
+            Crimson.Line(p.transform, tithe > 0 ? $"+{tithe} BLOOD PAID" : "TONIGHT'S TITHE IS PAID", 20,
+                tithe > 0 ? Crimson.GoldLit : Crimson.Body,
+                new Vector2(20, -40), new Vector2(310, 26), TextAnchor.MiddleLeft, tl).fontStyle = FontStyle.Bold;
+
+            // Seven pips: how many nights of the streak are lit.
+            int lit = Meta.StreakAlive ? Mathf.Clamp(Meta.Streak, 0, 7) : 0;
+            for (int i = 0; i < 7; i++)
+            {
+                var pip = Crimson.Img(p.transform, "Pip", null, i < lit ? Crimson.BloodHot : Theme.Hex("2A1218"));
+                Crimson.Place(pip, tl, new Vector2(28 + i * 44, -70), new Vector2(38, 7));
+            }
+            Crimson.Line(p.transform, Curse.Pending != null
+                    ? $"{Curse.Pending.nick} CURSED YOU — BREAK IT"
+                    : "BLOOD BUYS AVATARS IN THE WARDROBE",
+                14, Curse.Pending != null ? Crimson.BloodLit : Theme.Hex("7A625C"),
+                new Vector2(0, 16), new Vector2(340, 24), TextAnchor.MiddleCenter, new Vector2(0.5f, 0f));
+        }
+
+        // Which title is next, how far off it is, and how far through you are. Null
+        // name = you already hold the deepest one.
+        static void NextRank(int metres, out string next, out int at, out float pct)
+        {
+            int[] gates = { 1, 300, 700, 1200, 2000 };
+            for (int i = 0; i < gates.Length; i++)
+                if (metres < gates[i])
+                {
+                    int floor = i == 0 ? 0 : gates[i - 1];
+                    next = DepthTitle(gates[i]); at = gates[i];
+                    pct = Mathf.Clamp01((metres - floor) / (float)Mathf.Max(1, gates[i] - floor));
+                    return;
+                }
+            next = null; at = 0; pct = 1f;
         }
 
         // A title for how deep you've been. Local, honest, and no server needed —
@@ -1642,31 +1831,10 @@ namespace TrustIssues
 
 
 
-        // ---- The notice strip --------------------------------------------------
-        // Everything transient — tonight's tithe, a live streak, a curse someone laid
-        // on you. Stacked UPWARDS from just above the footer row so no combination of
-        // them can collide with a button or with each other. The castle's greeting is
-        // NOT here: the landing gives it its own line beside the moon.
-        void BuildMenuNotices(Transform root, int tithe)
-        {
-            var notices = new System.Collections.Generic.List<(string text, int size, Color col)>();
-            if (tithe > 0)
-                notices.Add(($"NIGHTLY TITHE:  +{tithe} BLOOD", 26, Crimson.Gold));
-            if (Meta.Streak > 0 && Meta.StreakAlive)
-                notices.Add(($"BLOOD MOON STREAK: {Meta.Streak} NIGHTS — keep it alive", 24, Crimson.Gold));
-            if (Curse.Pending != null)
-                notices.Add(($"{Curse.Pending.nick} CURSED YOU from floor {Curse.Pending.floor + 1} of {Curse.Pending.mode}. Break it.",
-                             24, Crimson.BloodLit));
-            if (Memory.MenuGreeting() != null && !_greetTracked)
-            {
-                _greetTracked = true;
-                Analytics.Track("haunt_greeting", new System.Collections.Generic.Dictionary<string, object>());
-            }
-            for (int i = 0; i < notices.Count; i++)
-                Crimson.Line(root, notices[i].text, notices[i].size, notices[i].col,
-                    new Vector2(0, 296 + (notices.Count - 1 - i) * 40), new Vector2(1400, 38),
-                    TextAnchor.MiddleCenter, new Vector2(0.5f, 0f));
-        }
+        // The transient notice strip is gone: the tithe, the streak and a pending
+        // curse each have a permanent home on the landing now (the tithe plate, the
+        // streak chip, the tithe plate's footline), so nothing has to be stacked as a
+        // banner over the artwork any more.
 
 
 
@@ -5034,12 +5202,11 @@ namespace TrustIssues
                 b.transform.localPosition = new Vector3(0f, baseNudge - (footY - baseNudge) * (vk - 1f), 0f);
                 bodySr = b.AddComponent<SpriteRenderer>();
                 bodySr.sprite = firstFrame;
-                // A skin with its own art already IS the costume — multiplying the
-                // avatar tint over it a second time would just re-flatten it. The
-                // outfit tint still applies, because outfits are a separate layer
-                // the art doesn't cover.
-                bodySr.color = WardrobeCosmetics.PlayerTint(
-                    SkinArt.Has(skin.id) ? Color.white : Skins.Shade(skin));
+                // A skin with its own art already IS the costume, so nothing is
+                // multiplied over it — not the avatar shade, and no longer the
+                // outfit tint either. The Wardrobe is one shelf of paintings now;
+                // what you tap on the card is exactly what walks into the level.
+                bodySr.color = SkinArt.Has(skin.id) ? Color.white : Skins.Shade(skin);
                 bodySr.sortingOrder = 5;
                 float h = firstFrame.bounds.size.y;
                 float s = (h > 0.0001f ? 1.35f / h : 1f) * vk;
@@ -5067,7 +5234,9 @@ namespace TrustIssues
             _player.jumpMul = skin.jumpMul;
             _player.dashEnabled = skin.dash;
             _player.extraAirJumps = precision ? 0 : skin.airJumps;
-            WardrobeCosmetics.AttachAura(go);
+            // No aura layer any more: the painted skins carry their own halo, and a
+            // second particle bloom on top was the glow that "seeped out" past the
+            // silhouette.
             _playerVisual = vis;
             if (bodySr != null)
             {
@@ -6112,8 +6281,15 @@ namespace TrustIssues
             Memory.RunEndedCleanly();   // reached a result screen = not a rage-quit
             _state = State.Win;
             int endlessMetres = CurrentEndlessMeters;
-            if (_mode == Mode.Endless && endlessMetres > PlayerPrefs.GetInt("best_endless_distance", 0))
-            { PlayerPrefs.SetInt("best_endless_distance", endlessMetres); PlayerPrefs.Save(); _newBest = true; }
+            if (_mode == Mode.Endless)
+            {
+                // The landing's record plate shows LAST RUN beside your best, so the
+                // number you just posted has to survive the trip back to the menu.
+                PlayerPrefs.SetInt("last_endless_distance", endlessMetres);
+                if (endlessMetres > PlayerPrefs.GetInt("best_endless_distance", 0))
+                { PlayerPrefs.SetInt("best_endless_distance", endlessMetres); _newBest = true; }
+                PlayerPrefs.Save();
+            }
             Analytics.Track("run_end", new System.Collections.Generic.Dictionary<string, object>
             {
                 { "mode", ModeName },

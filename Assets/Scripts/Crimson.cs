@@ -292,6 +292,96 @@ namespace TrustIssues
             return null;
         }
 
+        /// <summary>
+        /// A button wearing the PAINTED metal from the landing artwork: a forged end-cap
+        /// on each side and a stretched middle between them, with the interior darkened
+        /// so type reads against the metal. The caps are separate art files precisely so
+        /// a button can be any width without the ironwork smearing — only the plain
+        /// middle stretches.
+        ///
+        /// Falls back to the code-drawn <see cref="Btn"/> when the art isn't installed,
+        /// so the menu still works on a checkout without the ui/ pictures.
+        /// </summary>
+        public static Button MetalBtn(Transform parent, string text, Vector2 anchor, Vector2 pos, Vector2 size,
+                                      System.Action onClick, int fontSize = 34, string caption = null,
+                                      bool enabled = true)
+        {
+            var capL = Skin.Cut("btn_capL");
+            var capR = Skin.Cut("btn_capR");
+            var mid = Skin.Cut("btn_mid");
+            if (capL == null || capR == null || mid == null)
+                return Btn(parent, text, anchor, pos, size, onClick, false, fontSize, caption, true, enabled);
+
+            var go = new GameObject("MBtn_" + text, typeof(RectTransform));
+            go.transform.SetParent(parent, false);
+            var rt = (RectTransform)go.transform;
+            rt.anchorMin = rt.anchorMax = anchor;
+            rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.anchoredPosition = pos;
+            rt.sizeDelta = size;
+
+            // The cap art is 168x196; keep that ratio so the ironwork never squashes.
+            float cap = size.y * (168f / 196f);
+            var m = Img(go.transform, "Mid", mid, Color.white);
+            Side(m.rectTransform, cap - 5f, cap - 5f);
+            var l = Img(go.transform, "CapL", capL, Color.white);
+            Edge(l.rectTransform, 0f, cap, true);
+            var r = Img(go.transform, "CapR", capR, Color.white);
+            Edge(r.rectTransform, 0f, cap, false);
+
+            // The interior wash: the metal is bright enough to eat type on its own.
+            var wash = Img(go.transform, "Wash", null, new Color(0.024f, 0.012f, 0.024f, 0.70f));
+            var wrt = wash.rectTransform;
+            wrt.anchorMin = new Vector2(0, 0); wrt.anchorMax = new Vector2(1, 1);
+            wrt.offsetMin = new Vector2(cap - 6f, size.y * 0.14f);
+            wrt.offsetMax = new Vector2(-(cap - 6f), -size.y * 0.14f);
+
+            // The design's label is a red gradient with a black drop — two passes of
+            // flat type get the same read without a custom shader.
+            float ty = caption != null ? size.y * 0.13f : 0f;
+            var back = Line(go.transform, text, fontSize, new Color(0, 0, 0, 0.95f),
+                            new Vector2(0, ty - 3f), new Vector2(size.x - cap * 1.6f, size.y));
+            back.fontStyle = FontStyle.Bold;
+            var label = Line(go.transform, text, fontSize, enabled ? BloodLit : Dead,
+                             new Vector2(0, ty), new Vector2(size.x - cap * 1.6f, size.y));
+            label.fontStyle = FontStyle.Bold;
+            if (caption != null)
+                Line(go.transform, caption, Mathf.Max(14, Mathf.RoundToInt(fontSize * 0.42f)),
+                     enabled ? Theme.Hex("9A6E68") : Dead,
+                     new Vector2(0, -size.y * 0.28f), new Vector2(size.x - cap * 1.2f, size.y * 0.34f));
+
+            if (!enabled || onClick == null) return null;
+
+            var hit = Stretch(go.transform, "Hit", new Color(0, 0, 0, 0), Vector2.zero, Vector2.one);
+            hit.raycastTarget = true;
+            var btn = go.AddComponent<Button>();
+            btn.targetGraphic = hit;
+            var colors = btn.colors;
+            colors.highlightedColor = new Color(1f, 1f, 1f, 0.10f);   // hit is clear; tint it to flash
+            colors.pressedColor = new Color(1f, 1f, 1f, 0.20f);
+            colors.fadeDuration = 0.07f;
+            btn.colors = colors;
+            btn.onClick.AddListener(() => { Audio.Play("click", 0.6f); onClick(); });
+            return btn;
+        }
+
+        // Stretch a child across its parent, inset by these margins left and right.
+        static void Side(RectTransform rt, float left, float right)
+        {
+            rt.anchorMin = new Vector2(0, 0); rt.anchorMax = new Vector2(1, 1);
+            rt.offsetMin = new Vector2(left, 0); rt.offsetMax = new Vector2(-right, 0);
+        }
+
+        // Pin a fixed-width child to one end of its parent, full height.
+        static void Edge(RectTransform rt, float inset, float width, bool left)
+        {
+            rt.anchorMin = new Vector2(left ? 0 : 1, 0); rt.anchorMax = new Vector2(left ? 0 : 1, 1);
+            rt.pivot = new Vector2(left ? 0 : 1, 0.5f);
+            rt.offsetMin = new Vector2(0, 0); rt.offsetMax = new Vector2(0, 0);
+            rt.sizeDelta = new Vector2(width, 0);
+            rt.anchoredPosition = new Vector2(left ? inset : -inset, 0);
+        }
+
         // The pair of blood diamonds set into a plate's left and right rails.
         static void Studs(Transform parent, Vector2 size)
         {

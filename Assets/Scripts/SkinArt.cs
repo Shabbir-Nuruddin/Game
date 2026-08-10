@@ -10,13 +10,20 @@ namespace TrustIssues
     /// shared vampire (which flattened costumes into single-hue silhouettes).
     ///
     /// The shipped sheets carry ONE row — the right-facing side profile, the only
-    /// direction the platformer ever draws — at 128px frames. The shared fallback
+    /// direction the platformer ever draws — at 256px frames. The shared fallback
     /// sheet is still a 4-direction grid at 64px, so callers must take the frame
     /// size AND the row from here rather than hard-coding either.
+    ///
+    /// 256 is not arbitrary: the art ships as 512px frames, and the longest sheet
+    /// (8 frames of run/death) would then be 4096 wide — past the importer's 2048
+    /// cap, which would silently downscale the texture and break `Assets.Grid`'s
+    /// width/frame slicing. Halved, the widest sheet lands exactly on 2048.
+    /// Inside every frame the character is normalised to a fixed body height and
+    /// foot line, so all ten skins share one footprint and the collider never moves.
     /// </summary>
     public static class SkinArt
     {
-        public const int HdFrame = 128;   // per-skin sheets
+        public const int HdFrame = 256;   // per-skin sheets
         public const int LoFrame = 64;    // shared 4-direction vampire grid
         public const int LoRow = 3;       // bottom row of the shared grid = side profile
 

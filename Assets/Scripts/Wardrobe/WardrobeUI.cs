@@ -6,14 +6,17 @@ using UnityEngine.UI;
 
 namespace TrustIssues
 {
-    /// <summary>Responsive Wardrobe assembled from real Unity UI and a reusable card prefab.</summary>
+    /// <summary>
+    /// The Wardrobe: ONE page. Tap WARDROBE in the menu and you are looking at every
+    /// skin — no AVATAR / AURA / OUTFIT tabs, no aura layer, no outfit layer. Tapping a
+    /// card equips that skin's sprite and nothing else, so what you see on the card is
+    /// exactly what walks into the level.
+    /// </summary>
     public sealed class WardrobeUI : MonoBehaviour
     {
         static readonly Color Bone = Hex("F0E3CC"), Gold = Hex("C99A3B"), Blood = Hex("D32936");
-        readonly List<Button> _tabs = new();
         RectTransform _grid;
         Action _back;
-        int _tab;
 
         public static void Build(Transform parent, GameObject panel, Action onBack)
         {
@@ -34,9 +37,10 @@ namespace TrustIssues
             }
             var bg = NewImage("Background", transform, Load("Wardrobe/Background/wardrobe_bg"), Color.white); Stretch(bg.rectTransform); bg.transform.SetAsFirstSibling();
             var veil = NewImage("AtmosphericVeil", transform, null, new Color(.01f, .004f, .008f, .28f)); Stretch(veil.rectTransform);
-            Header(); Tabs(); Back();
-            _grid = NewRect("AvatarGrid", transform, new Vector2(.5f, .5f), new Vector2(0, -98), new Vector2(1280, 590));
-            ShowTab(0);
+            Header(); Back();
+            // No tab bar to clear, so the shelf sits 40px higher than it did.
+            _grid = NewRect("AvatarGrid", transform, new Vector2(.5f, .5f), new Vector2(0, -58), new Vector2(1280, 590));
+            Avatars();
         }
 
         void Header()
@@ -49,97 +53,27 @@ namespace TrustIssues
             sub.rectTransform.anchorMin = Vector2.zero; sub.rectTransform.anchorMax = new Vector2(1, .35f); sub.rectTransform.offsetMin = sub.rectTransform.offsetMax = Vector2.zero;
         }
 
-        void Tabs()
+        void Refresh()
         {
-            var bar = NewRect("Tabs", transform, new Vector2(.5f, 1), new Vector2(0, -195), new Vector2(900, 58));
-            var row = bar.gameObject.AddComponent<HorizontalLayoutGroup>(); row.spacing = 16; row.childControlWidth = row.childForceExpandWidth = true;
-            string[] names = { "AVATAR", "AURA", "OUTFIT" };
-            for (int i = 0; i < 3; i++)
-            {
-                int n = i; var go = new GameObject(names[i] + "Tab", typeof(RectTransform), typeof(Image), typeof(Button), typeof(LayoutElement)); go.transform.SetParent(bar, false);
-                go.GetComponent<LayoutElement>().preferredHeight = 58;
-                var img = go.GetComponent<Image>(); img.sprite = Load("Wardrobe/Frames/tab_frame"); img.type = Image.Type.Sliced;
-                var btn = go.GetComponent<Button>(); btn.targetGraphic = img; btn.onClick.AddListener(() => ShowTab(n));
-                var txt = NewText("Label", go.transform, names[i], 27, Gold); txt.fontStyle = FontStyles.Bold; Stretch(txt.rectTransform); _tabs.Add(btn);
-            }
-        }
-
-        void ShowTab(int tab)
-        {
-            _tab = tab;
-            for (int i = 0; i < 3; i++) { _tabs[i].GetComponent<Image>().sprite = Load(i == tab ? "Wardrobe/Frames/tab_selected" : "Wardrobe/Frames/tab_frame"); _tabs[i].GetComponentInChildren<TMP_Text>().color = i == tab ? Blood : Gold; }
             for (int i = _grid.childCount - 1; i >= 0; i--) Destroy(_grid.GetChild(i).gameObject);
-            _grid.name = tab == 0 ? "AvatarGrid" : tab == 1 ? "AuraGrid" : "OutfitGrid";
-            var layout = _grid.GetComponent<GridLayoutGroup>() ?? _grid.gameObject.AddComponent<GridLayoutGroup>();
-            layout.enabled = tab != 1;
-            layout.constraint = GridLayoutGroup.Constraint.FixedColumnCount; layout.constraintCount = 5; layout.cellSize = new Vector2(238, 278); layout.spacing = new Vector2(18, 16); layout.childAlignment = TextAnchor.MiddleCenter;
-            if (tab == 0) Avatars(); else if (tab == 1) Auras(); else Cosmetics(false);
+            Avatars();
         }
-
-        public void DevSelectTab(int tab) => ShowTab(Mathf.Clamp(tab, 0, 2));
 
         void Avatars()
         {
+            var layout = _grid.GetComponent<GridLayoutGroup>() ?? _grid.gameObject.AddComponent<GridLayoutGroup>();
+            layout.constraint = GridLayoutGroup.Constraint.FixedColumnCount; layout.constraintCount = 5;
+            layout.cellSize = new Vector2(238, 278); layout.spacing = new Vector2(18, 16); layout.childAlignment = TextAnchor.MiddleCenter;
             for (int i = 0; i < Skins.All.Count; i++)
             {
                 var d = Skins.All[i]; string id = d.id; bool open = Skins.IsUnlocked(d), worn = Skins.CurrentId == id;
                 Card().Bind(d.name, d.unlockHint, Load("Wardrobe/AvatarsExact/" + AvatarFile(id)), Icon(d.unlockHint), Accent(i), Color.white, open, worn,
-                    open ? (Action)(() => { Skins.Equip(id); ShowTab(_tab); }) : () => GameRoot.I?.ShowHint(d.unlockHint));
+                    open ? (Action)(() => { Skins.Equip(id); Refresh(); }) : () => GameRoot.I?.ShowHint(d.unlockHint));
             }
         }
 
-        void Cosmetics(bool aura)
-        {
-            var list = aura ? WardrobeCosmetics.Auras : WardrobeCosmetics.Outfits;
-            foreach (var d in list)
-            {
-                string id = d.id; bool open = WardrobeCosmetics.IsUnlocked(d);
-                bool worn = aura ? WardrobeCosmetics.CurrentAuraId == id : WardrobeCosmetics.CurrentOutfitId == id;
-                Color tint = Color.white;
-                Card().Bind(d.name, d.hint, Load("Wardrobe/OutfitsExact/" + id), Icon(d.hint), d.color.a > .05f ? d.color : Gold, tint, open, worn,
-                    open ? (Action)(() => { if (aura) WardrobeCosmetics.EquipAura(id); else WardrobeCosmetics.EquipOutfit(id); ShowTab(_tab); }) : () => GameRoot.I?.ShowHint(d.hint));
-            }
-        }
-
-        void Auras()
-        {
-            var list = WardrobeCosmetics.Auras;
-            for (int sourceIndex = 1; sourceIndex < list.Count; sourceIndex++)
-            {
-                int visual = sourceIndex - 1;
-                var d = list[sourceIndex]; string id = d.id;
-                bool open = WardrobeCosmetics.IsUnlocked(d);
-                bool worn = WardrobeCosmetics.CurrentAuraId == id;
-                var card = Card();
-                card.Bind(d.name, d.hint, Load("Wardrobe/AurasExact/" + id), Icon(d.hint), d.color,
-                    Color.white, open, worn,
-                    open ? (Action)(() => { WardrobeCosmetics.EquipAura(id); ShowTab(_tab); }) : () => GameRoot.I?.ShowHint(d.hint));
-
-                if (WardrobeCosmetics.CurrentAuraId == "none" && id == "gilded")
-                    card.selectedGlow.enabled = true;
-
-                var rt = (RectTransform)card.transform;
-                if (visual < 5)
-                {
-                    rt.anchoredPosition = new Vector2((visual - 2) * 252f, 147f);
-                    rt.sizeDelta = new Vector2(238, 278);
-                }
-                else if (visual < 8)
-                {
-                    rt.anchoredPosition = new Vector2(-490f + (visual - 5) * 270f, -147f);
-                    rt.sizeDelta = new Vector2(254, 278);
-                }
-                else
-                {
-                    rt.anchoredPosition = new Vector2(398f, -147f);
-                    rt.sizeDelta = new Vector2(492, 278);
-                    card.avatarImage.rectTransform.sizeDelta = new Vector2(390, 160);
-                    card.requirementIcon.rectTransform.anchoredPosition = new Vector2(-155, -78);
-                    card.requirementText.rectTransform.sizeDelta = new Vector2(300, 48);
-                    card.requirementText.rectTransform.anchoredPosition = new Vector2(35, -74);
-                }
-            }
-        }
+        /// <summary>Kept so the dev/screenshot hooks still compile — there is only one page now.</summary>
+        public void DevSelectTab(int tab) => Refresh();
 
         AvatarCardView Card()
         {
@@ -157,7 +91,7 @@ namespace TrustIssues
         }
 
         static string AvatarFile(string id) => id switch { "crimson" => "crimson_lord", "golden" => "golden_cursed", "shadow" => "shadowbound", "pink" => "pink_menace", "ash" => "ashen_slayer", "bone" => "bone_pale", "royal" => "royal_blood", _ => id };
-        static Color Accent(int i) { Color[] c = { Gold, Hex("E63B43"), Hex("629EEA"), Hex("E5A51D"), Hex("B96AE5"), Hex("ED5AA4"), Hex("F07823"), Hex("D8C9A7"), Hex("49C2A8"), Hex("D8343D") }; return c[i]; }
+        static Color Accent(int i) { Color[] c = { Gold, Hex("E63B43"), Hex("629EEA"), Hex("E5A51D"), Hex("B96AE5"), Hex("ED5AA4"), Hex("F07823"), Hex("D8C9A7"), Hex("49C2A8"), Hex("D8343D") }; return c[i % c.Length]; }
         static Sprite Icon(string s) { s = s.ToLowerInvariant(); string n = s.Contains("castle") ? "icon_castle" : s.Contains("endless") ? "icon_endless" : s.Contains("blood moon") ? "icon_bloodmoon" : s.Contains("die") ? "icon_skull" : s.Contains("bestiary") || s.Contains("trap") ? "icon_bestiary" : "icon_crown"; return Load("Wardrobe/Icons/" + n); }
         static Sprite Load(string p) => Resources.Load<Sprite>(p);
         static Color Hex(string h) { ColorUtility.TryParseHtmlString("#" + h, out var c); return c; }

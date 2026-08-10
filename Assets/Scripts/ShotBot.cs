@@ -84,13 +84,8 @@ namespace TrustIssues
             yield return new WaitForSecondsRealtime(1.2f);
             yield return Shot("wardrobe");
 
-            root.DevOpenAuraWardrobe();
-            yield return new WaitForSecondsRealtime(1.2f);
-            yield return Shot("wardrobe_aura");
-
-            root.DevOpenOutfitWardrobe();
-            yield return new WaitForSecondsRealtime(1.2f);
-            yield return Shot("wardrobe_outfit");
+            // The AURA and OUTFIT pages are gone — the Wardrobe is one shelf of
+            // skins — so there is nothing left to shoot after the shelf itself.
             root.DevCloseOverlay();
             yield return new WaitForSecondsRealtime(0.4f);
 
