@@ -1519,6 +1519,9 @@ namespace TrustIssues
         /// </summary>
         void BuildLanding(Transform root, int tithe)
         {
+            BuildReferenceLanding(root, tithe);
+            return;
+#pragma warning disable CS0162
             Crimson.Backdrop(root, 340f, -40f, true, 3);
 
             // ---- Title ------------------------------------------------------------
@@ -1629,10 +1632,18 @@ namespace TrustIssues
                 flip.targetGraphic = edge;
                 flip.onClick.AddListener(() => { _recordFlipped = !_recordFlipped; ShowMenu(); });
             }
+#pragma warning restore CS0162
         }
 
         // A title for how deep you've been. Local, honest, and no server needed —
         // the design's "RANK 412" would need a live leaderboard behind it.
+        void BuildReferenceLanding(Transform root, int tithe)
+        {
+            MainMenuView.Build(root, tithe, DailyLen, Mathf.Min(CastleUnlocked + 1, Levels.Count), Levels.Count,
+                StartDaily, ShowLevelSelect, StartEndless, ShowWardrobe, ShowCodex, ShowVersusLobby,
+                () => ShowLeaderboard("daily"), ShowSettings, BuildMenuNotices);
+        }
+
         static string DepthTitle(int metres) =>
             metres >= 2000 ? "THE CASTLE'S EQUAL"
           : metres >= 1200 ? "ABYSS WALKER"
