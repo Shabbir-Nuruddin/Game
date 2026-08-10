@@ -9,10 +9,13 @@ namespace TrustIssues
     /// swaps the actual sprite instead of only multiplying a colour over the one
     /// shared vampire (which flattened costumes into single-hue silhouettes).
     ///
-    /// The shipped sheets carry ONE row — the right-facing side profile, the only
-    /// direction the platformer ever draws — at 256px frames. The shared fallback
-    /// sheet is still a 4-direction grid at 64px, so callers must take the frame
-    /// size AND the row from here rather than hard-coding either.
+    /// The shipped sheets carry ONE row of FRONT-facing frames at 256px, cut from
+    /// the very same trimmed painting the Wardrobe card shows — card and character
+    /// are one image at two sizes, which is the whole point. (An earlier pass rigged
+    /// a side profile by narrowing the body to 66%; it animated its legs but it
+    /// squashed the painting, so the front view won.) The shared fallback sheet is
+    /// still a 4-direction grid at 64px, so callers must take the frame size AND
+    /// the row from here rather than hard-coding either.
     ///
     /// 256 is not arbitrary: the art ships as 512px frames, and the longest sheet
     /// (8 frames of run/death) would then be 4096 wide — past the importer's 2048
