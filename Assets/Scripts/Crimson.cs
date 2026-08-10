@@ -306,55 +306,77 @@ namespace TrustIssues
                                       System.Action onClick, int fontSize = 34, string caption = null,
                                       bool enabled = true)
         {
-            var capL = Skin.Cut("btn_capL");
-            var capR = Skin.Cut("btn_capR");
-            var mid = Skin.Cut("btn_mid");
-            if (capL == null || capR == null || mid == null)
+            if (Skin.Cut("btn_capL") == null)
                 return Btn(parent, text, anchor, pos, size, onClick, false, fontSize, caption, true, enabled);
-
-            var go = new GameObject("MBtn_" + text, typeof(RectTransform));
+            var go = new GameObject("MBtnHost", typeof(RectTransform));
             go.transform.SetParent(parent, false);
             var rt = (RectTransform)go.transform;
             rt.anchorMin = rt.anchorMax = anchor;
             rt.pivot = new Vector2(0.5f, 0.5f);
             rt.anchoredPosition = pos;
             rt.sizeDelta = size;
+            return MetalBtnIn(rt, text, onClick, fontSize, caption, enabled);
+        }
 
-            // The cap art is 168x196; keep that ratio so the ironwork never squashes.
-            float cap = size.y * (168f / 196f);
-            var m = Img(go.transform, "Mid", mid, Color.white);
-            Side(m.rectTransform, cap - 5f, cap - 5f);
-            var l = Img(go.transform, "CapL", capL, Color.white);
-            Edge(l.rectTransform, 0f, cap, true);
-            var r = Img(go.transform, "CapR", capR, Color.white);
-            Edge(r.rectTransform, 0f, cap, false);
+        /// <summary>
+        /// The same button, filling a rect somebody else has already positioned —
+        /// which is how the landing uses it, because a control that has to sit on a
+        /// painted button must be placed in FRACTIONS of the artwork, not in canvas
+        /// units. Everything inside is proportional (the caps hold their aspect via
+        /// an AspectRatioFitter, the wash and the type are anchored by percentage),
+        /// so the same button is correct at any size or screen shape.
+        /// </summary>
+        public static Button MetalBtnIn(RectTransform host, string text, System.Action onClick,
+                                        int fontSize = 34, string caption = null, bool enabled = true)
+        {
+            var capL = Skin.Cut("btn_capL");
+            var capR = Skin.Cut("btn_capR");
+            var mid = Skin.Cut("btn_mid");
+            host.gameObject.name = "MBtn_" + text;
+
+            if (capL != null && capR != null && mid != null)
+            {
+                // The mid runs the full width and the caps are drawn opaque over its
+                // ends, so nothing has to know how wide a cap will turn out to be.
+                var m = Img(host, "Mid", mid, Color.white);
+                Fill(m.rectTransform, Vector2.zero, Vector2.one);
+                Cap(host, "CapL", capL, true);
+                Cap(host, "CapR", capR, false);
+            }
+            else
+            {
+                var edge = Img(host, "Edge", null, enabled ? Gold : Iron);
+                Fill(edge.rectTransform, Vector2.zero, Vector2.one);
+                var fill = Img(edge.transform, "Fill", null, Plate);
+                Fill(fill.rectTransform, Vector2.zero, Vector2.one);
+                fill.rectTransform.offsetMin = new Vector2(2, 2);
+                fill.rectTransform.offsetMax = new Vector2(-2, -2);
+            }
 
             // The interior wash: the metal is bright enough to eat type on its own.
-            var wash = Img(go.transform, "Wash", null, new Color(0.024f, 0.012f, 0.024f, 0.70f));
-            var wrt = wash.rectTransform;
-            wrt.anchorMin = new Vector2(0, 0); wrt.anchorMax = new Vector2(1, 1);
-            wrt.offsetMin = new Vector2(cap - 6f, size.y * 0.14f);
-            wrt.offsetMax = new Vector2(-(cap - 6f), -size.y * 0.14f);
+            var wash = Img(host, "Wash", null, new Color(0.024f, 0.012f, 0.024f, 0.70f));
+            Fill(wash.rectTransform, new Vector2(0.055f, 0.14f), new Vector2(0.945f, 0.86f));
 
             // The design's label is a red gradient with a black drop — two passes of
-            // flat type get the same read without a custom shader.
-            float ty = caption != null ? size.y * 0.13f : 0f;
-            var back = Line(go.transform, text, fontSize, new Color(0, 0, 0, 0.95f),
-                            new Vector2(0, ty - 3f), new Vector2(size.x - cap * 1.6f, size.y));
-            back.fontStyle = FontStyle.Bold;
-            var label = Line(go.transform, text, fontSize, enabled ? BloodLit : Dead,
-                             new Vector2(0, ty), new Vector2(size.x - cap * 1.6f, size.y));
-            label.fontStyle = FontStyle.Bold;
+            // flat type get the same read without a custom shader. Best-fit so a long
+            // label in a short slot shrinks instead of spilling over the ironwork.
+            float split = caption != null ? 0.34f : 0f;
+            var back = Text_(host, text, fontSize, new Color(0, 0, 0, 0.95f),
+                             new Vector2(0.10f, split), new Vector2(0.90f, 1f));
+            back.rectTransform.anchoredPosition = new Vector2(0, -3f);
+            Text_(host, text, fontSize, enabled ? BloodLit : Dead,
+                  new Vector2(0.10f, split), new Vector2(0.90f, 1f));
             if (caption != null)
-                Line(go.transform, caption, Mathf.Max(14, Mathf.RoundToInt(fontSize * 0.42f)),
-                     enabled ? Theme.Hex("9A6E68") : Dead,
-                     new Vector2(0, -size.y * 0.28f), new Vector2(size.x - cap * 1.2f, size.y * 0.34f));
+                Text_(host, caption, Mathf.Max(14, Mathf.RoundToInt(fontSize * 0.42f)),
+                      enabled ? Theme.Hex("9A6E68") : Dead,
+                      new Vector2(0.06f, 0.08f), new Vector2(0.94f, split));
 
             if (!enabled || onClick == null) return null;
 
-            var hit = Stretch(go.transform, "Hit", new Color(0, 0, 0, 0), Vector2.zero, Vector2.one);
+            var hit = Img(host, "Hit", null, new Color(0, 0, 0, 0));
+            Fill(hit.rectTransform, Vector2.zero, Vector2.one);
             hit.raycastTarget = true;
-            var btn = go.AddComponent<Button>();
+            var btn = host.gameObject.AddComponent<Button>();
             btn.targetGraphic = hit;
             var colors = btn.colors;
             colors.highlightedColor = new Color(1f, 1f, 1f, 0.10f);   // hit is clear; tint it to flash
@@ -365,21 +387,39 @@ namespace TrustIssues
             return btn;
         }
 
-        // Stretch a child across its parent, inset by these margins left and right.
-        static void Side(RectTransform rt, float left, float right)
+        // One forged end-cap, pinned to an end and full height. The art is 168x196
+        // and an AspectRatioFitter derives the width from whatever height the button
+        // ends up with, so the ironwork can never squash.
+        static void Cap(RectTransform host, string name, Sprite art, bool left)
         {
-            rt.anchorMin = new Vector2(0, 0); rt.anchorMax = new Vector2(1, 1);
-            rt.offsetMin = new Vector2(left, 0); rt.offsetMax = new Vector2(-right, 0);
+            var img = Img(host, name, art, Color.white);
+            var rt = img.rectTransform;
+            rt.anchorMin = new Vector2(left ? 0 : 1, 0);
+            rt.anchorMax = new Vector2(left ? 0 : 1, 1);
+            rt.pivot = new Vector2(left ? 0 : 1, 0.5f);
+            rt.offsetMin = new Vector2(rt.offsetMin.x, 0);
+            rt.offsetMax = new Vector2(rt.offsetMax.x, 0);
+            var fit = img.gameObject.AddComponent<UnityEngine.UI.AspectRatioFitter>();
+            fit.aspectMode = UnityEngine.UI.AspectRatioFitter.AspectMode.HeightControlsWidth;
+            fit.aspectRatio = 168f / 196f;
         }
 
-        // Pin a fixed-width child to one end of its parent, full height.
-        static void Edge(RectTransform rt, float inset, float width, bool left)
+        // A percentage-anchored child rect.
+        static void Fill(RectTransform rt, Vector2 min, Vector2 max)
         {
-            rt.anchorMin = new Vector2(left ? 0 : 1, 0); rt.anchorMax = new Vector2(left ? 0 : 1, 1);
-            rt.pivot = new Vector2(left ? 0 : 1, 0.5f);
-            rt.offsetMin = new Vector2(0, 0); rt.offsetMax = new Vector2(0, 0);
-            rt.sizeDelta = new Vector2(width, 0);
-            rt.anchoredPosition = new Vector2(left ? inset : -inset, 0);
+            rt.anchorMin = min; rt.anchorMax = max;
+            rt.offsetMin = rt.offsetMax = Vector2.zero;
+        }
+
+        // A percentage-anchored line of best-fit type.
+        static Text Text_(RectTransform host, string text, int size, Color color, Vector2 min, Vector2 max)
+        {
+            var t = Theme.Label(host, text, size, color, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
+            if (Theme.MenuFont != null) t.font = Theme.MenuFont;
+            t.fontStyle = FontStyle.Bold;
+            t.raycastTarget = false;
+            Fill(t.rectTransform, min, max);
+            return Skin.Fit(t, size, Mathf.Max(9, size / 3));
         }
 
         // The pair of blood diamonds set into a plate's left and right rails.
@@ -397,6 +437,47 @@ namespace TrustIssues
         /// and the words "BLOOD SHARDS" — the design's call, and the shorter label is
         /// what lets it sit in a screen corner without a line break.
         /// </summary>
+        /// <summary>
+        /// The blood counter filling a rect somebody else has positioned — the
+        /// landing's version, placed in fractions of the artwork. Everything inside
+        /// is proportional, so a phone (far wider than 16:9, and therefore a much
+        /// SHORTER canvas) can't push it off the top of the screen.
+        /// </summary>
+        public static RectTransform BloodCounterIn(RectTransform slot, int size = 30)
+        {
+            var edge = Img(slot, "Panel", null, Rail);
+            Fill(edge.rectTransform, Vector2.zero, Vector2.one);
+            var inner = Img(edge.transform, "Fill", null, Panel);
+            Fill(inner.rectTransform, Vector2.zero, Vector2.one);
+            inner.rectTransform.offsetMin = new Vector2(2, 2);
+            inner.rectTransform.offsetMax = new Vector2(-2, -2);
+
+            var d = Img(slot, "Drop", Drop, Color.white);
+            Fill(d.rectTransform, new Vector2(0.05f, 0.14f), new Vector2(0.05f, 0.86f));
+            var fit = d.gameObject.AddComponent<UnityEngine.UI.AspectRatioFitter>();
+            fit.aspectMode = UnityEngine.UI.AspectRatioFitter.AspectMode.HeightControlsWidth;
+            fit.aspectRatio = 1f;
+
+            Text_(slot, Currency.Balance.ToString("N0"), size, GoldLit,
+                  new Vector2(0.20f, 0.05f), new Vector2(0.62f, 0.95f));
+            Text_(slot, "BLOOD", Mathf.RoundToInt(size * 0.6f), Mute,
+                  new Vector2(0.62f, 0.05f), new Vector2(0.96f, 0.95f)).color = Mute;
+            return slot;
+        }
+
+        /// <summary>A bordered plate with one line of best-fit type, filling a slot.</summary>
+        public static RectTransform ChipIn(RectTransform slot, string text, int size, Color ink)
+        {
+            var edge = Img(slot, "Panel", null, Rail);
+            Fill(edge.rectTransform, Vector2.zero, Vector2.one);
+            var inner = Img(edge.transform, "Fill", null, Panel);
+            Fill(inner.rectTransform, Vector2.zero, Vector2.one);
+            inner.rectTransform.offsetMin = new Vector2(2, 2);
+            inner.rectTransform.offsetMax = new Vector2(-2, -2);
+            Text_(slot, text, size, ink, new Vector2(0.05f, 0.05f), new Vector2(0.95f, 0.95f));
+            return slot;
+        }
+
         public static RectTransform BloodCounter(Transform parent, Vector2 anchor, Vector2 pos, int size = 30)
         {
             float w = size * 9f, h = size * 2f;

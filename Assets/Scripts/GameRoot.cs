@@ -1533,8 +1533,9 @@ namespace TrustIssues
             {
                 // Black out the painted START GAME plate. A radial fade rather than a
                 // rectangle: a hard-edged patch on a painting reads as a hole.
-                var hush = Crimson.Img(root, "CentreHush", Crimson.Halo, new Color(0.023f, 0.012f, 0.027f, 0.97f));
-                Crimson.Place(hush, mid, new Vector2(0, -95), new Vector2(1500, 620));
+                var hush = Skin.Chip(root, 0.20f, 0.40f, 0.80f, 0.77f,
+                                     new Color(0.023f, 0.012f, 0.027f, 0.97f));
+                hush.sprite = Crimson.Halo;
             }
             else
             {
@@ -1556,13 +1557,18 @@ namespace TrustIssues
             // Stacked, widest last: tonight's Blood Moon, the Castle you're partway
             // through, then Endless — the run you actually come back for, so it gets
             // the tallest plate at the bottom of the eye's travel.
-            Crimson.MetalBtn(root, "BLOOD MOON", mid, new Vector2(0, 25), new Vector2(768, 89),
-                StartDaily, 30, $"TONIGHT  ·  {DailyLen} FLOORS  ·  SHARED SEED");
-            Crimson.MetalBtn(root, "THE CASTLE", mid, new Vector2(0, -80), new Vector2(768, 89),
-                ShowLevelSelect, 30,
+            //
+            // Placed in FRACTIONS of the artwork, not canvas units. A phone is far
+            // wider than 16:9, the painting stretches to fill it, and anything pinned
+            // at a fixed offset from the centre drifts off its painted spot — which
+            // is exactly how the bottom row ended up sitting on the painted plates.
+            Crimson.MetalBtnIn(Slot(root, "BloodMoon", .30f, .4356f, .70f, .5178f),
+                "BLOOD MOON", StartDaily, 30, $"TONIGHT  ·  {DailyLen} FLOORS  ·  SHARED SEED");
+            Crimson.MetalBtnIn(Slot(root, "Castle", .30f, .5333f, .70f, .6156f),
+                "THE CASTLE", ShowLevelSelect, 30,
                 $"FLOOR {Mathf.Min(CastleUnlocked + 1, Levels.Count)} OF {Levels.Count}");
-            Crimson.MetalBtn(root, "ENDLESS NIGHTS", mid, new Vector2(0, -192), new Vector2(768, 101),
-                StartEndless, 38, "ONE RUN  ·  NO BOTTOM");
+            Crimson.MetalBtnIn(Slot(root, "Endless", .30f, .6311f, .70f, .7244f),
+                "ENDLESS NIGHTS", StartEndless, 38, "ONE RUN  ·  NO BOTTOM");
 
             BuildRecordPlate(root, mid);
             BuildCastlePlate(root, mid);
@@ -1571,27 +1577,35 @@ namespace TrustIssues
             // The design's three, plus the two it dropped: Multiplayer and the
             // Leaderboard are working features, and a feature you can't reach is a
             // feature you don't have.
-            var fdim = new Vector2(269, 62);
-            Crimson.MetalBtn(root, "WARDROBE", mid, new Vector2(-566, -338), fdim, ShowWardrobe, 20);
-            Crimson.MetalBtn(root, $"BESTIARY {Codex.KnownCount()}/{Codex.Total}", mid,
-                new Vector2(-283, -338), fdim, ShowCodex, 19);
-            Crimson.MetalBtn(root, "MULTIPLAYER", mid, new Vector2(0, -338), fdim, ShowVersusLobby, 20);
-            Crimson.MetalBtn(root, "LEADERBOARD", mid, new Vector2(283, -338), fdim,
-                () => ShowLeaderboard("daily"), 19);
-            Crimson.MetalBtn(root, "SETTINGS", mid, new Vector2(566, -338), fdim, ShowSettings, 20);
-
-            // Balance top-left, streak top-right, exactly as the design frames them.
-            Crimson.BloodCounter(root, mid, new Vector2(-570, 449), 30);
-            if (Meta.Streak > 0 && Meta.StreakAlive)
+            (string label, System.Action go)[] nav =
             {
-                var s = Crimson.Panel_(root, mid, new Vector2(552, 449),
-                                       new Vector2(300, 58), Crimson.Panel, Crimson.Rail);
-                Crimson.Line(s.transform, $"{Meta.Streak}-NIGHT STREAK", 21, Crimson.Gold,
-                    Vector2.zero, new Vector2(280, 40)).fontStyle = FontStyle.Bold;
+                ("WARDROBE", ShowWardrobe),
+                ($"BESTIARY {Codex.KnownCount()}/{Codex.Total}", ShowCodex),
+                ("MULTIPLAYER", ShowVersusLobby),
+                ("LEADERBOARD", () => ShowLeaderboard("daily")),
+                ("SETTINGS", ShowSettings),
+            };
+            for (int i = 0; i < nav.Length; i++)
+            {
+                float x0 = .135f + i * .1475f;
+                Crimson.MetalBtnIn(Slot(root, "Nav" + i, x0, .7844f, x0 + .14f, .8422f),
+                    nav[i].label, nav[i].go, 20);
             }
 
-            BuildWelcomePlate(root);
-            BuildTithePlate(root, tithe);
+            // A curse is rare and loud, so it gets its own line rather than a corner.
+            if (Curse.Pending != null)
+                FitLine(Slot(root, "Curse", .22f, .742f, .78f, .778f),
+                    $"{Curse.Pending.nick} CURSED YOU FROM FLOOR {Curse.Pending.floor + 1} " +
+                    $"OF {Curse.Pending.mode} — BREAK IT", 24, Crimson.BloodLit);
+
+            // Balance top-left, streak top-right, exactly as the design frames them —
+            // in fractions, or a phone's short canvas pushes them off the top edge.
+            Crimson.BloodCounterIn(Slot(root, "Blood", .156f, .062f, .268f, .108f), 30);
+            if (Meta.Streak > 0 && Meta.StreakAlive)
+                Crimson.ChipIn(Slot(root, "Streak", .766f, .062f, .906f, .108f),
+                    $"{Meta.Streak}-NIGHT STREAK", 21, Crimson.Gold);
+
+            if (painted) BuildCornerPlates(root, tithe);
         }
 
         /// <summary>
@@ -1760,48 +1774,53 @@ namespace TrustIssues
             }
         }
 
-        /// <summary>Bottom-left: who the castle thinks you are. Covers the painted plate.</summary>
-        void BuildWelcomePlate(Transform root)
+        /// <summary>
+        /// The two plates the PAINTING already draws in the bottom corners. It bakes
+        /// "WELCOME BACK / WARRIOR" and "DAILY REWARD / CLAIM NOW" into the picture,
+        /// so the frame and the icon are used as-is and only the two lines of type are
+        /// chipped out and rewritten live. Measured off the artwork with Pillow, in
+        /// fractions, so they stay welded to the paint on a phone as well as a desktop.
+        /// </summary>
+        void BuildCornerPlates(Transform root, int tithe)
         {
-            var p = Crimson.Panel_(root, new Vector2(0.5f, 0.5f), new Vector2(-684, -462),
-                                   new Vector2(322, 74), Theme.Hex("14070C"), Crimson.Rail);
-            Crimson.Line(p.transform, Memory.IsFirstSession ? "FIRST DESCENT" : "WELCOME BACK,", 15,
-                Crimson.Mute, new Vector2(22, -16), new Vector2(240, 22),
-                TextAnchor.MiddleLeft, new Vector2(0f, 1f)).fontStyle = FontStyle.Bold;
-            Crimson.Line(p.transform, Meta.Nick.ToUpperInvariant(), 24, Crimson.BloodHot,
-                new Vector2(22, -46), new Vector2(270, 30),
-                TextAnchor.MiddleLeft, new Vector2(0f, 1f)).fontStyle = FontStyle.Bold;
+            // Left: who the castle thinks you are. The chip starts after the painted
+            // skull so the skull survives.
+            Skin.Chip(root, .140f, .885f, .2385f, .950f, Skin.Interior);
+            FitLine(Slot(root, "WelcomeKicker", .142f, .888f, .2385f, .916f),
+                Memory.IsFirstSession ? "FIRST DESCENT" : "WELCOME BACK,", 17, Crimson.Mute,
+                TextAnchor.MiddleLeft);
+            FitLine(Slot(root, "WelcomeName", .142f, .918f, .2385f, .948f),
+                Meta.Nick.ToUpperInvariant(), 26, Crimson.BloodHot, TextAnchor.MiddleLeft);
+
+            // Right: tonight's tithe, in the painted reward plate. The chip starts
+            // after the painted gift box.
+            Skin.Chip(root, .812f, .885f, .901f, .950f, Skin.Interior);
+            FitLine(Slot(root, "TitheKicker", .814f, .888f, .901f, .916f),
+                $"NIGHTLY TITHE · NIGHT {Mathf.Max(1, Meta.Streak)}", 15, Crimson.Mute,
+                TextAnchor.MiddleLeft);
+            FitLine(Slot(root, "TitheValue", .814f, .918f, .901f, .948f),
+                tithe > 0 ? $"+{tithe} BLOOD" : "ALREADY PAID", 26,
+                tithe > 0 ? Crimson.GoldLit : Crimson.Body, TextAnchor.MiddleLeft);
         }
 
-        /// <summary>
-        /// Bottom-right: the nightly tithe, drawn as the design's daily-reward plate —
-        /// a headline, seven pips for the streak, and a claim strip that says plainly
-        /// whether tonight's blood is already in your pocket. Covers the painted one.
-        /// </summary>
-        void BuildTithePlate(Transform root, int tithe)
-        {
-            var p = Crimson.Panel_(root, new Vector2(0.5f, 0.5f), new Vector2(667, -449),
-                                   new Vector2(356, 118), Theme.Hex("14070C"),
-                                   tithe > 0 ? Crimson.BloodHot : Crimson.Rail);
-            var tl = new Vector2(0f, 1f);
-            Crimson.Line(p.transform, $"NIGHTLY TITHE  ·  NIGHT {Mathf.Max(1, Meta.Streak)}", 14, Crimson.Mute,
-                new Vector2(20, -14), new Vector2(300, 22), TextAnchor.MiddleLeft, tl).fontStyle = FontStyle.Bold;
-            Crimson.Line(p.transform, tithe > 0 ? $"+{tithe} BLOOD PAID" : "TONIGHT'S TITHE IS PAID", 20,
-                tithe > 0 ? Crimson.GoldLit : Crimson.Body,
-                new Vector2(20, -40), new Vector2(310, 26), TextAnchor.MiddleLeft, tl).fontStyle = FontStyle.Bold;
+        // An empty rect in ARTWORK space — fractions of the screen from the top-left,
+        // exactly how the mockup is measured.
+        static RectTransform Slot(Transform root, string name, float x0, float t0, float x1, float t1)
+            => Skin.Slot(root, name, x0, t0, x1, t1);
 
-            // Seven pips: how many nights of the streak are lit.
-            int lit = Meta.StreakAlive ? Mathf.Clamp(Meta.Streak, 0, 7) : 0;
-            for (int i = 0; i < 7; i++)
-            {
-                var pip = Crimson.Img(p.transform, "Pip", null, i < lit ? Crimson.BloodHot : Theme.Hex("2A1218"));
-                Crimson.Place(pip, tl, new Vector2(28 + i * 44, -70), new Vector2(38, 7));
-            }
-            Crimson.Line(p.transform, Curse.Pending != null
-                    ? $"{Curse.Pending.nick} CURSED YOU — BREAK IT"
-                    : "BLOOD BUYS AVATARS IN THE WARDROBE",
-                14, Curse.Pending != null ? Crimson.BloodLit : Theme.Hex("7A625C"),
-                new Vector2(0, 16), new Vector2(340, 24), TextAnchor.MiddleCenter, new Vector2(0.5f, 0f));
+        // A line of type that fills such a rect and shrinks rather than spilling out
+        // of the painted frame it is sitting inside.
+        static Text FitLine(RectTransform slot, string text, int size, Color color,
+                            TextAnchor align = TextAnchor.MiddleCenter)
+        {
+            var t = Theme.Label(slot, text, size, color, new Vector2(0.5f, 0.5f),
+                                Vector2.zero, Vector2.zero, align);
+            if (Theme.MenuFont != null) t.font = Theme.MenuFont;
+            t.raycastTarget = false;
+            var rt = t.rectTransform;
+            rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
+            rt.offsetMin = rt.offsetMax = Vector2.zero;
+            return Skin.Fit(t, size, Mathf.Max(9, size / 3));
         }
 
         // Which title is next, how far off it is, and how far through you are. Null
@@ -4325,16 +4344,11 @@ namespace TrustIssues
                 if (_mode == Mode.Endless)
                     csr.color = new Color(0.20f, 0.25f, 0.31f, 0.95f);
 
-                // The pool of candlelight first, so everything else sits inside it.
-                var glow = Theme.SpriteBox("LanternGlow", _levelRoot, new Vector3(x, LampY, 0f),
-                    new Vector2(3.0f, 3.0f), Theme.Moon, 0);
-                glow.GetComponent<SpriteRenderer>().color = _mode == Mode.Endless
-                    ? new Color(1f, 0.62f, 0.24f, 0.12f)
-                    : new Color(1f, 0.52f, 0.18f, 0.16f);
-                var fp = glow.AddComponent<FaintPulse>();
-                fp.min = _mode == Mode.Endless ? 0.07f : 0.09f;
-                fp.max = _mode == Mode.Endless ? 0.14f : 0.20f;
-                fp.speed = _mode == Mode.Endless ? 3.2f : 5f;
+                // NO pool of candlelight. It used to be a 3-unit disc of Theme.Moon —
+                // a sprite with a hard edge and a solid middle — which rendered as a
+                // flat orange circle pasted over the hall rather than as light, and
+                // three of them owned the whole screen. The lantern and its flame are
+                // the light now; the hall reads darker and the traps read louder.
 
                 // The flame inside the glass, then the cage over the top of it.
                 if (frames != null && frames.Length > 0)
