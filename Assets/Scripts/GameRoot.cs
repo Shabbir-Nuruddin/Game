@@ -63,7 +63,10 @@ namespace TrustIssues
         Vector3 _checkpoint;
         bool _hasCheckpoint;
 
-        enum Mode { Curated, Endless, Daily, Versus, Custom }
+        // Tutorial is its own mode rather than "floor 0 of the Castle": it must not
+        // touch the Castle's unlock count, its lifetime death tally, its shard
+        // payouts or the sunrise clock, and every one of those keys off _mode.
+        enum Mode { Curated, Endless, Daily, Versus, Custom, Tutorial }
         // The map currently being played in Mode.Custom (yours or a friend's), and
         // the code it came from — the code is the identity a best time is filed under.
         CustomMap _customMap;
@@ -188,7 +191,16 @@ namespace TrustIssues
             // second load, and nothing can strand the player if the clip fails.
             // Menu music is held back so it doesn't fight the video's own audio.
             Audio.StopMusic();
-            Intro.Play(() => Audio.Music("music", 0.3f));
+            // A brand-new player goes video → TUTORIAL FLOOR, with no menu in
+            // between. Analytics said first-timers were tapping the landing's top
+            // plate (BLOOD MOON — timed, life-limited, unforgiving) as their first
+            // ever action and dying without learning anything. Everyone who has been
+            // taught still lands on the menu exactly as before.
+            Intro.Play(() =>
+            {
+                Audio.Music("music", 0.3f);
+                if (!TutorialDone) StartTutorial();
+            });
         }
 
         // Re-place everything whose position depends on the camera projection.
@@ -1064,7 +1076,20 @@ namespace TrustIssues
             // all three rings sat underneath it with their bottoms cut off.
             MakeArtButton("btn_jump", "▲", 0, actAnchor, new Vector2(-190 * acts, 215) * k, 168f * k);
             _btnFly   = MakeArtButton("btn_bat", "", 3, actAnchor, new Vector2(-121 * acts, 415) * k, 160f * k);
+            // DASH AND BAT CANNOT SHARE A SPOT. The bat ring sits at (-121, 415) and
+            // dash used to sit at (-140, 350) — 65 units apart with a 160 and a 130
+            // wide button, i.e. stacked on top of each other. In Blood Moon and
+            // Endless, where the bat exists, one thumb press was hitting both.
+            //
+            // So dash has two homes and UpdateTouchLayout() picks per floor: the
+            // bat's spot when there's no bat (the Castle, where it always was), and
+            // out to the side, clear of the whole cluster, when the bat is live.
             _btnDash  = MakeTouch("DASH",  4, actAnchor, new Vector2(-140 * acts, 350) * k, new Vector2(130, 130) * k, 0.24f);
+            _dashHome     = new Vector2(-140 * acts, 350) * k;
+            // Left of the bat and above the gun, with clear air around it once each
+            // button's 1.25x finger pad is counted in — that padding is why simply
+            // nudging DASH a little was never going to be enough.
+            _dashWithBat  = new Vector2(-330 * acts, 490) * k;
             _btnShoot = MakeGunButton(actAnchor, new Vector2(-360 * acts, 310) * k, new Vector2(130, 130) * k);
             SyncMoveMode();
             _touchPanel.SetActive(false);
@@ -1087,6 +1112,8 @@ namespace TrustIssues
         }
 
         GameObject _btnFly, _btnDash, _btnShoot, _btnLeft, _btnRight, _joystick;
+        // Where DASH sits with and without a BAT button beside it (see BuildTouchControls).
+        Vector2 _dashHome, _dashWithBat;
 
         // ==================== SABOTAGE (Versus troll buttons) ====================
         // A right-edge column of buttons that let racers troll each other, Drive
@@ -1232,8 +1259,17 @@ namespace TrustIssues
             if (!show) return;
             // BAT only in modes that allow flight; DASH only if the equipped skin grants
             // it; SHOOT only while you actually HOLD a weapon (ammo > 0) in a boss arena.
-            SyncTouchButton(_btnFly,   _player != null && _player.canFly);
+            bool bat = _player != null && _player.canFly;
+            SyncTouchButton(_btnFly,   bat);
             SyncTouchButton(_btnDash,  _player != null && _player.dashEnabled);
+            // Move DASH out from under the BAT ring on flight floors, and back to its
+            // usual corner spot in the Castle where there's no bat to collide with.
+            if (_btnDash != null)
+            {
+                var drt = (RectTransform)_btnDash.transform;
+                var want = bat ? _dashWithBat : _dashHome;
+                if (drt.anchoredPosition != want) drt.anchoredPosition = want;
+            }
             SyncTouchButton(_btnShoot, _player != null && _player.canShoot && _player.ammo > 0);
             SyncMoveMode();
         }
@@ -1474,6 +1510,10 @@ namespace TrustIssues
         {
             // Leaving a race: drop the room and the rival ghosts.
             if (_mode == Mode.Versus) { Net.Leave(); ClearGhosts(); _mode = Mode.Curated; }
+            // Leaving the tutorial by ANY route (pause > main menu included) takes the
+            // coach's captions with it.
+            CloseCoach();
+            if (_mode == Mode.Tutorial) _mode = Mode.Curated;
             Memory.RunEndedCleanly();   // back at the menu = not a rage-quit
             Rumor.Disarm();
             _wipeArmed = false;          // leaving Settings always disarms the wipe
@@ -2235,6 +2275,35 @@ namespace TrustIssues
         // redraws the screen and you should land back where you were.
         int _settingsTab;
 
+        /// <summary>
+        /// A fixed-size design surface, centred and uniformly scaled so all of it is
+        /// always on screen. Returns the surface to parent content into; positions
+        /// inside it mean the same thing on every device.
+        ///
+        /// Why this exists: the UI canvas keeps a constant WIDTH-ish scale, so a wide
+        /// phone gets a canvas that is short (~815 units against the 1080 the menus
+        /// were drawn for). Any screen with a tall stack of panels will overlap itself
+        /// on those devices, and per-offset patching only moves which pair collides.
+        /// </summary>
+        static Transform FitSurface(Transform parent, float designW, float designH)
+        {
+            var go = new GameObject("Fit", typeof(RectTransform));
+            go.transform.SetParent(parent, false);
+            var rt = (RectTransform)go.transform;
+            rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.anchoredPosition = Vector2.zero;
+            rt.sizeDelta = new Vector2(designW, designH);
+
+            var canvasRt = Theme.Canvas != null ? Theme.Canvas.transform as RectTransform : null;
+            float w = canvasRt != null ? canvasRt.rect.width : designW;
+            float h = canvasRt != null ? canvasRt.rect.height : designH;
+            // Never scale UP — a tall canvas just gets margins rather than a blown-up
+            // screen with 60px type.
+            float s = Mathf.Min(1f, Mathf.Min(w / designW, h / designH));
+            rt.localScale = new Vector3(s, s, 1f);
+            return go.transform;
+        }
+
         void ShowSettings()
         {
             Audio.Play("click");
@@ -2261,7 +2330,24 @@ namespace TrustIssues
             PlayerPrefs.SetInt("opt_replay_ghost", 0);
             PlayerPrefs.Save();
 
-            Crimson.Backdrop(root, 460f, 240f, false, 0);
+            Crimson.Backdrop(root, 460f, 240f, false, 0);   // the night fills the screen, unscaled
+
+            // EVERYTHING ELSE LIVES ON A FIXED DESIGN SURFACE, SCALED TO FIT.
+            //
+            // This screen is a stack — title, tab strip, body panel, BACK — and the
+            // stack needs 980 units of height. A landscape phone's canvas is only
+            // ~815, so laid out directly the pieces have to collide: at one aspect the
+            // panel climbed over the tab strip and hid it, at the next it pushed BACK
+            // off the bottom and the credit text out through the frame. That's the
+            // "overlapping text" on this screen, and no amount of nudging individual
+            // offsets fixes it, because the offsets were never the problem — the
+            // height was.
+            //
+            // So the stack is built inside a 1920x980 surface and that whole surface
+            // is scaled down until it fits. Every position below is authored once, in
+            // the space it was designed for, and the arithmetic can no longer come
+            // out differently on a different phone.
+            root = FitSurface(root, 1920f, 980f);
 
             var top = new Vector2(0f, 1f);
             var mark = Crimson.Img(root, "Mark", Gothic.Diamond, Color.white);
@@ -2273,11 +2359,21 @@ namespace TrustIssues
             string[] tabs = { "AUDIO", "CONTROLS", "DIFFICULTY", "DATA & LEGAL" };
             _settingsTab = Mathf.Clamp(_settingsTab, 0, tabs.Length - 1);
             Crimson.Tabs(root, tabs, _settingsTab, i => { _settingsTab = i; ShowSettings(); },
-                         new Vector2(0.5f, 1f), new Vector2(0, -160), 1560f, 66f);
+                         new Vector2(0.5f, 1f), new Vector2(0, -155), 1560f, 64f);
 
             // The body panel every tab draws into.
-            var body = Crimson.Panel_(root, new Vector2(0.5f, 0.5f), new Vector2(0, -30),
-                                      new Vector2(1560, 640), Theme.Hex("180A12"), Crimson.Rail);
+            //
+            // ANCHORED TO THE TOP, not the centre. A phone's landscape canvas is only
+            // ~980 reference units tall against the 1080 this was laid out in, and a
+            // centre-anchored panel rises as the canvas shrinks — far enough on a
+            // 19.5:9 screen to climb over the tab strip and swallow it whole, which
+            // left AUDIO as the only tab a phone could ever reach. Pinning the TOP
+            // EDGE at a fixed 196 puts it just under the tabs on every aspect ratio
+            // there is, and 196 + 640 still clears the BACK button on the shortest
+            // canvas a phone can produce.
+            const float BodyTop = 196f, BodyH = 640f;
+            var body = Crimson.Panel_(root, new Vector2(0.5f, 1f), new Vector2(0, -(BodyTop + BodyH * 0.5f)),
+                                      new Vector2(1560, BodyH), Theme.Hex("180A12"), Crimson.Rail);
 
             switch (_settingsTab)
             {
@@ -2287,7 +2383,9 @@ namespace TrustIssues
                 default: BuildLegalTab(body.transform); break;
             }
 
-            Crimson.Btn(root, "‹  BACK", new Vector2(0.5f, 0f), new Vector2(0, 74),
+            // 54, not 74: the body panel's bottom edge now lands at 836 of the 980
+            // surface, and BACK has to sit clear underneath it rather than across it.
+            Crimson.Btn(root, "‹  BACK", new Vector2(0.5f, 0f), new Vector2(0, 54),
                         new Vector2(360, 76), ShowMenu, true, 28);
         }
 
@@ -2295,7 +2393,10 @@ namespace TrustIssues
         void BuildAudioTab(Transform body)
         {
             var tl = new Vector2(0f, 1f);
-            Crimson.Line(body, "THE NOISE", 24, Crimson.Gold, new Vector2(360, -50),
+            // Both headings start on their column's own left edge (50 on the left,
+            // 610-from-the-right on the right). They used to start mid-column, which
+            // made the two columns read as one ragged block of text.
+            Crimson.Line(body, "THE NOISE", 24, Crimson.Gold, new Vector2(50, -50),
                 new Vector2(600, 34), TextAnchor.MiddleLeft, tl).fontStyle = FontStyle.Bold;
 
             Crimson.BloodSlider(body, tl, new Vector2(360, -140), 620f, "MUSIC",
@@ -2305,8 +2406,8 @@ namespace TrustIssues
             Crimson.BloodSlider(body, tl, new Vector2(360, -440), 620f, "THE CASTLE'S VOICE",
                 "it only speaks when something matters", () => Voice.Volume, v => Voice.Volume = v);
 
-            Crimson.Line(body, "THE FEEL", 24, Crimson.Gold, new Vector2(-420, -50),
-                new Vector2(600, 34), TextAnchor.MiddleLeft, new Vector2(1f, 1f)).fontStyle = FontStyle.Bold;
+            Crimson.Line(body, "THE FEEL", 24, Crimson.Gold, new Vector2(-610, -50),
+                new Vector2(560, 34), TextAnchor.MiddleLeft, new Vector2(1f, 1f)).fontStyle = FontStyle.Bold;
 
             var tr = new Vector2(1f, 1f);
             Crimson.Toggle(body, tr, new Vector2(-330, -120), 560f, "SCREEN SHAKE",
@@ -2318,9 +2419,14 @@ namespace TrustIssues
             Crimson.Toggle(body, tr, new Vector2(-330, -348), 560f, "REDUCED MOTION",
                 () => Options.ReducedMotion, v => Options.ReducedMotion = v);
 
+            // THE OVERFLOW FIX. This is a LEFT-aligned line, so its x is where the
+            // text STARTS — at -330 from the right edge with a 540-wide box it ran to
+            // +210 PAST the panel's border, and the credit spilled outside the frame
+            // and over the panel edge. Starting it at -610 lines it up with the
+            // toggles above and keeps all 540 units inside the box.
             Crimson.Line(body, "Music by Kevin MacLeod (incompetech.com), licensed CC BY 4.0. " +
                                "Full attribution lives under DATA & LEGAL, where it belongs.",
-                19, Theme.Hex("7E6C74"), new Vector2(-330, -450), new Vector2(540, 100),
+                19, Theme.Hex("7E6C74"), new Vector2(-610, -448), new Vector2(560, 100),
                 TextAnchor.UpperLeft, tr);
         }
 
@@ -2328,7 +2434,7 @@ namespace TrustIssues
         void BuildControlsTab(Transform body)
         {
             var tl = new Vector2(0f, 1f);
-            Crimson.Line(body, "TOUCH", 24, Crimson.Gold, new Vector2(360, -50),
+            Crimson.Line(body, "TOUCH", 24, Crimson.Gold, new Vector2(60, -50),
                 new Vector2(600, 34), TextAnchor.MiddleLeft, tl).fontStyle = FontStyle.Bold;
 
             Crimson.Card(body, tl, new Vector2(240, -190), new Vector2(360, 190),
@@ -2341,10 +2447,16 @@ namespace TrustIssues
             Crimson.Toggle(body, tl, new Vector2(440, -350), 760f, "LEFT-HANDED MIRROR",
                 () => Options.LeftHanded, v => { Options.LeftHanded = v; ApplyControlChange(); });
 
-            Crimson.Line(body, "Movement is the joystick. The arrows and D-pads were cut — " +
-                               "one scheme, tuned properly, beats four that nearly work.",
-                20, Theme.Hex("7E6C74"), new Vector2(80, -440), new Vector2(720, 90),
+            Crimson.Line(body, "Movement is the joystick. Push it to the edge and you run — " +
+                               "the tutorial shows you how.",
+                20, Theme.Hex("7E6C74"), new Vector2(60, -430), new Vector2(760, 60),
                 TextAnchor.UpperLeft, tl);
+
+            // The teaching floor, on demand. It only auto-runs once (see TutorialKey),
+            // so anyone who skipped it — or who handed the phone to a friend — needs a
+            // way back to it that isn't wiping their save.
+            Crimson.Btn(body, "PLAY THE TUTORIAL AGAIN", tl, new Vector2(440, -530),
+                        new Vector2(700, 76), StartTutorial, false, 24);
 
             // A still of where the controls actually land, so the choice above is a
             // picture and not a paragraph.
@@ -2574,6 +2686,12 @@ namespace TrustIssues
         {
             Audio.Play("click");
             _state = State.Menu;
+            // The tutorial hands off straight to here, so the coach and the play HUD
+            // have to be dismissed on the way in.
+            CloseCoach();
+            if (_mode == Mode.Tutorial) _mode = Mode.Curated;
+            if (_hudChrome != null) _hudChrome.SetActive(false);
+            if (_touchPanel != null) { _touchPanel.SetActive(false); TouchInput.Clear(); }
             if (_menuPanel != null) Destroy(_menuPanel);
             _menuPanel = Overlay(Crimson.Night, out var root);
             _onBack = ShowMenu;
@@ -3317,6 +3435,102 @@ namespace TrustIssues
                 ShowHint("BONUS: under 5 deaths on this floor → +5 shards", 2f);
         }
 
+        // ==================== TUTORIAL ====================
+        // Has this player been taught? Set the moment the tutorial STARTS, not when
+        // it's finished: if they skip it, close the app halfway or die into a
+        // force-quit, the game must not ambush them with it again next launch. It's
+        // replayable on demand from Settings > CONTROLS.
+        const string TutorialKey = "ti_tutorial_done";
+        static bool TutorialDone => PlayerPrefs.GetInt(TutorialKey, 0) == 1;
+        Tutorial _coach;
+
+        /// <summary>
+        /// Run the teaching floor. This is what a brand-new player gets the instant
+        /// the launch video clears — no menu, no mode choice, straight into a floor
+        /// that explains itself. It hands off to the CASTLE when it's cleared, which
+        /// is where a first-timer should be spending their first hour; Blood Moon and
+        /// Endless are still one tap away on the landing, they just aren't the door
+        /// anyone falls through by accident any more.
+        /// </summary>
+        void StartTutorial()
+        {
+            PlayerPrefs.SetInt(TutorialKey, 1);
+            PlayerPrefs.Save();
+            _mode = Mode.Tutorial;
+            TrackModeSelected("Tutorial", 0);
+            BeginRun(0);
+            OpenCoach();
+        }
+
+        void OpenCoach()
+        {
+            CloseCoach();
+            // The hint has to land ON the stick, so the coach is handed the joystick's
+            // own layout numbers rather than guessing at a corner.
+            float k = TouchScale;
+            bool lh = LeftHanded;
+            var moveAnchor = new Vector2(lh ? 1f : 0f, 0f);
+            var stickPos = new Vector2(250 * (lh ? -1f : 1f), 185) * k;
+            _coach = Tutorial.Begin(() => PlayerTransform, SkipTutorial,
+                                    TouchControlsOn && JoystickMode,
+                                    moveAnchor, stickPos, 205f * k * 0.5f);
+        }
+
+        void CloseCoach()
+        {
+            if (_coach != null) { _coach.Close(); _coach = null; }
+        }
+
+        // SKIP, or the hardware BACK key: straight to the Castle, same as clearing it.
+        void SkipTutorial()
+        {
+            Audio.Play("click");
+            CloseCoach();
+            // Take the floor down with it — otherwise the teaching level keeps
+            // simulating (and making noise) behind the Castle map.
+            if (_levelRoot != null) Destroy(_levelRoot.gameObject);
+            _player = null;
+            _mode = Mode.Curated;
+            ShowLevelSelect();
+        }
+
+        /// <summary>
+        /// The tutorial's payoff screen: the one message the whole flow exists to
+        /// deliver — you know how to play, now go into the Castle.
+        /// </summary>
+        void TutorialCleared()
+        {
+            CloseCoach();
+            Audio.Play("levelup", 0.7f);
+            _state = State.Menu;
+            _mode = Mode.Curated;
+            if (_levelRoot != null) Destroy(_levelRoot.gameObject);
+            _player = null;
+            if (_menuPanel != null) Destroy(_menuPanel);
+            _menuPanel = Overlay(Crimson.Night, out var root);
+            _onBack = ShowMenu;
+            if (_hudChrome != null) _hudChrome.SetActive(false);
+            if (_touchPanel != null) { _touchPanel.SetActive(false); TouchInput.Clear(); }
+
+            Crimson.Backdrop(root, 460f, 240f, false, 0);
+            var mid = new Vector2(0.5f, 0.5f);
+            Crimson.Panel_(root, mid, new Vector2(0, 20), new Vector2(1180, 560),
+                           Theme.Hex("180A12"), Crimson.Rail);
+            Crimson.Line(root, "YOU KNOW HOW TO RUN", 54, Crimson.GoldLit,
+                new Vector2(0, 180), new Vector2(1100, 70)).fontStyle = FontStyle.Bold;
+            Crimson.Line(root,
+                "That was the only floor in this castle that meant you no harm.\n\n" +
+                "THE CASTLE is forty floors and every one of them lies to you — a floor that\n" +
+                "isn't there, a spike that waits, a coffin that runs. Start at floor one.\n\n" +
+                "Blood Moon and Endless Nights are waiting on the landing when you're ready\n" +
+                "for them. You are not ready for them.",
+                26, Crimson.Body, new Vector2(0, 20), new Vector2(1040, 260));
+            Crimson.Btn(root, "ENTER THE CASTLE", mid, new Vector2(0, -168),
+                        new Vector2(520, 88), ShowLevelSelect, true, 30);
+            Crimson.Btn(root, "THE LANDING", mid, new Vector2(0, -262),
+                        new Vector2(360, 62), ShowMenu, false, 22);
+        }
+
         void StartDaily()
         {
             Audio.Play("click");
@@ -3792,6 +4006,13 @@ namespace TrustIssues
         /// as ten identical Wardrobes. This destroys the panels directly rather than
         /// firing _onBack, because at the main menu Back arms "press again to quit"
         /// and a second call would close the game mid-itinerary.</summary>
+        /// <summary>The tutorial floor with the coach live, for the shot itinerary.</summary>
+        public void DevStartTutorial()
+        {
+            DevCloseOverlay();
+            StartTutorial();
+        }
+
         public void DevCloseOverlay()
         {
             if (Theme.Canvas == null) return;
@@ -3864,6 +4085,10 @@ namespace TrustIssues
             // comment) a freshly started run must never inherit frozen time.
             Time.timeScale = 1f;
             if (_menuPanel != null) Destroy(_menuPanel);
+            // Any run that isn't the tutorial takes the coach's captions down with it,
+            // wherever it was started from. One catch-all here beats trusting every
+            // future entry point to remember.
+            if (_mode != Mode.Tutorial) CloseCoach();
             Memory.RunStarted();   // if this flag survives to next boot, they rage-quit
             Curse.ClearBroken();   // counter-brag receipts don't carry across runs
             _levelIndex = levelIndex;
@@ -3897,7 +4122,10 @@ namespace TrustIssues
             // deeper into the 5 nights before it loops — it beat NO ONE before.
             // Custom joins Curated/Versus on infinite retries — a time trial ends
             // when you finish it, never because you ran out of lives.
-            _hearts = (_mode == Mode.Curated || _mode == Mode.Versus || _mode == Mode.Custom) ? -1
+            // Tutorial joins them: a teaching floor that can run out of lives is a
+            // teaching floor that throws the new player back to a menu mid-lesson.
+            _hearts = (_mode == Mode.Curated || _mode == Mode.Versus || _mode == Mode.Custom
+                       || _mode == Mode.Tutorial) ? -1
                      : _mode == Mode.Daily ? Diff.StartHearts + 2
                      : 0; // Endless lives are revive tokens earned on risk paths.
             if (_hudChrome != null) _hudChrome.SetActive(true);
@@ -3960,6 +4188,8 @@ namespace TrustIssues
                 // builder as every hand-made floor, so it inherits the ceiling
                 // vault, the stage camera and the beatability guarantees.
                 case Mode.Custom:  return (_customMap ?? new CustomMap()).ToLevel();
+                // The teaching floor. One corridor, four lessons, one lie.
+                case Mode.Tutorial: return Levels.Tutorial();
                 default:
                     int bt = BossTierForFloor(_levelIndex);          // Castle floors 10/20/30/40
                     return bt > 0 ? Levels.BossRoom(bt) : Levels.Get(_levelIndex);
@@ -4047,6 +4277,13 @@ namespace TrustIssues
             _recT.Clear(); _recP.Clear(); _recTimer = 0f;   // fresh recording for this attempt
             _level = CurrentLevel();
             _camMin = _level.CamMinX; _camMax = _level.CamMaxX;
+            // Tear down whatever floor was standing before building this one. Most
+            // callers already did (the death and floor-clear paths), and destroying an
+            // already-destroyed root is a no-op — but the ones that DIDN'T left the old
+            // level, and its vampire, standing in the scene behind the new floor. The
+            // shot harness made it obvious: ten skins equipped in a row left ten idle
+            // vampires lined up on the spawn of every floor after them.
+            if (_levelRoot != null) Destroy(_levelRoot.gameObject);
             _levelRoot = new GameObject("Level").transform;
 
             // Floor extents — right edge feeds the near-miss narrator, both edges
@@ -4089,7 +4326,12 @@ namespace TrustIssues
             foreach (var pp in _level.Portals)
                 BuildPortals(pp);
             _rumorFloorUsed = false;
-            BuildReactiveTraps();   // the "Trust Issues" learned traps from past deaths
+            // The teaching floor is EXACTLY what it looks like. The castle's learned
+            // traps grow out of past deaths, so on a returning player's device they
+            // were quietly adding spikes to the tutorial — hazards the coach never
+            // mentions, on the one floor whose whole job is that its lessons are true.
+            if (_mode != Mode.Tutorial)
+                BuildReactiveTraps();   // the "Trust Issues" learned traps from past deaths
             PlaceLanterns();
             BuildAerialHazards();
             if (_mode == Mode.Daily && _levelIndex == 1 && Rumor.HiddenDoor)
@@ -4108,9 +4350,15 @@ namespace TrustIssues
                 _levelRoot.gameObject.AddComponent<RoomDirector>()
                     .Init(_level, _player.transform, _levelRoot);
             SpawnFirstSessionPrompts(); // faint in-world key hints, first boot + floor 1 only
-            SpawnReplayGhost();      // race your previous attempt
-            SpawnDeathEchoes();      // tombstones of real other players who died here
-            SpawnCurseGhost();       // the friend who cursed you haunts their floor
+            // …and nothing haunts the tutorial either: a first-timer meeting other
+            // players' graves and a rival's ghost before they can run is noise, and
+            // the coach's captions are the only thing that should be talking.
+            if (_mode != Mode.Tutorial)
+            {
+                SpawnReplayGhost();      // race your previous attempt
+                SpawnDeathEchoes();      // tombstones of real other players who died here
+                SpawnCurseGhost();       // the friend who cursed you haunts their floor
+            }
             SnapCamera();
 
             // Boss arena setup (spawns the boss, gives the player a pip buffer +
@@ -4142,7 +4390,9 @@ namespace TrustIssues
             if (_mode == Mode.Daily) sunBudget += Mathf.Max(0f, 14f - _levelIndex * 3.5f);
             // Custom maps are TIME TRIALS: the race clock is the only pressure, so a
             // second hidden timer chasing you would just be noise.
-            _sunThreshold = (_mode == Mode.Versus || _mode == Mode.Custom || InBossRoom || !Diff.SunRise) ? 999f
+            // …and nothing chases the player across the tutorial either.
+            _sunThreshold = (_mode == Mode.Versus || _mode == Mode.Custom || _mode == Mode.Tutorial
+                             || InBossRoom || !Diff.SunRise) ? 999f
                           : _mode == Mode.Curated ? 16f + plats * 2.2f
                           : _mode == Mode.Daily   ? sunBudget
                                                   : 11f + plats * 1.8f;
@@ -4855,9 +5105,9 @@ namespace TrustIssues
                     GameObject go = sp != null
                         ? Theme.SpriteBox("Spikes", _levelRoot, t.pos, t.size, sp, 3)
                         : Theme.Box("Spikes", _levelRoot, t.pos, t.size, Theme.Danger, 3);
-                    // Blood red: the Bestiary's iron is multiplied onto the artwork's
-                    // colour, so a spike reads from across the hall (see Trap.SpikeRed).
-                    if (sp != null) go.GetComponent<SpriteRenderer>().color = painted != null ? Trap.SpikeRed : Theme.Danger;
+                    // Black forged iron ringed in blood — a red spike was invisible on
+                    // a red-and-black floor (see Trap.PaintSpike).
+                    if (sp != null) Trap.PaintSpike(go, painted != null);
                     FitTrigger(go, 0.85f); // reliable: roughly the full visible spike
                     var kz = go.AddComponent<KillZone>(); kz.msg = "Impaled."; kz.trapTag = (int)TrapType.SpikeStatic;
                     break;
@@ -4869,7 +5119,7 @@ namespace TrustIssues
                     GameObject go = sp != null
                         ? Theme.SpriteBox("GrowSpike", _levelRoot, t.pos, t.size, sp, 3)
                         : Theme.Box("GrowSpike", _levelRoot, t.pos, t.size, Theme.Danger, 3);
-                    if (sp != null) go.GetComponent<SpriteRenderer>().color = painted != null ? Trap.SpikeRed : Theme.Danger;
+                    if (sp != null) Trap.PaintSpike(go, painted != null);
                     FitTrigger(go, 0.85f); // reliable spike hitbox
                     var kz = go.AddComponent<KillZone>(); kz.msg = "Skewered.";
                     var gtrap = go.AddComponent<Trap>();
@@ -6354,6 +6604,20 @@ namespace TrustIssues
                 { "duration_ms", LevelDurationMs },
                 { "deaths", _deaths },
             });
+
+            // Tutorial cleared: no shards, no unlocks, no chained next floor — just
+            // the hand-off into the Castle. Returns before every reward branch below
+            // so the teaching floor can never pay out or advance real progress.
+            if (_mode == Mode.Tutorial)
+            {
+                Analytics.Track("tutorial_complete", new System.Collections.Generic.Dictionary<string, object>
+                {
+                    { "duration_ms", LevelDurationMs },
+                    { "deaths", _floorDeaths },
+                });
+                TutorialCleared();
+                return;
+            }
             // Funnel: floor 1 conversion — the counterpart of level1_start.
             if (_mode == Mode.Curated && _levelIndex == 0)
                 Analytics.Track("level1_complete", new System.Collections.Generic.Dictionary<string, object>

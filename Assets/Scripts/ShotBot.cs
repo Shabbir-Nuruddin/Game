@@ -39,6 +39,12 @@ namespace TrustIssues
             }
             if (string.IsNullOrEmpty(dir)) return;   // a normal launch — do nothing at all
 
+            // The tutorial auto-runs on a machine that has never played, which would
+            // put a teaching floor under the "menu" shot on some runs and not others.
+            // Marked as taught so the itinerary is identical every time; the tutorial
+            // gets its own deliberate shot below.
+            PlayerPrefs.SetInt("ti_tutorial_done", 1);
+
             // -touch forces the PHONE layout on in a desktop shot. The on-screen
             // controls are the part of the game most often checked against the
             // reference artwork, and they're invisible on desktop by default —
@@ -106,6 +112,20 @@ namespace TrustIssues
             }
             Skins.DevUnlockAll = false;
             Skins.Equip("heir");
+
+            // THE TUTORIAL, with the coach's caption and the joystick thumb hint. The
+            // stick has to be the live movement mode for the hint to exist at all, so
+            // it's forced on for these two shots and put back afterwards (the -touch
+            // flag above deliberately prefers the arrow pads).
+            int stickWas = PlayerPrefs.GetInt("opt_joystick", 1);
+            PlayerPrefs.SetInt("opt_joystick", 1);
+            root.DevStartTutorial();
+            yield return new WaitForSecondsRealtime(1.6f);
+            yield return Shot("tutorial_start");
+            root.DevWarp(Levels.TutorialSpikeX - 5f);
+            yield return new WaitForSecondsRealtime(1.1f);
+            yield return Shot("tutorial_spike");
+            PlayerPrefs.SetInt("opt_joystick", stickWas);
 
             root.DevStartFloor(_floor - 1);
             yield return new WaitForSecondsRealtime(1.6f);   // let the player land and the camera settle

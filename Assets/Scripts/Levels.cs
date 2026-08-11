@@ -362,6 +362,36 @@ namespace TrustIssues
             return L;
         }
 
+        /// <summary>
+        /// THE FIRST NIGHT — the tutorial floor, and the only floor in the game that
+        /// isn't trying to kill you on purpose.
+        ///
+        /// It's a plain corridor (no rooms, no camera locks, no rules) laid out so
+        /// each lesson gets its own stretch of empty ground: a long run to find the
+        /// stick, one honest gap to find JUMP, one spike standing in plain sight, and
+        /// exactly one lie at the end so the player meets the game's actual promise
+        /// before the Castle does it to them for real. Tutorial.cs reads the same
+        /// x positions to know when to speak.
+        ///
+        /// Deliberately generous: every platform is wide enough to stop, look and
+        /// start again, and nothing here is blind.
+        /// </summary>
+        public const float TutorialJumpX  = 6.5f;    // right edge of the opening run
+        public const float TutorialSpikeX = 17.2f;   // the spike in plain sight
+        public const float TutorialLieX   = 32.9f;   // the ambush spike
+        public static Level Tutorial()
+        {
+            var b = new B();
+            b.Plat(18f);              // nothing but floor: learn to run
+            b.Gap(2.2f);              // one honest jump, no hazard attached
+            float a = b.Plat(12f);
+            b.Spike(a + 2.5f);        // a spike you can see from a long way off
+            b.Gap(2.2f);
+            float c = b.Plat(12f);
+            b.LateSpike(c + 4f);      // and the lesson the whole game is built on
+            return b.Finish();        // the coffin
+        }
+
         public static Level Get(int index)
         {
             switch (((index % Count) + Count) % Count)

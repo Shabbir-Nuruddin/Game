@@ -917,13 +917,16 @@ namespace TrustIssues
         // Identical to a normal spike in every pixel — that's the point.
         void BuildShiftSpike(float litX, float darkX)
         {
-            var sp = Assets.Sprite("spike");
+            // Same art and same paint as a static spike, or it stops being a lie —
+            // a shifting spike that looks different is just a labelled hazard.
+            var painted = Assets.TrapArt("spike");
+            var sp = painted ?? Assets.Sprite("spike");
             var pos = new Vector2(litX, -2.4f);
             var size = new Vector2(0.7f, 0.7f);
             GameObject go = sp != null
                 ? Theme.SpriteBox("ShiftSpike", _levelRoot, pos, size, sp, 3)
                 : Theme.Box("ShiftSpike", _levelRoot, pos, size, Theme.Danger, 3);
-            if (sp != null) go.GetComponent<SpriteRenderer>().color = Theme.Danger;
+            if (sp != null) Trap.PaintSpike(go, painted != null);
             var col = go.AddComponent<BoxCollider2D>();
             col.isTrigger = true;
             var sr = go.GetComponent<SpriteRenderer>();

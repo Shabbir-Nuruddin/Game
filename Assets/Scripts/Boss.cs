@@ -1467,11 +1467,13 @@ namespace TrustIssues
         GameObject GroundSpike(float x)
         {
             var parent = _hazards != null ? _hazards : transform.parent;
-            var sp = Assets.Sprite("spike");
+            var painted = Assets.TrapArt("spike");
+            var sp = painted ?? Assets.Sprite("spike");
             var go = sp != null
                 ? Theme.SpriteBox("LordSpike", parent, new Vector3(x, -2.0f, 0f), new Vector2(1.1f, 1.3f), sp, 5)
                 : Theme.Box("LordSpike", parent, new Vector2(x, -2.0f), new Vector2(0.8f, 1.2f), Theme.Danger, 5);
-            if (sp != null) go.GetComponent<SpriteRenderer>().color = Theme.Danger;
+            // Same black-iron-and-blood-rim paint as every other spike in the game.
+            if (sp != null) Trap.PaintSpike(go, painted != null);
             var col = go.AddComponent<BoxCollider2D>(); col.isTrigger = true; col.size *= 0.8f;
             var kz = go.AddComponent<KillZone>(); kz.msg = $"Impaled on {BossName()}'s spikes.";
             return go;
