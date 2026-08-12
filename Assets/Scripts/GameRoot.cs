@@ -1111,6 +1111,10 @@ namespace TrustIssues
             UpdateTouchLayout();
         }
 
+        // Run-level facts the death screen reports (set in BeginRun).
+        float _runStartRealtime;
+        int _runBloodStart;
+
         GameObject _btnFly, _btnDash, _btnShoot, _btnLeft, _btnRight, _joystick;
         // Where DASH sits with and without a BAT button beside it (see BuildTouchControls).
         Vector2 _dashHome, _dashWithBat;
@@ -4006,6 +4010,30 @@ namespace TrustIssues
         /// as ten identical Wardrobes. This destroys the panels directly rather than
         /// firing _onBack, because at the main menu Back arms "press again to quit"
         /// and a second call would close the game mid-itinerary.</summary>
+        /// <summary>The death screen, driven down its real path, for the shot itinerary.</summary>
+        public void DevOpenDeath(int metres, int best)
+        {
+            DevCloseOverlay();
+            PlayerPrefs.SetInt("best_endless_distance", best);
+            _mode = Mode.Endless;
+            _levelIndex = 4;
+            _deaths = 6;
+            _endlessBankedMeters = metres;
+            _endlessPeakMeters = metres;
+            _runStartRealtime = Time.realtimeSinceStartup - 194f;
+            _runBloodStart = Mathf.Max(0, Currency.Balance - 12);
+            RunOver();
+        }
+
+        /// <summary>The pause screen. `endless` adds the END RUN row the mode owns.</summary>
+        public void DevOpenPause(bool endless)
+        {
+            DevCloseOverlay();
+            if (_pausePanel != null) Destroy(_pausePanel);
+            _mode = endless ? Mode.Endless : Mode.Curated;
+            Pause();
+        }
+
         /// <summary>The tutorial floor with the coach live, for the shot itinerary.</summary>
         public void DevStartTutorial()
         {
@@ -4111,6 +4139,18 @@ namespace TrustIssues
             }
             _hasCheckpoint = false;
             _newBest = false;
+            // What the death screen reports on: how long the run lasted, and what it
+            // paid. Blood earned is a before/after on the balance rather than a second
+            // tally to keep in step with Currency.
+            _runStartRealtime = Time.realtimeSinceStartup;
+            _runBloodStart = Currency.Balance;
+            // The run counter the death screen's "RUN n" shows. Endless only — a Blood
+            // Moon run is identified by its night, not by how many you've had.
+            if (_mode == Mode.Endless)
+            {
+                PlayerPrefs.SetInt("endless_runs", PlayerPrefs.GetInt("endless_runs", 0) + 1);
+                PlayerPrefs.Save();
+            }
             ResetFloorState();
             // Castle deaths are a LIFETIME tally that persists across menu visits
             // and sessions; Endless/Blood Moon deaths are per-run (for the score).
@@ -6563,13 +6603,6 @@ namespace TrustIssues
             });
             Audio.Play("death", 0.7f);
 
-            var panel = Overlay(new Color(0.05f, 0f, 0.02f, 0.85f), out var root);
-            ResultTitle(root, "YOU PERISHED", 200f, 84);
-            string reached = _mode == Mode.Endless ? $"survived {endlessMetres} metres"
-                                                    : $"fell on night {_levelIndex + 1}/{DailyLen}";
-            Gothic.Line(root, reached + $"   ·   {_deaths} deaths", 46, Gothic.Bone,
-                new Vector2(0, 90), new Vector2(1400, 70));
-
             string lbMode = _mode == Mode.Endless ? "endless" : "daily";
             Leaderboard.Submit(lbMode, _mode == Mode.Endless ? endlessMetres : _deaths);
             string brag = _mode == Mode.Endless
@@ -6577,7 +6610,102 @@ namespace TrustIssues
                 : $"I fell on night {_levelIndex + 1} of tonight's Blood Moon \U0001F987";
             if (_mode == Mode.Daily && Rumor.Discovered)
                 brag += $" — and I proved the rumor: \"{Rumor.CrypticLine}\"";
-            ResultFooter(root, panel, brag, lbMode);
+
+            var panel = Overlay(new Color(0.02f, 0.008f, 0.024f, 0.97f), out var root);
+            BuildDeathScreen(root, panel, endlessMetres, brag, lbMode);
+        }
+
+        /// <summary>
+        /// THE DEATH SCREEN, to the design pack's mockup (see Result.Death).
+        ///
+        /// The old one said "YOU PERISHED", one line of stats, and gave you four ways
+        /// to LEAVE — there was no way back into a run at all, on the screen a rage
+        /// game shows more than any other. This one is a scoreboard with a door: how
+        /// far you got against your own record, what killed you, what it paid, and one
+        /// enormous DESCEND AGAIN that starts a fresh run without touching a menu.
+        /// </summary>
+        void BuildDeathScreen(Transform root, GameObject panel, int metres, string brag, string lbMode)
+        {
+            // Back = MAIN MENU here, same as the button (and the level goes with it).
+            _onBack = () => { Destroy(panel); if (_levelRoot != null) Destroy(_levelRoot.gameObject); ShowMenu(); };
+
+            bool endless = _mode == Mode.Endless;
+            int best = endless ? PlayerPrefs.GetInt("best_endless_distance", 0)
+                               : PlayerPrefs.GetInt("best_daily_night", 0);
+            int score = endless ? metres : _levelIndex + 1;
+            if (!endless && score > best)
+            { best = score; PlayerPrefs.SetInt("best_daily_night", score); PlayerPrefs.Save(); }
+
+            float secs = Mathf.Max(0f, Time.realtimeSinceStartup - _runStartRealtime);
+            var info = new Result.DeathInfo
+            {
+                modeLabel  = endless ? "ENDLESS NIGHT" : "BLOOD MOON",
+                runLabel   = endless ? $"RUN {PlayerPrefs.GetInt("endless_runs", 1)}"
+                                     : $"NIGHT {_levelIndex + 1} OF {DailyLen}",
+                blood      = Currency.Balance,
+                earned     = Mathf.Max(0, Currency.Balance - _runBloodStart),
+                unit       = endless ? "METRES" : "NIGHTS",
+                score      = score,
+                best       = best,
+                newBest    = _newBest,
+                verdict    = DeathVerdict(score, best, endless),
+                killedBy   = (Memory.LastKillerName ?? "THE DARK").ToUpperInvariant(),
+                timeBelow  = $"{(int)(secs / 60f)}:{(int)(secs % 60f):00}",
+                retryLabel = endless ? "DESCEND AGAIN" : "TONIGHT AGAIN",
+                retrySub   = endless ? "NEW SEED  ·  NO MENU" : "SAME NIGHT  ·  NO MENU",
+                retry      = () =>
+                {
+                    Destroy(panel);
+                    if (_levelRoot != null) Destroy(_levelRoot.gameObject);
+                    if (endless) StartEndless(); else StartDaily();
+                },
+                share = () =>
+                {
+                    Analytics.Track("share_tapped", new System.Collections.Generic.Dictionary<string, object>
+                    { { "mode", ModeName }, { "level_index", _levelIndex } });
+                    StartCoroutine(NativeShare.ShareScreenshot("trust-issues", NativeShare.Sanitize(brag), GameLink));
+                },
+                curse = SendCurse,
+                leaderboard = () => { Destroy(panel); ShowLeaderboard(lbMode); },
+                menu = () => { Destroy(panel); if (_levelRoot != null) Destroy(_levelRoot.gameObject); ShowMenu(); },
+            };
+            Result.Death(FitSurface(root, Result.DesignW, Result.DesignH), info);
+        }
+
+        // The line under the number. It compares you to YOURSELF, because that's the
+        // only comparison a solo run can lose to — and it has to sting without being
+        // one of the one-word roasts that failed playtest.
+        string DeathVerdict(int score, int best, bool endless)
+        {
+            if (!endless) return score >= DailyLen ? "You outlasted the night. Barely."
+                                                   : "The moon is still up. You are not.";
+            if (best > 0 && score >= best) return "Deeper than you have ever been.";
+            if (score < 30) return "That was barely a descent.";
+            if (best > 0 && score > best * 0.9f) return "So close the castle laughed.";
+            if (best > 0 && score < best * 0.4f) return "You have done this better half asleep.";
+            return "The dark is deeper than that.";
+        }
+
+        // Haunt a friend: a link that spawns YOUR ghost on this floor in THEIR game.
+        void SendCurse()
+        {
+            var d = new Curse.Data
+            {
+                nick = Meta.Nick, floor = _levelIndex, deaths = _floorDeaths,
+                cause = Memory.LastKillerName, mode = ModeName,
+            };
+            string link = Curse.BuildLink(d);
+            string challenge = _mode == Mode.Endless
+                ? $"survive {CurrentEndlessMeters} metres"
+                : $"survive floor {_levelIndex + 1}";
+            string msg = NativeShare.Sanitize(
+                $"I cursed you in Trust Issues \U0001F987 {challenge} with {_floorDeaths} deaths or less, or my ghost stays");
+            NativeShare.ShareText(msg, link);
+            Analytics.Track("curse_sent", new System.Collections.Generic.Dictionary<string, object>
+            {
+                { "floor", _levelIndex }, { "mode", ModeName },
+            });
+            BossToast("CURSE READY - SEND IT TO THEM");
         }
 
         // ==================== level progression / win ====================
@@ -7019,29 +7147,10 @@ namespace TrustIssues
                     { { "mode", ModeName }, { "level_index", _levelIndex } });
                     StartCoroutine(NativeShare.ShareScreenshot("trust-issues", bragFinal, GameLink));
                 }, true, 34);
-            // Haunt a friend: a link that spawns YOUR ghost on this floor in THEIR game.
-            Gothic.Button(root, "CURSE A FRIEND", new Vector2(0, -150), new Vector2(310, 96), () =>
-                {
-                    var d = new Curse.Data
-                    {
-                        nick = Meta.Nick, floor = _levelIndex, deaths = _floorDeaths,
-                        cause = Memory.LastKillerName, mode = ModeName,
-                    };
-                    string link = Curse.BuildLink(d);
-                    string challenge = _mode == Mode.Endless
-                        ? $"survive {CurrentEndlessMeters} metres"
-                        : $"survive floor {_levelIndex + 1}";
-                    string msg = NativeShare.Sanitize(
-                        $"I cursed you in Trust Issues \U0001F987 {challenge} with {_floorDeaths} deaths or less, or my ghost stays");
-                    // Goes through the OS share sheet on phone (WhatsApp, Instagram,
-                    // Bluetooth...) rather than silently filling a clipboard.
-                    NativeShare.ShareText(msg, link);
-                    Analytics.Track("curse_sent", new System.Collections.Generic.Dictionary<string, object>
-                    {
-                        { "floor", _levelIndex }, { "mode", ModeName },
-                    });
-                    BossToast("CURSE READY - SEND IT TO THEM");
-                }, false, 26);
+            // Haunt a friend: a link that spawns YOUR ghost on this floor in THEIR
+            // game. Shared with the death screen (SendCurse) so the two can't drift.
+            Gothic.Button(root, "CURSE A FRIEND", new Vector2(0, -150), new Vector2(310, 96),
+                          SendCurse, false, 26);
             Gothic.Button(root, "LEADERBOARD", new Vector2(350, -150), new Vector2(310, 96),
                 () => { Destroy(panel); ShowLeaderboard(lbMode); }, false, 30);
             Gothic.Button(root, "MAIN MENU", new Vector2(0, -270), new Vector2(420, 100),
@@ -7676,78 +7785,29 @@ namespace TrustIssues
             Time.timeScale = 0f;
             // FULLY OPAQUE. The old pause let the level show through at 20%, and the
             // level is lit by torches and candle gold — so the "black and red" pause
-            // screen came out washed orange. Nothing behind it shows now; it wears the
-            // same black/red ground, blood moon and castle skyline as the main menu.
+            // screen came out washed orange. Nothing behind it shows now.
             _pausePanel = Overlay(new Color(0.02f, 0.008f, 0.025f, 1f), out var root);
-            // If a pause artwork is dropped in (Resources/ui/pause_bg), wear it.
-            bool painted = Skin.Background(root, "pause_bg") != null;
-            if (!painted) Gothic.Backdrop(root);
 
-            // Endless also allows a deliberate "END RUN" to bank the current
-            // distance without throwing away a strong attempt.
-            bool endless = _mode == Mode.Endless;
-
-            // PAINTED PAUSE. The artwork already draws the heading and all three
-            // button plates, so nothing is built on top of it except the tap-zones —
-            // and, in Endless, the one button the painting doesn't have. Rects
-            // measured off the 1497x1051 mockup.
-            if (painted)
+            // Rebuilt to the design pack's mockup (see Result.Paused): one framed
+            // panel, RESUME as the obvious primary, the rest underneath it with a line
+            // each saying what they cost you, and quick MUSIC/SOUND switches — because
+            // mid-run is exactly when someone needs the sound off in a hurry, and
+            // sending them out to Settings for it loses the session, not the noise.
+            //
+            // The old painted pause (pause_bg) is retired with the other baked screens:
+            // it drew three fixed plates, so Endless's fourth action had to hang off
+            // the bottom of the picture, and every label on it was a photograph of a
+            // state rather than the state.
+            Result.Paused(FitSurface(root, Result.DesignW, Result.DesignH), new Result.PauseInfo
             {
-                Skin.Zone(root, 0.28f, 0.395f, 0.70f, 0.525f, Resume,       "resume");
-                Skin.Zone(root, 0.28f, 0.545f, 0.70f, 0.675f, RestartLevel, "restart");
-                Skin.Zone(root, 0.28f, 0.700f, 0.70f, 0.835f, QuitToMenu,   "menu");
-                if (endless)
-                {
-                    // Endless has a fourth action the painting never anticipated, so
-                    // it gets a real drawn button below the painted three rather than
-                    // an invisible zone over empty stone nobody would ever find.
-                    Gothic.Button(root, "END RUN — BANK SCORE", new Vector2(0, -352f),
-                                  new Vector2(540, 84), EndRun, false, 28);
-                }
-                return;
-            }
-
-            // The pause menu now wears the same gothic plate as the painted screens:
-            // a framed slab of castle stone rather than four loose coloured bars
-            // floating over the level.
-            float plateH = endless ? 612f : 500f;
-            if (!painted)
-            {
-                // Slightly lifted off the backdrop (which is Gothic.Ground) so the
-                // slab still reads as a panel rather than dissolving into the wall.
-                var plate = Gothic.PlateAt(root, Vector2.zero, new Vector2(660, plateH), Gothic.Plate);
-                var grain = new GameObject("Grain", typeof(RectTransform)).AddComponent<Image>();
-                grain.transform.SetParent(plate.transform, false);
-                grain.sprite = Theme.StoneTile; grain.type = Image.Type.Tiled;
-                grain.pixelsPerUnitMultiplier = 0.14f; grain.raycastTarget = false;
-                grain.color = new Color(0.55f, 0.5f, 0.62f, 0.10f);
-                var grt = grain.rectTransform;
-                grt.anchorMin = Vector2.zero; grt.anchorMax = Vector2.one;
-                grt.offsetMin = new Vector2(8, 8); grt.offsetMax = new Vector2(-8, -8);
-                grain.transform.SetAsFirstSibling();   // under the frame, over the fill
-            }
-
-            float titleY = plateH / 2f - 90f;
-            var shadow = Theme.Label(root, "PAUSED", 72, new Color(0, 0, 0, 0.85f),
-                new Vector2(0.5f, 0.5f), new Vector2(5, titleY - 5), new Vector2(1000, 130));
-            shadow.font = Theme.TitleFont; shadow.raycastTarget = false;
-            var pausedTitle = Theme.Label(root, "PAUSED", 72, Theme.Player,
-                new Vector2(0.5f, 0.5f), new Vector2(0, titleY), new Vector2(1000, 130));
-            pausedTitle.font = Theme.TitleFont;   // the dripping-blood heading, like every other screen
-            pausedTitle.raycastTarget = false;
-
-            float y = titleY - 120f;
-            var btnSize = new Vector2(540, 94);
-            Gothic.Button(root, "RESUME", new Vector2(0, y), btnSize, Resume, true, 40);
-            y -= 110f;
-            Gothic.Button(root, "RESTART LEVEL", new Vector2(0, y), btnSize, RestartLevel, false, 34);
-            y -= 110f;
-            if (endless)
-            {
-                Gothic.Button(root, "END RUN — BANK SCORE", new Vector2(0, y), btnSize, EndRun, false, 30);
-                y -= 110f;
-            }
-            Gothic.Button(root, "MAIN MENU", new Vector2(0, y), btnSize, QuitToMenu, false, 34);
+                resume  = Resume,
+                restart = RestartLevel,
+                // Endless alone can bank a strong attempt instead of throwing it away.
+                endRun  = _mode == Mode.Endless ? (System.Action)EndRun : null,
+                menu    = QuitToMenu,
+                restartSub = _mode == Mode.Endless ? "FROM THE TOP OF THIS STRETCH"
+                                                   : "THIS FLOOR, FROM THE TOP",
+            });
         }
 
         // End an Endless run on purpose: unpause and show the result/leaderboard screen.

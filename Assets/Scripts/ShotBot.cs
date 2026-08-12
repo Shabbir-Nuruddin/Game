@@ -174,6 +174,25 @@ namespace TrustIssues
             yield return new WaitForSecondsRealtime(1.0f);
             yield return Shot("lobby");
 
+            // The two screens a player sees more than any other. Death is shot twice:
+            // a short run well under the record (the common case, and the one whose
+            // comparison bar has to look like a challenge rather than an insult) and a
+            // record-breaking one, because that flips three separate labels.
+            root.DevOpenPause(false);
+            yield return new WaitForSecondsRealtime(0.9f);
+            yield return Shot("pause");
+            root.DevOpenPause(true);
+            yield return new WaitForSecondsRealtime(0.9f);
+            yield return Shot("pause_endless");
+            root.DevCloseOverlay();
+
+            root.DevOpenDeath(9, 706);
+            yield return new WaitForSecondsRealtime(1.1f);
+            yield return Shot("death");
+            root.DevOpenDeath(842, 706);
+            yield return new WaitForSecondsRealtime(1.1f);
+            yield return Shot("death_record");
+
             Debug.Log("SHOTBOT_DONE " + _dir);
             Application.Quit();
         }
