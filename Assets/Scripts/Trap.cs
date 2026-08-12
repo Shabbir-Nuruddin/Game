@@ -44,27 +44,32 @@ namespace TrustIssues
         // brightness changes instead — tinting a painted sprite red erases the art.
         public bool paintedArt;
         /// <summary>
-        /// SPIKE BLACK — the blade itself.
+        /// SPIKE STEEL — the blade itself.
         ///
-        /// Spikes were painted the same red as the hall, and testers simply could not
-        /// see them: red steel on a red-and-black floor, lit by red lanterns, is
-        /// camouflage. They are now forged iron, near black, and the thing that makes
-        /// them read is CONTRAST rather than hue — a black blade separates from the
-        /// stone the moment it's outlined (see SpikeRim below), and it separates in
-        /// every theme instead of only the dark ones.
+        /// This colour has been wrong twice, and the measurements say why. Painted the
+        /// hall's own red, a spike came out at roughly the same brightness as the wall
+        /// behind it. Painted black iron, it measured DARKER than the wall (luminance
+        /// 20 against 22) and identical to the floor — invisible by construction, on a
+        /// stage that is already red and already black.
         ///
-        /// Multiplying the painted illustration by this keeps every highlight and
-        /// shadow of the artwork, which is the one tint on painted art this game
-        /// allows (see the level-art notes).
+        /// A sprite tint can only ever MULTIPLY, so tinting a mid-tone illustration
+        /// with a dark colour throws away the art and everything that made it legible.
+        /// The Bestiary's spike illustration averages luminance 76 with highlights up
+        /// to 239 — all the shape and shadow needed is already painted in. So the
+        /// blade is now left nearly untinted, a hair cool, and reads as what it is:
+        /// forged steel, several times brighter than anything around it.
+        ///
+        /// The red the theme wants comes from the rim below, not from the blade. Hue
+        /// was never going to do this job — only brightness.
         /// </summary>
-        public static readonly Color SpikeRed = new Color(0.16f, 0.13f, 0.15f, 1f);
+        public static readonly Color SpikeRed = new Color(0.94f, 0.92f, 0.97f, 1f);
         /// <summary>
-        /// The hot crimson edge drawn a little larger BEHIND the blade, so the black
-        /// spike is ringed in blood. Without it a black spike vanishes into a black
-        /// pit; with it the silhouette reads from across the hall, and it keeps the
-        /// hazard language of the game red without painting the blade red.
+        /// The hot blood edge drawn larger BEHIND the blade. It does two jobs: it
+        /// keeps spikes speaking the game's red hazard language, and it separates the
+        /// silhouette on a pale floor the way the steel separates it on a dark one —
+        /// so a spike reads in every theme, not just the ones it was checked against.
         /// </summary>
-        public static readonly Color SpikeRim = new Color(0.86f, 0.10f, 0.16f, 0.95f);
+        public static readonly Color SpikeRim = new Color(1f, 0.13f, 0.18f, 0.95f);
 
         /// <summary>
         /// Paint a spike so it can actually be seen: black iron blade, blood rim.
@@ -87,8 +92,8 @@ namespace TrustIssues
             // otherwise the halo sinks below the blade's base and bleeds onto the
             // stone. Wider than it is taller, because it's the vertical silhouette of
             // the blades that has to separate from the floor.
-            rim.transform.localPosition = new Vector3(0f, 0.035f, 0f);
-            rim.transform.localScale = new Vector3(1.18f, 1.13f, 1f);
+            rim.transform.localPosition = new Vector3(0f, 0.05f, 0f);
+            rim.transform.localScale = new Vector3(1.26f, 1.18f, 1f);
             var rimSr = rim.AddComponent<SpriteRenderer>();
             rimSr.sprite = sr.sprite;
             rimSr.color = SpikeRim;

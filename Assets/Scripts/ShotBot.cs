@@ -126,6 +126,17 @@ namespace TrustIssues
             yield return new WaitForSecondsRealtime(1.1f);
             yield return Shot("tutorial_spike");
             PlayerPrefs.SetInt("opt_joystick", stickWas);
+            // …and the screen that sends them into the Castle, which is a wall of
+            // copy and therefore the easiest one in the game to overflow.
+            root.DevOpenTutorialDone();
+            yield return new WaitForSecondsRealtime(0.9f);
+            yield return Shot("tutorial_done");
+
+            // JUMP + BAT + DASH together — the cluster that used to collide.
+            root.DevStartFlightFloor();
+            yield return new WaitForSecondsRealtime(1.4f);
+            yield return Shot("cluster_flight");
+            Skins.Equip("heir");
 
             root.DevStartFloor(_floor - 1);
             yield return new WaitForSecondsRealtime(1.6f);   // let the player land and the camera settle

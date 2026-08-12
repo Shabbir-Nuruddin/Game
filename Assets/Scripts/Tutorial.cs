@@ -41,7 +41,7 @@ namespace TrustIssues
                        body   = "JUMP across. Hold the button longer to jump higher." },
             new Step { fromX = Levels.TutorialSpikeX - 7f,
                        title  = "SPIKES KILL INSTANTLY",
-                       body   = "Black iron, blood-rimmed. This one is standing still — go over it." },
+                       body   = "Bright steel, ringed in blood. This one is standing still — go over it." },
             new Step { fromX = Levels.TutorialLieX - 7.5f,
                        title  = "NOW THE REAL LESSON",
                        body   = "Some traps wait until you're close. Nothing in this castle is honest." },

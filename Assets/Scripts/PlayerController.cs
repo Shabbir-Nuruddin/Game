@@ -114,8 +114,11 @@ namespace TrustIssues
         public float moveMul = 1f, jumpMul = 1f;
         public bool dashEnabled = false;
         public int extraAirJumps = 0;            // double-jump etc.
-        public float dashSpeed = 19f, dashDur = 0.16f, dashCooldown = 0.85f;
+        public float dashSpeed = 19f, dashDur = 0.16f, dashCooldown = 1.25f;
         float _dashCdLeft, _dashLeft, _dashDir;
+        /// <summary>How much of the dash cooldown is left, 1 → 0. Drives the on-screen
+        /// recharge sweep, so the rule the code enforces is the rule the player sees.</summary>
+        public float DashCooldown01 => dashCooldown > 0.001f ? Mathf.Clamp01(_dashCdLeft / dashCooldown) : 0f;
         int _airJumpsLeft;
         bool _isDashing;
 
@@ -288,8 +291,15 @@ namespace TrustIssues
 
             // Vampire DASH (skin ability): a quick mist-burst in the facing direction.
             _dashCdLeft -= Time.deltaTime;
-            if (dashEnabled && _dashCdLeft <= 0f && _dashLeft <= 0f &&
-                (Input.GetKeyDown(Controls.Dash) || TouchInput.ConsumeDash()))
+            // The tap is ALWAYS consumed, even while recharging. It used to sit behind
+            // the cooldown test, so a short-circuit left the press in the buffer and
+            // the dash fired by itself the moment the cooldown expired — mash the
+            // button and you got a phantom dash a second later, usually off a ledge.
+            // A press during recharge is now simply refused, which is what a cooldown
+            // is supposed to mean.
+            bool dashTap = Input.GetKeyDown(Controls.Dash) | TouchInput.ConsumeDash();
+            bool dashReady = _dashCdLeft <= 0f && _dashLeft <= 0f;
+            if (dashEnabled && dashTap && dashReady)
             {
                 _dashLeft = dashDur; _dashDir = _facing; _dashCdLeft = dashCooldown;
                 Audio.PlayOr("dash", "jump", 0.5f);

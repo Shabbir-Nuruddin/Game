@@ -1074,23 +1074,25 @@ namespace TrustIssues
             // screen draws an ornate border frame around the play area that the
             // reference mockup doesn't have, and at the painting's exact numbers
             // all three rings sat underneath it with their bottoms cut off.
-            MakeArtButton("btn_jump", "▲", 0, actAnchor, new Vector2(-190 * acts, 215) * k, 168f * k);
-            _btnFly   = MakeArtButton("btn_bat", "", 3, actAnchor, new Vector2(-121 * acts, 415) * k, 160f * k);
-            // DASH AND BAT CANNOT SHARE A SPOT. The bat ring sits at (-121, 415) and
-            // dash used to sit at (-140, 350) — 65 units apart with a 160 and a 130
-            // wide button, i.e. stacked on top of each other. In Blood Moon and
-            // Endless, where the bat exists, one thumb press was hitting both.
+            // THE ACTION CLUSTER IS A 2x2 GRID, and every slot is permanent.
             //
-            // So dash has two homes and UpdateTouchLayout() picks per floor: the
-            // bat's spot when there's no bat (the Castle, where it always was), and
-            // out to the side, clear of the whole cluster, when the bat is live.
-            _btnDash  = MakeTouch("DASH",  4, actAnchor, new Vector2(-140 * acts, 350) * k, new Vector2(130, 130) * k, 0.24f);
-            _dashHome     = new Vector2(-140 * acts, 350) * k;
-            // Left of the bat and above the gun, with clear air around it once each
-            // button's 1.25x finger pad is counted in — that padding is why simply
-            // nudging DASH a little was never going to be enough.
-            _dashWithBat  = new Vector2(-330 * acts, 490) * k;
-            _btnShoot = MakeGunButton(actAnchor, new Vector2(-360 * acts, 310) * k, new Vector2(130, 130) * k);
+            // It used to be four buttons at four hand-picked offsets, and they simply
+            // overlapped: DASH sat 65 units from BAT with a 130 and a 160 diameter, so
+            // in Blood Moon one thumb hit both. Moving DASH "somewhere else when the
+            // bat is out" replaced that with a worse bug — the spare slot was placed
+            // against a 1080-tall canvas, and a landscape phone's is ~815, so DASH
+            // flew up into the HUD.
+            //
+            // No more special cases. Inner column = the two things you press
+            // constantly (JUMP, and BAT above it). Outer column = the two situational
+            // ones (DASH, and SHOOT above it). Nothing ever moves; buttons only
+            // appear and disappear. Verified so that no two rects overlap even after
+            // each one's 1.25x finger pad (TouchButton.HitPad) is counted in, and the
+            // tallest slot still clears the top of the shortest canvas a phone makes.
+            MakeArtButton("btn_jump", "▲", 0, actAnchor, new Vector2(-175 * acts, 200) * k, 168f * k);
+            _btnFly   = MakeArtButton("btn_bat", "", 3, actAnchor, new Vector2(-175 * acts, 420) * k, 160f * k);
+            _btnDash  = MakeDashButton(actAnchor, new Vector2(-385 * acts, 200) * k, 140f * k);
+            _btnShoot = MakeGunButton(actAnchor, new Vector2(-385 * acts, 400) * k, new Vector2(140, 140) * k);
             SyncMoveMode();
             _touchPanel.SetActive(false);
         }
@@ -1116,8 +1118,8 @@ namespace TrustIssues
         int _runBloodStart;
 
         GameObject _btnFly, _btnDash, _btnShoot, _btnLeft, _btnRight, _joystick;
-        // Where DASH sits with and without a BAT button beside it (see BuildTouchControls).
-        Vector2 _dashHome, _dashWithBat;
+        // The dark sweep that unwinds over DASH while it's recharging.
+        Image _dashSweep;
 
         // ==================== SABOTAGE (Versus troll buttons) ====================
         // A right-edge column of buttons that let racers troll each other, Drive
@@ -1263,19 +1265,25 @@ namespace TrustIssues
             if (!show) return;
             // BAT only in modes that allow flight; DASH only if the equipped skin grants
             // it; SHOOT only while you actually HOLD a weapon (ammo > 0) in a boss arena.
-            bool bat = _player != null && _player.canFly;
-            SyncTouchButton(_btnFly,   bat);
-            SyncTouchButton(_btnDash,  _player != null && _player.dashEnabled);
-            // Move DASH out from under the BAT ring on flight floors, and back to its
-            // usual corner spot in the Castle where there's no bat to collide with.
-            if (_btnDash != null)
-            {
-                var drt = (RectTransform)_btnDash.transform;
-                var want = bat ? _dashWithBat : _dashHome;
-                if (drt.anchoredPosition != want) drt.anchoredPosition = want;
-            }
-            SyncTouchButton(_btnShoot, _player != null && _player.canShoot && _player.ammo > 0);
+            // The tutorial teaches RUN and JUMP. Nothing else is on the screen for it
+            // to teach with — a new player handed a bat and a dash they've never been
+            // told about will press them, fly over the lesson, and learn nothing.
+            bool teaching = _mode == Mode.Tutorial;
+            SyncTouchButton(_btnFly,   !teaching && _player != null && _player.canFly);
+            SyncTouchButton(_btnDash,  !teaching && _player != null && _player.dashEnabled);
+            SyncTouchButton(_btnShoot, !teaching && _player != null && _player.canShoot && _player.ammo > 0);
             SyncMoveMode();
+
+            // DASH RECHARGING. It always had a cooldown; it just never said so, which
+            // read as the button randomly not working. A dark sweep unwinds around the
+            // pad and the whole thing dims until it's ready again.
+            if (_dashSweep != null && _btnDash != null && _btnDash.activeSelf && _player != null)
+            {
+                float cd = _player.DashCooldown01;
+                _dashSweep.fillAmount = cd;
+                var c = _dashSweep.color; c.a = cd > 0.001f ? 0.72f : 0f;
+                _dashSweep.color = c;
+            }
         }
 
         // Joystick is the DEFAULT movement mode (testers reached for a stick
@@ -1315,6 +1323,69 @@ namespace TrustIssues
             int fontSize = Mathf.RoundToInt(((dir == -1 || dir == 1) ? 0.43f : (label.Length > 4 ? 0.15f : 0.18f)) * size.y);
             Theme.Label(go.transform, label, fontSize, new Color(1, 1, 1, 0.9f),
                 new Vector2(0.5f, 0.5f), Vector2.zero, size);
+            return go;
+        }
+
+        /// <summary>
+        /// DASH: a gold-rimmed dark disc with a recharge sweep.
+        ///
+        /// It used to be a flat translucent white circle with DASH written on it —
+        /// next to the painted gold rings for JUMP and BAT it read as a placeholder
+        /// somebody forgot to finish. There's no painted cut for dash in the artwork,
+        /// so it's drawn in the same gold-on-black vocabulary as the menus instead.
+        ///
+        /// The sweep is the important part: dash has always had a cooldown and never
+        /// showed it, so a press during recharge looked like the button was broken.
+        /// A dark wedge now unwinds around the rim as it recharges.
+        /// </summary>
+        GameObject MakeDashButton(Vector2 anchor, Vector2 pos, float size)
+        {
+            var go = new GameObject("Touch_DASH", typeof(RectTransform));
+            go.transform.SetParent(_touchPanel.transform, false);
+            var rt = (RectTransform)go.transform;
+            rt.anchorMin = rt.anchorMax = anchor; rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.anchoredPosition = pos; rt.sizeDelta = new Vector2(size, size);
+
+            // Theme.Circle is a filled DISC, so the "rim" is a gold disc with an almost
+            // opaque dark one laid on top of it — only the few pixels that stick out
+            // read as gold. The bed has to be near-opaque: at 0.66 the gold underneath
+            // showed straight through and the button came out a solid gold coin.
+            var ring = go.AddComponent<Image>();
+            ring.sprite = Theme.Circle;
+            ring.color = new Color(0.79f, 0.64f, 0.29f, 0.85f);
+
+            var bed = new GameObject("Bed", typeof(RectTransform)).AddComponent<Image>();
+            bed.transform.SetParent(go.transform, false);
+            bed.sprite = Theme.Circle;
+            bed.color = new Color(0.055f, 0.018f, 0.042f, 0.94f);
+            bed.raycastTarget = false;
+            var brt = bed.rectTransform;
+            brt.anchorMin = Vector2.zero; brt.anchorMax = Vector2.one;
+            float rim = Mathf.Max(3f, size * 0.035f);
+            brt.offsetMin = new Vector2(rim, rim); brt.offsetMax = new Vector2(-rim, -rim);
+
+            var label = Theme.Label(go.transform, "DASH", Mathf.RoundToInt(size * 0.19f),
+                new Color(0.91f, 0.78f, 0.45f, 0.92f), new Vector2(0.5f, 0.5f),
+                Vector2.zero, new Vector2(size, size));
+
+            // The recharge wedge, over everything and never raycast.
+            var sweepGo = new GameObject("Cooldown", typeof(RectTransform));
+            sweepGo.transform.SetParent(go.transform, false);
+            _dashSweep = sweepGo.AddComponent<Image>();
+            _dashSweep.sprite = Theme.Circle;
+            _dashSweep.color = new Color(0.02f, 0f, 0.02f, 0f);
+            _dashSweep.raycastTarget = false;
+            _dashSweep.type = Image.Type.Filled;
+            _dashSweep.fillMethod = Image.FillMethod.Radial360;
+            _dashSweep.fillOrigin = (int)Image.Origin360.Top;
+            _dashSweep.fillClockwise = false;
+            var srt = _dashSweep.rectTransform;
+            srt.anchorMin = Vector2.zero; srt.anchorMax = Vector2.one;
+            srt.offsetMin = new Vector2(3, 3); srt.offsetMax = new Vector2(-3, -3);
+
+            var tb = go.AddComponent<TouchButton>();
+            tb.dir = 4;
+            tb.SetFeedback(new Graphic[] { ring, label });
             return go;
         }
 
@@ -3517,21 +3588,41 @@ namespace TrustIssues
             if (_touchPanel != null) { _touchPanel.SetActive(false); TouchInput.Clear(); }
 
             Crimson.Backdrop(root, 460f, 240f, false, 0);
-            var mid = new Vector2(0.5f, 0.5f);
-            Crimson.Panel_(root, mid, new Vector2(0, 20), new Vector2(1180, 560),
+            // Laid out on a fit-surface like every other stacked screen, and measured
+            // as a stack from the top rather than as four things hung off the centre —
+            // which is how the body copy ended up printed straight over the heading
+            // and the buttons.
+            var surface = FitSurface(root, 1280f, 760f);
+            var top = new Vector2(0.5f, 1f);
+            Crimson.Panel_(surface, top, new Vector2(0, -380), new Vector2(1180, 700),
                            Theme.Hex("180A12"), Crimson.Rail);
-            Crimson.Line(root, "YOU KNOW HOW TO RUN", 54, Crimson.GoldLit,
-                new Vector2(0, 180), new Vector2(1100, 70)).fontStyle = FontStyle.Bold;
-            Crimson.Line(root,
-                "That was the only floor in this castle that meant you no harm.\n\n" +
-                "THE CASTLE is forty floors and every one of them lies to you — a floor that\n" +
-                "isn't there, a spike that waits, a coffin that runs. Start at floor one.\n\n" +
-                "Blood Moon and Endless Nights are waiting on the landing when you're ready\n" +
-                "for them. You are not ready for them.",
-                26, Crimson.Body, new Vector2(0, 20), new Vector2(1040, 260));
-            Crimson.Btn(root, "ENTER THE CASTLE", mid, new Vector2(0, -168),
+            Crimson.Line(surface, "YOU KNOW HOW TO RUN", 52, Crimson.GoldLit,
+                new Vector2(0, -104), new Vector2(1100, 64), TextAnchor.MiddleCenter, top)
+                .fontStyle = FontStyle.Bold;
+            // One paragraph per line, each in its own box at its own y. A single
+            // multi-line string was sized by guesswork and overflowed its rect the
+            // moment the font metrics differed by a hair.
+            string[] lines =
+            {
+                "That was the only floor in this castle that meant you no harm.",
+                "THE CASTLE is forty floors and every one of them lies to you:",
+                "a floor that isn't there, a spike that waits, a coffin that runs.",
+                "Start at floor one.",
+                "Blood Moon and Endless Nights are waiting on the landing.",
+                "You are not ready for them.",
+            };
+            float ly = 196f;
+            for (int i = 0; i < lines.Length; i++)
+            {
+                bool gap = i == 1 || i == 4;   // breathing room before each new thought
+                if (gap) ly += 22f;
+                Crimson.Line(surface, lines[i], 25, i >= 4 ? Crimson.Mute : Crimson.Body,
+                    new Vector2(0, -ly), new Vector2(1060, 36), TextAnchor.MiddleCenter, top);
+                ly += 40f;
+            }
+            Crimson.Btn(surface, "ENTER THE CASTLE", top, new Vector2(0, -560),
                         new Vector2(520, 88), ShowLevelSelect, true, 30);
-            Crimson.Btn(root, "THE LANDING", mid, new Vector2(0, -262),
+            Crimson.Btn(surface, "THE LANDING", top, new Vector2(0, -664),
                         new Vector2(360, 62), ShowMenu, false, 22);
         }
 
@@ -4023,6 +4114,31 @@ namespace TrustIssues
             _runStartRealtime = Time.realtimeSinceStartup - 194f;
             _runBloodStart = Mathf.Max(0, Currency.Balance - 12);
             RunOver();
+        }
+
+        /// <summary>
+        /// An Endless floor with a dash skin equipped — the ONE configuration where
+        /// JUMP, BAT and DASH are all on screen at once, which is where they used to
+        /// overlap. Worth a shot of its own precisely because it's the combination a
+        /// Castle-only itinerary never renders.
+        /// </summary>
+        public void DevStartFlightFloor()
+        {
+            DevCloseOverlay();
+            Skins.DevUnlockAll = true;
+            Skins.Equip("ash");          // dash + double-jump
+            _mode = Mode.Endless;
+            _endlessSeed = 4242;
+            BeginRun(0);
+            Skins.DevUnlockAll = false;
+        }
+
+        /// <summary>The tutorial's hand-off screen, for the shot itinerary.</summary>
+        public void DevOpenTutorialDone()
+        {
+            DevCloseOverlay();
+            _mode = Mode.Tutorial;
+            TutorialCleared();
         }
 
         /// <summary>The pause screen. `endless` adds the END RUN row the mode owns.</summary>
@@ -5532,12 +5648,18 @@ namespace TrustIssues
             // flown over (see Level.PrecisionPlatforming). Corridor floors
             // (11-40 / Endless / Blood Moon) keep both.
             bool precision = _level.PrecisionPlatforming;
-            _player.canFly = !precision;
+            // THE TUTORIAL HAS TWO VERBS: run and jump. Every extra ability is taken
+            // away for it — not just its button. A first-timer who hasn't been told
+            // what the bat does will still press it, glide over the lesson, and learn
+            // none of it; and a dash they don't understand is just a fast way into a
+            // spike. They get the rest back the moment they reach the Castle.
+            bool teaching = _mode == Mode.Tutorial;
+            _player.canFly = !precision && !teaching;
             // Skin-granted abilities (dash / double-jump / speed / phase).
             _player.moveMul = skin.moveMul;
             _player.jumpMul = skin.jumpMul;
-            _player.dashEnabled = skin.dash;
-            _player.extraAirJumps = precision ? 0 : skin.airJumps;
+            _player.dashEnabled = skin.dash && !teaching;
+            _player.extraAirJumps = (precision || teaching) ? 0 : skin.airJumps;
             // No aura layer any more: the painted skins carry their own halo, and a
             // second particle bloom on top was the glow that "seeped out" past the
             // silhouette.
