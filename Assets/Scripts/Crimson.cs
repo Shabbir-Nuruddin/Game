@@ -172,17 +172,44 @@ namespace TrustIssues
                 var art = Assets.Sprite("bg_castle");
                 if (art != null)
                 {
-                    for (int s = 0; s < 2; s++)
+                    // THE CASTLE WAS INVISIBLE. This silhouette was painted
+                    // (0.055, 0.02, 0.04) against a #07040A sky — a luminance of
+                    // about 3 against a background of 3. It was black on black, so
+                    // every screen using this backdrop read as what was actually
+                    // left: a red-to-black gradient with a moon on it.
+                    //
+                    // It's now drawn in THREE PLANES at rising contrast — far
+                    // towers, the ridge, and a near gatehouse — because one
+                    // silhouette at any brightness is a sticker, and three at
+                    // different brightnesses is a distance.
+                    (float x, float y, float w, float h, float lum, bool flip)[] planes =
                     {
-                        var c = Img(root, "Ridge", art, new Color(0.055f, 0.02f, 0.04f, 1f));
+                        (0.50f, 0.585f, 1500f, 520f, 0.075f, false),   // far, almost weather
+                        (0.22f, 0.620f, 1000f, 560f, 0.150f, false),   // the ridge itself
+                        (0.80f, 0.620f, 1000f, 560f, 0.150f, true),
+                        (0.06f, 0.700f,  760f, 620f, 0.235f, false),   // near, framing the road
+                        (0.96f, 0.700f,  760f, 620f, 0.235f, true),
+                    };
+                    foreach (var p in planes)
+                    {
+                        var c = Img(root, "Ridge", art,
+                                    new Color(p.lum * 0.92f, p.lum * 0.42f, p.lum * 0.62f, 1f));
                         c.preserveAspect = true;
-                        Place(c, new Vector2(s == 0 ? 0.22f : 0.80f, 0.62f), Vector2.zero, new Vector2(1000, 560));
-                        if (s == 1) c.rectTransform.localScale = new Vector3(-1f, 1f, 1f);
+                        Place(c, new Vector2(p.x, p.y), Vector2.zero, new Vector2(p.w, p.h));
+                        if (p.flip) c.rectTransform.localScale = new Vector3(-1f, 1f, 1f);
                     }
-                    for (int w = 0; w < 2; w++)
+                    // Lit windows: two on the ridge, two more on the near towers.
+                    // The only warm points in the picture besides the moon, and the
+                    // thing that says someone is home.
+                    (float x, float y, float s)[] wins =
+                    {
+                        (0.235f, 0.615f, 26f), (0.775f, 0.615f, 26f),
+                        (0.075f, 0.705f, 32f), (0.945f, 0.705f, 32f),
+                    };
+                    foreach (var w in wins)
                     {
                         var win = Img(root, "Window", Halo, new Color(1f, 0.26f, 0.34f, 0.9f));
-                        Place(win, new Vector2(w == 0 ? 0.235f : 0.775f, 0.615f), Vector2.zero, Vector2.one * 26f);
+                        Place(win, new Vector2(w.x, w.y), Vector2.zero, Vector2.one * w.s);
                     }
                 }
             }
@@ -191,6 +218,30 @@ namespace TrustIssues
             var fog = Stretch(root, "Fog", Color.white, Vector2.zero, new Vector2(1f, 0.42f));
             fog.sprite = Theme.Gradient(new Color(Blood.r, Blood.g, Blood.b, 0f),
                                         new Color(Blood.r * 0.5f, 0.02f, 0.05f, 0.55f));
+
+            // Embers off the fog. The same drifting motes the pause hall uses, for
+            // the same reason: a still picture of a place reads as wallpaper, and
+            // three or four things moving slowly at different speeds reads as air.
+            if (!Options.ReducedMotion)
+            {
+                (float x, float y, float s, float dur, float delay)[] motes =
+                {
+                    (0.14f, 0.10f, 5f, 11f, 0f),   (0.31f, 0.06f, 4f, 14f, 2.5f),
+                    (0.63f, 0.12f, 6f, 9f,  4f),   (0.81f, 0.08f, 4f, 13f, 1.2f),
+                    (0.93f, 0.14f, 5f, 15f, 6f),
+                };
+                foreach (var m in motes)
+                {
+                    var e = Img(root, "Ember", Theme.Circle, new Color(1f, 0.42f, 0.28f, 0.5f));
+                    Place(e, new Vector2(m.x, m.y), Vector2.zero, Vector2.one * m.s);
+                    var glow = Img(e.transform, "EmberGlow", Halo, new Color(1f, 0.35f, 0.2f, 0.35f));
+                    var grt = glow.rectTransform;
+                    grt.anchorMin = Vector2.zero; grt.anchorMax = Vector2.one;
+                    grt.offsetMin = new Vector2(-7f, -7f); grt.offsetMax = new Vector2(7f, 7f);
+                    var drift = e.gameObject.AddComponent<MoteDrift>();
+                    drift.dur = m.dur; drift.delay = m.delay; drift.rise = 320f;
+                }
+            }
 
             // Bats. Reduced Motion turns their drift off (the sprites stay).
             var batSprite = Assets.Sprite("bat_fly") ?? Theme.BatGlyph;

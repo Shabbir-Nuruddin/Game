@@ -3650,8 +3650,8 @@ namespace TrustIssues
             TrackModeSelected("Endless", 0);
             _endlessSeed = new System.Random().Next(1, 1000000);
             BeginRun(0);
-            ShowBanner("ENDLESS NIGHT", "one road • no finish • how far can you survive?");
-            ShowHint($"Risk paths hide extra lives. A life revives you at safe ground behind your fall. Tap {Controls.Name(Controls.Fly)}/FLY to take off and glide.");
+            ShowBanner("ENDLESS NIGHT", $"one road • no finish • {Diff.StartHearts} lives");
+            ShowHint($"You have {Diff.StartHearts} lives — each death rewinds you to safe ground, not to the menu. Risk paths hide more. Tap {Controls.Name(Controls.Fly)}/FLY to take off and glide.");
         }
 
         // ==================== VERSUS (multiplayer) ====================
@@ -4280,10 +4280,19 @@ namespace TrustIssues
             // when you finish it, never because you ran out of lives.
             // Tutorial joins them: a teaching floor that can run out of lives is a
             // teaching floor that throws the new player back to a menu mid-lesson.
+            // ENDLESS USED TO START AT ZERO. The theory was that lives should be
+            // earned on the risk path, so a run was strictly one-hit and the
+            // optional pickup was the only way to survive anything. In practice
+            // that made the mode over in seconds — the first mistake, on a
+            // procedurally generated floor nobody has seen before, ended the run —
+            // and a distance-chasing mode you cannot survive long enough to build
+            // distance in has no reason to exist. Endless now opens with the same
+            // pool every other life-limited mode gets, and the pickup goes back to
+            // being what its name says: a top-up, not the whole supply.
             _hearts = (_mode == Mode.Curated || _mode == Mode.Versus || _mode == Mode.Custom
                        || _mode == Mode.Tutorial) ? -1
                      : _mode == Mode.Daily ? Diff.StartHearts + 2
-                     : 0; // Endless lives are revive tokens earned on risk paths.
+                     : Diff.StartHearts;
             if (_hudChrome != null) _hudChrome.SetActive(true);
             if (_shardHud != null)
             {
@@ -5230,6 +5239,7 @@ namespace TrustIssues
                     go.AddComponent<Trap>().Init(TrapType.FakeExit);
                     break;
                 }
+                case TrapType.ShyExit:
                 case TrapType.RealExit:
                 {
                     // A code-built coffin with a glowing gold cross = the one goal.
@@ -5239,6 +5249,10 @@ namespace TrustIssues
                     var col = go.AddComponent<BoxCollider2D>();
                     col.isTrigger = true; col.size = new Vector2(1.1f, 1.7f);
                     go.AddComponent<Trap>().Init(TrapType.RealExit);
+                    // A shy coffin is the SAME coffin, taught to back away. It has to
+                    // be pixel-identical or the retreat stops being a surprise.
+                    if (t.type == TrapType.ShyExit)
+                        go.AddComponent<ShyExit>().limitX = _levelEndX - 2.2f;
                     // Visuals are CHILDREN of the exit (not the level root) so a
                     // fleeing coffin takes its body with it instead of leaving an
                     // invisible trigger running around a haunted-looking husk.
@@ -5449,6 +5463,70 @@ namespace TrustIssues
                     var go = Theme.SpriteBox("Bat", _levelRoot, t.pos,
                         painted != null ? new Vector2(1.25f, 0.95f) : new Vector2(0.95f, 0.95f), sp, 4);
                     go.AddComponent<BatEnemy>().Init(frames, painted != null);
+                    break;
+                }
+                // ---- the room itself is the trap (Betrayal.cs) --------------------
+                // All four floor betrayals are built as ORDINARY STONE. That is the
+                // entire point: if a tipping slab were painted differently from the
+                // ground beside it, it would be a labelled hazard rather than a
+                // betrayal, and the player would simply never stand on it.
+                case TrapType.TiltFloor:
+                {
+                    var go = BuildStoneFloor("TiltFloor", t.pos, t.size, null);
+                    var s = go.AddComponent<TiltSlab>();
+                    s.size = t.size;
+                    break;
+                }
+                case TrapType.SlideFloor:
+                {
+                    var go = BuildStoneFloor("SlideFloor", t.pos, t.size, null);
+                    var s = go.AddComponent<SlideSlab>();
+                    s.size = t.size;
+                    s.travel = t.size.x + 1.4f;   // fully clears the hole it opens
+                    break;
+                }
+                case TrapType.DropFloor:
+                {
+                    var go = BuildStoneFloor("DropFloor", t.pos, t.size, null);
+                    var s = go.AddComponent<DropSlab>();
+                    s.size = t.size;
+                    break;
+                }
+                case TrapType.RiseFloor:
+                {
+                    var go = BuildStoneFloor("RiseFloor", t.pos, t.size, null);
+                    var s = go.AddComponent<RisePress>();
+                    s.size = t.size;
+                    s.ceilY = Levels.CeilUnderside;
+                    break;
+                }
+                case TrapType.SlamWall:
+                {
+                    // Solid stone that shoves rather than kills — being pushed into a
+                    // pit (or under a volley) is the death, so the wall itself never
+                    // has to be lethal.
+                    //
+                    // Held at 2.2 tall ON PURPOSE. A jump clears 2.94 units, so a
+                    // wall this size can always be vaulted even while it is parked in
+                    // the lane; anything taller would seal the corridor for a player
+                    // who arrived a moment too late, which turns a reaction test into
+                    // a dead run. The spec smuggles the THROW distance through the
+                    // height field and the direction through the sign of the width.
+                    var size = new Vector2(Mathf.Abs(t.size.x), 2.2f);
+                    var go = BuildStoneFloor("SlamWall", t.pos, size, null);
+                    var s = go.AddComponent<SlamWall>();
+                    s.travel = t.size.y;
+                    s.dir = t.size.x < 0f ? 1 : -1;
+                    break;
+                }
+                case TrapType.CeilingVolley:
+                {
+                    var go = new GameObject("CeilingVolley");
+                    go.transform.SetParent(_levelRoot, false);
+                    go.transform.position = t.pos;
+                    var v = go.AddComponent<CeilingVolley>();
+                    v.count = Mathf.Max(2, Mathf.RoundToInt(t.size.x));
+                    v.ceil = Levels.CeilUnderside;
                     break;
                 }
                 default: // LateSpike / Crusher / Surprise / Dart / Faller / Chandelier = invisible sensors
@@ -6373,7 +6451,7 @@ namespace TrustIssues
             if (_mode != Mode.Endless || _state != State.Play ||
                 _endlessLifeClaimed.Contains(_levelIndex)) return;
             _endlessLifeClaimed.Add(_levelIndex);
-            _hearts = Mathf.Min(3, _hearts + 1);
+            _hearts = Mathf.Min(Diff.MaxHearts, _hearts + 1);
             Audio.PlayOr("levelup", "win", 0.65f);
             if (pickup != null) Fx.Burst(pickup.transform.position, Theme.Exit, 16, 5f, 0.15f, 0.45f, 3f);
             RoomToast("EXTRA LIFE BANKED — your next death rewinds");
@@ -7160,12 +7238,15 @@ namespace TrustIssues
                 { "skipped", skipRequested },
             });
 
-            // Build the Castle map behind the still-opaque panel, then reveal it.
-            // This prevents a one-frame flash of the completed level on phones.
+            // Build the NEXT FLOOR behind the still-opaque panel, then reveal it.
+            // This prevents a one-frame flash of the completed level on phones —
+            // and, like the ordinary floor-clear beat, it puts the player back in
+            // play rather than on a map they have to navigate out of.
             if (_levelRoot != null) Destroy(_levelRoot.gameObject);
             _hasCheckpoint = false;
             ResetFloorState();
-            ShowLevelSelect();
+            _state = State.Play;
+            BuildLevel();
             panel.transform.SetAsLastSibling();
 
             fade = group.alpha;
@@ -7179,22 +7260,29 @@ namespace TrustIssues
             if (panel != null) Destroy(panel);
         }
 
-        // Castle only: the floor-clear beat. A short banner instead of the full
-        // WinRoutine result screen (this isn't the end of the run, just one
-        // floor of it), then back to the Castle map — the player has to tap
-        // the seal that just lit up to actually start the next floor.
+        // Castle only: the floor-clear beat. A short banner, then STRAIGHT into the
+        // next floor.
+        //
+        // This used to drop the player back on the Castle map to tap the seal that
+        // had just lit up, on the theory that the win needed its own beat. In
+        // playtesting that theory did not survive: clearing a floor cost two taps
+        // and a full screen transition before you were playing again, and the thing
+        // a short-room game lives on is the half-second between finishing one room
+        // and being inside the next. The map is still one tap from the pause menu
+        // for anyone who wants to look at it.
         IEnumerator FloorClearedFlash()
         {
             _state = State.Win;   // block input during the banner
             Memory.RunEndedCleanly();   // reached a result beat = not a rage-quit
             if (_toast != null) _toast.text = $"FLOOR {_levelIndex} CLEARED";
             Audio.Play("win", 0.6f);
-            yield return new WaitForSecondsRealtime(1.1f);
+            yield return new WaitForSecondsRealtime(0.75f);
             if (_toast != null) _toast.text = "";
             if (_levelRoot != null) Destroy(_levelRoot.gameObject);
             _hasCheckpoint = false;
             ResetFloorState();
-            ShowLevelSelect();
+            _state = State.Play;
+            BuildLevel();
         }
 
         IEnumerator WinRoutine()
@@ -7926,6 +8014,8 @@ namespace TrustIssues
                 restart = RestartLevel,
                 // Endless alone can bank a strong attempt instead of throwing it away.
                 endRun  = _mode == Mode.Endless ? (System.Action)EndRun : null,
+                // Floors chain automatically now, so this is the way to the map.
+                map     = _mode == Mode.Curated ? (System.Action)QuitToMap : null,
                 menu    = QuitToMenu,
                 restartSub = _mode == Mode.Endless ? "FROM THE TOP OF THIS STRETCH"
                                                    : "THIS FLOOR, FROM THE TOP",
@@ -7961,6 +8051,19 @@ namespace TrustIssues
             _stageIndex = 0;         // the pause-menu RESTART is the FULL floor restart
             Destroy(_levelRoot.gameObject);
             BuildLevel();
+        }
+
+        // Step out of a Castle run to look at the road so far. Not a quit — the
+        // map's own DESCEND puts the player back in at whichever floor they pick.
+        void QuitToMap()
+        {
+            if (_pausePanel != null) Destroy(_pausePanel);
+            Time.timeScale = 1f;
+            if (_levelRoot != null) Destroy(_levelRoot.gameObject);
+            _hasCheckpoint = false;
+            ResetFloorState();
+            _mapSel = _levelIndex;
+            ShowLevelSelect();
         }
 
         void QuitToMenu()

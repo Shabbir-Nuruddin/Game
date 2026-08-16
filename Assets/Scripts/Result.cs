@@ -59,10 +59,14 @@ namespace TrustIssues
             public string retrySub = "NEW SEED  ·  NO MENU";
         }
 
-        /// <summary>The pause screen's four actions and its two quick switches.</summary>
+        /// <summary>The pause screen's actions and its two quick switches.</summary>
         public class PauseInfo
         {
             public System.Action resume, restart, endRun, menu;
+            // Castle only. Floors now chain straight into each other, so this is
+            // where the map lives for anyone who wants to look at their progress
+            // rather than being marched through it between every floor.
+            public System.Action map;
             public string restartSub = "THIS FLOOR, FROM THE TOP";
         }
 
@@ -195,7 +199,10 @@ namespace TrustIssues
         public static void Paused(Transform surface, PauseInfo p)
         {
             Ground(surface);
-            Vignette(surface, new Color(20 / 255f, 4 / 255f, 10 / 255f, 0.78f));
+            // The mockup does NOT pause you into a black box — it pauses you into a
+            // room. A lit cathedral arcade, a rose window, dust in the light shafts.
+            // It carries its own vignette, so there's no separate blood wash here.
+            Hall(surface);
             Frame(surface);
 
             bool endless = p.endRun != null;
@@ -225,6 +232,11 @@ namespace TrustIssues
                 GoldPlateIn(panel, 44, y, 452, 62, "END RUN", 21, "BANK THE DISTANCE YOU HAVE", p.endRun);
                 y += 62f + 13f;
             }
+            if (p.map != null)
+            {
+                GoldPlateIn(panel, 44, y, 452, 62, "CASTLE MAP", 21, "SEE HOW FAR YOU HAVE GOT", p.map);
+                y += 62f + 13f;
+            }
             GoldPlateIn(panel, 44, y, 452, 62, "MAIN MENU", 21, "THIS RUN IS LOST", p.menu);
             y += 62f + 16f;
 
@@ -242,6 +254,332 @@ namespace TrustIssues
             float finalH = y + 40f + 26f;
             panel.sizeDelta = new Vector2(540f, finalH);
             panel.anchoredPosition = new Vector2(panelX, -(DesignH - finalH) * 0.5f);
+        }
+
+        // ==================== THE HALL (pause backdrop) ====================
+        //
+        // The mockup's pause screen is a place, drawn entirely out of gradients — no
+        // photograph, so it costs nothing to ship and stays crisp at any size. Six
+        // stained-glass arches down a colonnade, a rose window bleeding through the
+        // top wall, three shafts of light with dust turning over in them, a stone
+        // floor in perspective and two sconces guttering on the near piers.
+        //
+        // Every number below is the mockup's own, in its 1600x900 frame.
+
+        static void Hall(Transform surface)
+        {
+            // One clipped container. The rose window is hung above the top edge and
+            // the embers drift past it, so without this they'd spill outside the
+            // gold frame and onto the letterbox.
+            var hall = Box(surface, "Hall", 0, 0, DesignW, DesignH);
+            hall.gameObject.AddComponent<RectMask2D>();
+
+            // The room's own darkness, warmest through the middle third.
+            HallImg(hall, "Wash", Crimson.Halo, A(Theme.Hex("1A0710"), 0.55f),
+                    DesignW * 0.5f, 306, 1900, 780);
+
+            RoseWindow(hall);
+            Arcade(hall);
+
+            // ---- shafts of light through the windows -----------------------------
+            (float x, float w, float rot, float dur)[] shafts =
+            {
+                (170, 150,  12f, 7f), (720, 190, -4f, 9f), (1240, 150, -12f, 8f),
+            };
+            foreach (var s in shafts)
+            {
+                var img = HallImg(hall, "Shaft", Shaft, A(Theme.Hex("FFB482"), 0.32f),
+                                  s.x + s.w * 0.5f, 380, s.w, 760);
+                img.rectTransform.localEulerAngles = new Vector3(0, 0, -s.rot);
+                Breathe(img, s.dur);
+            }
+
+            StoneFloor(hall);
+
+            // ---- wall sconces ----------------------------------------------------
+            foreach (var (x, dur) in new[] { (345f, 3.4f), (1255f, 4.1f) })
+            {
+                Breathe(HallImg(hall, "SconceGlow", Crimson.Halo, A(Theme.Hex("FF924A"), 0.30f),
+                                x, 395, 190, 190), dur);
+                Breathe(HallImg(hall, "SconceBloom", Crimson.Halo, A(Theme.Hex("FF8232"), 0.50f),
+                                x, 391, 62, 62), dur);
+                Breathe(HallImg(hall, "Flame", Theme.Circle, Theme.Hex("FFC46A"),
+                                x, 391, 8, 22), dur);
+            }
+
+            Embers(hall);
+
+            // ---- the room falls away at the edges --------------------------------
+            HallImg(hall, "Vignette", Vig, A(Theme.Hex("030104"), 0.78f),
+                    DesignW * 0.5f, DesignH * 0.44f, DesignW * 1.02f, DesignH * 1.16f);
+        }
+
+        // The rose window: a stained bloom, its gold rim, and twelve spokes. Hung
+        // above the top edge so only its lower two-thirds are in the room.
+        static void RoseWindow(RectTransform hall)
+        {
+            const float CX = DesignW * 0.5f, CY = 100f;
+            HallImg(hall, "RoseBloom", Crimson.Halo, A(Theme.Hex("BE1428"), 0.30f), CX, CY, 470, 470);
+            HallImg(hall, "RoseCore", Crimson.Halo, A(Theme.Hex("FF785A"), 0.20f), CX, CY, 360, 360);
+            HallImg(hall, "RoseRim", Crimson.Ring, A(Gold, 0.40f), CX, 88, 412, 412);
+
+            for (int i = 0; i < 12; i++)
+            {
+                var img = Crimson.Img(hall, "Spoke", FadeDown, A(Gold, 0.15f));
+                var rt = img.rectTransform;
+                // Pivoted at the TOP so it swings about the window's hub, exactly as
+                // the mockup's `transform-origin: 50% 0` does.
+                rt.anchorMin = rt.anchorMax = new Vector2(0f, 1f);
+                rt.pivot = new Vector2(0.5f, 1f);
+                rt.anchoredPosition = new Vector2(CX, -88f);
+                rt.sizeDelta = new Vector2(2f, 206f);
+                rt.localEulerAngles = new Vector3(0, 0, -i * 30f);
+            }
+        }
+
+        // Six lit windows between seven piers, brightest at the near end.
+        static void Arcade(RectTransform hall)
+        {
+            (float x, float t, float w, float h, float o, float px, float pw)[] arches =
+            {
+                (96f,   170f, 112f, 420f, 0.90f, 40f,   56f),
+                (280f,  196f, 100f, 372f, 0.72f, 232f,  48f),
+                (452f,  220f, 88f,  320f, 0.50f, 408f,  44f),
+                (1060f, 220f, 88f,  320f, 0.50f, 1148f, 44f),
+                (1220f, 196f, 100f, 372f, 0.72f, 1320f, 48f),
+                (1392f, 170f, 112f, 420f, 0.90f, 1504f, 56f),
+            };
+
+            foreach (var a in arches)
+            {
+                // the pier beside it
+                HallImg(hall, "Pier", null, A(Theme.Hex("150809"), 0.95f),
+                        a.px + a.pw * 0.5f, DesignH * 0.5f, a.pw, DesignH);
+
+                float cx = a.x + a.w * 0.5f, cy = a.t + a.h * 0.5f;
+                // the glow it throws into the room
+                HallImg(hall, "WindowGlow", Crimson.Halo, A(Theme.Hex("B43C1E"), 0.16f * a.o),
+                        cx, cy, a.w + 120f, a.h + 120f);
+                // stone reveal, then the glass inside it
+                HallImg(hall, "ArchStone", Arch, A(Theme.Hex("7E602A"), 0.60f * a.o), cx, cy, a.w, a.h);
+                float iw = a.w - 12f, ih = a.h - 6f;
+                HallImg(hall, "ArchGlass", Arch, A(Theme.Hex("BA3428"), 0.55f * a.o),
+                        cx, a.t + 6f + ih * 0.5f, iw, ih);
+                // The glass darkens toward the sill. A second ARCH here would draw a
+                // rounded dome floating in the middle of the window; below the head
+                // the light is straight-sided, so this is a plain graded panel.
+                var deep = HallImg(hall, "ArchGlassDeep", FadeDown, A(Theme.Hex("260610"), 0.72f * a.o),
+                                   cx, a.t + 6f + ih * 0.72f, iw, ih * 0.56f);
+                deep.rectTransform.localEulerAngles = new Vector3(0, 0, 180f);
+
+                // leading: one mullion, two transoms, one roundel
+                var lead = A(Theme.Hex("0A0508"), 0.78f * a.o);
+                HallImg(hall, "Mullion", null, lead,
+                        cx, a.t + a.h * 0.61f, 2f, a.h * 0.78f);
+                HallImg(hall, "Transom", null, lead, cx, a.t + a.h * 0.52f, iw, 2f);
+                HallImg(hall, "Transom", null, lead, cx, a.t + a.h * 0.74f, iw, 2f);
+                float ry = a.t + a.h * 0.09f + 13f;
+                HallImg(hall, "Roundel", Theme.Circle, A(Theme.Hex("FFAA6E"), 0.50f * a.o),
+                        cx, ry, 26, 26);
+                HallImg(hall, "RoundelRim", Crimson.Ring, lead, cx, ry, 26, 26);
+            }
+        }
+
+        // Flagstones receding into the dark, lit only near the arcade.
+        static void StoneFloor(RectTransform hall)
+        {
+            const float Top = DesignH - 250f;
+            var fade = Crimson.Img(hall, "FloorFade", FadeDown, A(Theme.Hex("1E0A0E"), 0.85f));
+            Place(fade.rectTransform, DesignW * 0.5f, Top + 125f, DesignW, 250f);
+            // FadeDown is opaque at its top; the floor wants the opposite.
+            fade.rectTransform.localEulerAngles = new Vector3(0, 0, 180f);
+
+            // The grid fades IN as it comes toward you, so the far floor stays dark.
+            const float GridTop = DesignH - 210f;
+            for (float x = 0; x <= DesignW; x += 120f)
+                HallImg(hall, "Flag", null, A(Gold, 0.10f), x, GridTop + 105f, 1f, 210f);
+            for (float y = GridTop; y <= DesignH; y += 46f)
+            {
+                float k = Mathf.Clamp01((y - GridTop) / 210f);
+                HallImg(hall, "Flag", null, A(Gold, 0.03f + 0.13f * k), DesignW * 0.5f, y, DesignW, 1f);
+            }
+        }
+
+        // Nine embers turning over in the light. They rise, fade and start again —
+        // on UNSCALED time, because the whole point of this screen is that the game
+        // clock has stopped.
+        static void Embers(RectTransform hall)
+        {
+            (float xPct, float bottom, float size, float dur, float delay)[] motes =
+            {
+                (0.12f, 80, 3, 11, 0f),   (0.23f, 40, 2, 14, 2f),  (0.35f, 110, 4, 9, 4f),
+                (0.44f, 60, 2, 13, 1f),   (0.57f, 90, 3, 10, 6f),  (0.66f, 50, 2, 15, 3f),
+                (0.78f, 100, 4, 12, 5f),  (0.86f, 70, 2, 10, 7f),  (0.93f, 44, 3, 13, 1.5f),
+            };
+            foreach (var m in motes)
+            {
+                var img = HallImg(hall, "Ember", Theme.Circle, A(Theme.Hex("FF9A5A"), 0.55f),
+                                  m.xPct * DesignW, DesignH - m.bottom - m.size * 0.5f,
+                                  m.size, m.size);
+                // The halo is a CHILD of the ember, stretched over it, so it rides
+                // along on the one MoteDrift instead of needing a second in step.
+                var glow = Crimson.Img(img.transform, "EmberGlow", Crimson.Halo,
+                                       A(Theme.Hex("FF783C"), 0.40f));
+                var grt = glow.rectTransform;
+                grt.anchorMin = Vector2.zero; grt.anchorMax = Vector2.one;
+                grt.offsetMin = new Vector2(-5f, -5f); grt.offsetMax = new Vector2(5f, 5f);
+
+                var mote = img.gameObject.AddComponent<MoteDrift>();
+                mote.dur = m.dur; mote.delay = m.delay;
+            }
+        }
+
+        static Image HallImg(RectTransform parent, string name, Sprite sprite, Color col,
+                             float cx, float cy, float w, float h)
+        {
+            var img = Crimson.Img(parent, name, sprite, col);
+            Place(img.rectTransform, cx, cy, w, h);
+            return img;
+        }
+
+        static void Breathe(Image img, float period)
+        {
+            var b = img.gameObject.AddComponent<BreathePulse>();
+            b.period = period;
+        }
+
+        static Color A(Color c, float a) => new Color(c.r, c.g, c.b, a);
+
+        // ---- procedural sprites for the hall ----------------------------------
+        // Built the same way as Crimson's halo and ring: one small texture, cached
+        // for the session, stretched to whatever the layout asks for.
+
+        static Sprite _arch;
+        /// <summary>
+        /// A gothic light: a semi-elliptical head on straight jambs. Both radii are
+        /// PROPORTIONAL (half the width across, 29% of the height down), so one
+        /// normalised texture stretches to every arch on the screen without
+        /// distorting the head.
+        ///
+        /// 29%, not the 58% written in the mockup's CSS: a browser SHRINKS corner
+        /// radii whose neighbours overrun the side they share, and the two top
+        /// corners each ask for the full width, so everything is halved before it
+        /// is drawn. Taking the 58% at face value gives a head half the window
+        /// tall — a bullet, not an arch.
+        /// </summary>
+        static Sprite Arch
+        {
+            get
+            {
+                if (_arch != null) return _arch;
+                const int W = 128, H = 256;
+                var tex = new Texture2D(W, H, TextureFormat.RGBA32, false)
+                { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
+                float cx = (W - 1) / 2f, rx = (W - 1) / 2f, ry = H * 0.29f;
+                for (int y = 0; y < H; y++)
+                {
+                    float down = H - 1 - y;              // distance below the crown
+                    for (int x = 0; x < W; x++)
+                    {
+                        float a;
+                        if (down >= ry) a = 1f;          // the straight jambs
+                        else
+                        {
+                            float dx = (x - cx) / rx, dy = (ry - down) / ry;
+                            a = Mathf.Clamp01((1f - Mathf.Sqrt(dx * dx + dy * dy)) * rx * 0.5f);
+                        }
+                        a = Mathf.Min(a, Mathf.Clamp01((rx - Mathf.Abs(x - cx)) * 0.9f));
+                        tex.SetPixel(x, y, new Color(1f, 1f, 1f, a));
+                    }
+                }
+                tex.Apply();
+                _arch = Sprite.Create(tex, new Rect(0, 0, W, H), new Vector2(0.5f, 0.5f), W);
+                return _arch;
+            }
+        }
+
+        static Sprite _fadeDown;
+        /// <summary>Opaque at the top, gone at the bottom. Rotate 180° to invert it.</summary>
+        static Sprite FadeDown
+        {
+            get
+            {
+                if (_fadeDown != null) return _fadeDown;
+                const int W = 4, H = 128;
+                var tex = new Texture2D(W, H, TextureFormat.RGBA32, false)
+                { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
+                for (int y = 0; y < H; y++)
+                {
+                    float a = y / (float)(H - 1);        // texture y grows upward
+                    for (int x = 0; x < W; x++) tex.SetPixel(x, y, new Color(1f, 1f, 1f, a));
+                }
+                tex.Apply();
+                _fadeDown = Sprite.Create(tex, new Rect(0, 0, W, H), new Vector2(0.5f, 0.5f), W);
+                return _fadeDown;
+            }
+        }
+
+        static Sprite _shaft;
+        /// <summary>
+        /// A column of light: soft-edged across, dying out three-quarters of the way
+        /// down. The softness is baked into the texture because a UI canvas has no
+        /// blur to lean on — a hard-edged shaft reads as a white rectangle.
+        /// </summary>
+        static Sprite Shaft
+        {
+            get
+            {
+                if (_shaft != null) return _shaft;
+                const int W = 64, H = 128;
+                var tex = new Texture2D(W, H, TextureFormat.RGBA32, false)
+                { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
+                float cx = (W - 1) / 2f;
+                for (int y = 0; y < H; y++)
+                {
+                    float p = 1f - y / (float)(H - 1);   // 0 at the window, 1 at the floor
+                    float va = p < 0.42f ? Mathf.Lerp(1f, 0.46f, p / 0.42f)
+                             : p < 0.88f ? Mathf.Lerp(0.46f, 0f, (p - 0.42f) / 0.46f) : 0f;
+                    for (int x = 0; x < W; x++)
+                    {
+                        float u = Mathf.Clamp((x - cx) / cx, -1f, 1f);
+                        float ha = Mathf.Cos(u * Mathf.PI * 0.5f); ha *= ha;
+                        tex.SetPixel(x, y, new Color(1f, 1f, 1f, va * ha));
+                    }
+                }
+                tex.Apply();
+                _shaft = Sprite.Create(tex, new Rect(0, 0, W, H), new Vector2(0.5f, 0.5f), W);
+                return _shaft;
+            }
+        }
+
+        static Sprite _vig;
+        /// <summary>
+        /// The inverse of Crimson's halo: clear in the middle, solid at the corners.
+        /// Crimson.Halo can't do this job — it's bright-cored, so tinting it black
+        /// blots out the centre of the screen instead of the edges.
+        /// </summary>
+        static Sprite Vig
+        {
+            get
+            {
+                if (_vig != null) return _vig;
+                const int S = 128;
+                var tex = new Texture2D(S, S, TextureFormat.RGBA32, false)
+                { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
+                float c = (S - 1) / 2f;
+                for (int y = 0; y < S; y++)
+                    for (int x = 0; x < S; x++)
+                    {
+                        float d = Mathf.Sqrt((x - c) * (x - c) + (y - c) * (y - c)) / c;
+                        // the mockup's own three stops: 0 at the centre, .45 at 60%, 1 at the rim
+                        float a = d < 0.6f ? Mathf.Lerp(0f, 0.449f, d / 0.6f)
+                                : Mathf.Lerp(0.449f, 1f, Mathf.Clamp01((d - 0.6f) / 0.4f));
+                        tex.SetPixel(x, y, new Color(1f, 1f, 1f, a));
+                    }
+                tex.Apply();
+                _vig = Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), S);
+                return _vig;
+            }
         }
 
         // ==================== the design's furniture ====================
@@ -525,6 +863,72 @@ namespace TrustIssues
             rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
             rt.offsetMin = rt.offsetMax = Vector2.zero;
             return t;
+        }
+    }
+
+    // ==================== the hall's two motions ====================
+    //
+    // Both run on Time.unscaledTime. The pause screen exists precisely because
+    // Time.timeScale is 0, so anything driven by scaled time would sit frozen —
+    // a still picture of a room, rather than a room.
+
+    /// <summary>The mockup's `ti-breathe`: a slow opacity swell, 45% to full.</summary>
+    public class BreathePulse : MonoBehaviour
+    {
+        public float period = 3.4f;
+        Image _img;
+        float _alpha;
+
+        void Awake()
+        {
+            _img = GetComponent<Image>();
+            if (_img != null) _alpha = _img.color.a;
+        }
+
+        void Update()
+        {
+            if (_img == null) return;
+            float t = (Mathf.Sin(Time.unscaledTime / Mathf.Max(0.05f, period) * Mathf.PI * 2f) + 1f) * 0.5f;
+            var c = _img.color;
+            c.a = _alpha * Mathf.Lerp(0.45f, 1f, t);
+            _img.color = c;
+        }
+    }
+
+    /// <summary>
+    /// The mockup's `ti-mote`: an ember rises 240 units, brightening over the first
+    /// fifth of the climb and guttering out over the rest, then starts again.
+    /// </summary>
+    public class MoteDrift : MonoBehaviour
+    {
+        public float dur = 11f, delay, rise = 240f;
+        RectTransform _rt;
+        Vector2 _home;
+        // The ember AND its halo: the glow is a child, and a spark whose core fades
+        // while its glow stays put reads as a bug rather than an ember.
+        Image[] _imgs;
+        float[] _alpha;
+
+        void Awake()
+        {
+            _rt = (RectTransform)transform;
+            _home = _rt.anchoredPosition;
+            _imgs = GetComponentsInChildren<Image>(true);
+            _alpha = new float[_imgs.Length];
+            for (int i = 0; i < _imgs.Length; i++) _alpha[i] = _imgs[i].color.a;
+        }
+
+        void Update()
+        {
+            float t = Mathf.Repeat((Time.unscaledTime - delay) / Mathf.Max(0.1f, dur), 1f);
+            _rt.anchoredPosition = _home + new Vector2(0f, rise * t);
+            float a = Mathf.Clamp01(t < 0.2f ? t / 0.2f : 1f - (t - 0.2f) / 0.8f);
+            for (int i = 0; i < _imgs.Length; i++)
+            {
+                var c = _imgs[i].color;
+                c.a = _alpha[i] * a;
+                _imgs[i].color = c;
+            }
         }
     }
 }

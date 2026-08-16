@@ -18,6 +18,10 @@ namespace TrustIssues
             TrapType.Dart,        TrapType.Saw,       TrapType.Pendulum,  TrapType.FlameJet,
             TrapType.HolyWater,   TrapType.BatSwoop,  TrapType.Spring,    TrapType.Reverse,
             TrapType.WarpBack,    TrapType.FakeExit,  TrapType.Surprise,
+            // The room itself — the chapter where the castle stops putting things
+            // in your way and starts moving the way itself.
+            TrapType.TiltFloor,   TrapType.SlideFloor, TrapType.DropFloor, TrapType.RiseFloor,
+            TrapType.SlamWall,    TrapType.CeilingVolley, TrapType.ShyExit,
         };
 
         static string Key(TrapType t) => "codex_" + (int)t;
@@ -88,6 +92,13 @@ namespace TrustIssues
             TrapType.WarpBack    => "Banishment Rune",
             TrapType.FakeExit    => "False Coffin",
             TrapType.Surprise    => "Sunbeam Trap",
+            TrapType.TiltFloor     => "The Tipping Slab",
+            TrapType.SlideFloor    => "The Floor That Leaves",
+            TrapType.DropFloor     => "The Long Way Down",
+            TrapType.RiseFloor     => "The Rising Press",
+            TrapType.SlamWall      => "The Wall That Arrives",
+            TrapType.CeilingVolley => "The Ceiling's Teeth",
+            TrapType.ShyExit       => "The Shy Coffin",
             _ => t.ToString(),
         };
 
@@ -112,6 +123,13 @@ namespace TrustIssues
             TrapType.WarpBack    => "Yanks you all the way back to the start. Pure spite. The safe-looking shortcut is the bait.",
             TrapType.FakeExit    => "The brightest, most obvious door is death. The real way out is never the showy one.",
             TrapType.Surprise    => "An invisible sunbeam on safe-looking ground. Cruel, but it always sits where you'd relax.",
+            TrapType.TiltFloor     => "Ordinary stone until your weight is on it, then it hinges and pours you off. It leans before it tips — that lean is the whole warning.",
+            TrapType.SlideFloor    => "The floor slides out from under you and leaves a hole. It's still there, just not where you are. Keep running; don't jump.",
+            TrapType.DropFloor     => "The slab falls, and takes you with it. It won't kill you — but it decides where you land, and something down there will.",
+            TrapType.RiseFloor     => "The ground lifts you toward the ceiling and keeps going. The Crusher taught you to stay low. This kills you for it.",
+            TrapType.SlamWall      => "A wall drives in from off-lane as you pass. It grinds first. It always leaves a gap — you just have to be in it.",
+            TrapType.CeilingVolley => "Teeth drop out of the ceiling in sequence, aimed where you are. Outrun the wave or let it finish — never stand still under it.",
+            TrapType.ShyExit       => "The coffin backs away when you reach for it. Twice. The third time it gives up, so keep walking.",
             _ => "A trap of the castle.",
         };
 
@@ -144,6 +162,16 @@ namespace TrustIssues
             TrapType.WarpBack    => "warpback",
             TrapType.FakeExit    => "fakeexit",
             TrapType.Surprise    => "surprise",
+            // The room-itself traps have no illustration of their own yet, so each
+            // borrows the closest existing plate: a floor for the floors, the
+            // crusher for anything that presses, the spike rain for the ceiling.
+            TrapType.TiltFloor     => "fakefloor",
+            TrapType.SlideFloor    => "fakefloor",
+            TrapType.DropFloor     => "fakefloor",
+            TrapType.RiseFloor     => "crusher",
+            TrapType.SlamWall      => "crusher",
+            TrapType.CeilingVolley => "arrowrain",
+            TrapType.ShyExit       => "fakeexit",
             _ => "spike",                                      // last-ditch: never blank
         };
     }

@@ -26,7 +26,18 @@ namespace TrustIssues
         FlameJet,   // a floor jet that erupts fire on a loop (cross while it's down)
         Chandelier, // a wide telegraphed drop from the ceiling (a big Faller)
         HolyWater,  // a floor puddle that turns lethal on a pulse (cross while dim)
-        BatSwoop    // a bat that hovers, then dives at you on a telegraph
+        BatSwoop,   // a bat that hovers, then dives at you on a telegraph
+        // ---- the room itself (see Betrayal.cs) ----
+        // Appended, never reordered: the Codex persists unlocks as "codex_" + (int)t
+        // and KillZone.trapTag stores the same number, so renumbering these would
+        // silently rewrite every player's Bestiary.
+        TiltFloor,     // a slab that hinges under your weight and pours you off
+        SlideFloor,    // a slab that slides out sideways, opening a pit where you stand
+        DropFloor,     // a slab that falls WITH you and lands somewhere else
+        RiseFloor,     // ground that lifts you into the ceiling and presses
+        SlamWall,      // a wall that drives in from off-lane as you pass
+        CeilingVolley, // a row of ceiling teeth that fire down in sequence, at you
+        ShyExit        // the coffin backs away when you reach for it — twice
     }
 
     /// <summary>

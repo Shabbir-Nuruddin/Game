@@ -122,6 +122,7 @@ public static class DumpDifficulty
             foreach (var r in lvl.Rooms)
                 if (!Grounded(lvl, r.MinX + 1.3f))
                     problems.Add($"floor {f}: NO RESPAWN GROUND at {r.MinX + 1.3f:F1}");
+            CheckFairness(lvl, f, problems);
 
             // ---- shape ----
             float lo = float.MaxValue, hi = float.MinValue, longest = 0f;
@@ -336,6 +337,100 @@ public static class DumpDifficulty
         Debug.Log(unreachable.Count == 0
             ? "TRAP_COVERAGE_OK — every Bestiary page can actually be earned in play"
             : $"TRAP_COVERAGE_PROBLEMS — unearnable pages: {string.Join(", ", unreachable.ToArray())}");
+    }
+
+    // Hazards you meet at floor level — the ones that decide whether a patch of
+    // ground is somewhere you can actually stand. Overhead things (pendulums,
+    // bats, arrow timers) and the harmless furniture are not in here.
+    static readonly HashSet<TrapType> GroundLethal = new()
+    {
+        TrapType.SpikeStatic, TrapType.GrowSpike, TrapType.LateSpike, TrapType.Dart,
+        TrapType.Faller, TrapType.Chandelier, TrapType.Surprise, TrapType.Saw,
+        TrapType.Crusher, TrapType.FlameJet, TrapType.HolyWater,
+    };
+
+    const float PlayerHalf = 0.275f;    // GameRoot.SpawnPlayer: 0.55 wide collider
+    const float SawSweep = 2.5f;        // Trap.cs: saws slide sin(t)*2.5 around their origin
+    // Candles snuff over RoomDirector.DarkFade (0.55s) and conditional floors
+    // flip at darkT>0.5, so the rule actually resolves half a fade after the
+    // trigger — 7.5 u/s * 0.275s of ground the player crosses believing the
+    // room is still honest.
+    const float DarkCommitRun = 7.5f * 0.55f * 0.5f;
+
+    /// <summary>
+    /// The three ways a hand-laid floor becomes unplayable that the gap and
+    /// respawn-ground checks above cannot see. All three shipped on floor 12 at
+    /// once, which is what made it the wall nobody got past:
+    ///
+    ///   • a stage respawn point sitting INSIDE a hazard, so every death after
+    ///     banking that stage puts you back in the thing that killed you;
+    ///   • two hazards with less clear floor between them than the player is
+    ///     wide, so the pair can only be crossed as one committed jump;
+    ///   • a Dark rule firing so close to a night/ghost floor that the floor
+    ///     resolves while the player is already standing on it (or already past
+    ///     the ledge of a bridge that has not materialised yet).
+    /// </summary>
+    static void CheckFairness(Level lvl, int f, List<string> problems)
+    {
+        // Two views of the same hazards. STANDING spans are where a thing can
+        // ever be, so a saw counts as its whole sweep — you cannot respawn in
+        // the middle of one and call it fair. RESTING spans are the footprint at
+        // an instant, which is what "is there floor to stand on between these
+        // two?" means: a saw slides away, a spike never does.
+        var swept = new List<(float l, float r, string name)>();
+        var resting = new List<(float l, float r, string name)>();
+        foreach (var t in lvl.Traps)
+        {
+            if (!GroundLethal.Contains(t.type)) continue;
+            float l = t.pos.x - t.size.x / 2f, r = t.pos.x + t.size.x / 2f;
+            resting.Add((l, r, t.type.ToString()));
+            float pad = t.type == TrapType.Saw ? SawSweep : 0f;
+            swept.Add((l - pad, r + pad, t.type.ToString()));
+        }
+        foreach (var s in lvl.ShiftSpikes)
+        {
+            resting.Add((s.x - 0.35f, s.x + 0.35f, "ShiftSpike(lit)"));
+            resting.Add((s.y - 0.35f, s.y + 0.35f, "ShiftSpike(dark)"));
+            swept.Add((s.x - 0.35f, s.x + 0.35f, "ShiftSpike(lit)"));
+            swept.Add((s.y - 0.35f, s.y + 0.35f, "ShiftSpike(dark)"));
+        }
+
+        foreach (var room in lvl.Rooms)
+        {
+            float sx = room.MinX + 1.3f;
+            foreach (var h in swept)
+                if (sx + PlayerHalf > h.l - 0.2f && sx - PlayerHalf < h.r + 0.2f)
+                    problems.Add($"floor {f}: RESPAWN IN HAZARD — stage spawn x={sx:F1} " +
+                                 $"sits in {h.name} [{h.l:F1}..{h.r:F1}]");
+        }
+
+        resting.Sort((a, b) => a.l.CompareTo(b.l));
+        for (int i = 1; i < resting.Count; i++)
+        {
+            float slot = resting[i].l - resting[i - 1].r;
+            if (slot > 0f && slot < PlayerHalf * 2f + 0.35f)
+                problems.Add($"floor {f}: PINCH — {slot:F2}u of floor between {resting[i - 1].name} " +
+                             $"and {resting[i].name} at x={resting[i].l:F1} " +
+                             $"(player is {PlayerHalf * 2f:F2} wide)");
+        }
+
+        var conditional = new List<(Rect2 floor, string what)>();
+        foreach (var nf in lvl.NightFloors) conditional.Add((nf, "night floor"));
+        foreach (var gf in lvl.GhostFloors) conditional.Add((gf, "ghost bridge"));
+        foreach (var room in lvl.Rooms)
+        {
+            if (room.Rule != RoomRule.Dark) continue;
+            foreach (var c in conditional)
+            {
+                float left = c.floor.pos.x - c.floor.size.x / 2f;
+                if (left < room.MinX || left >= room.MaxX) continue;
+                float slack = left - room.TriggerX;
+                if (slack >= 0f && slack < DarkCommitRun + 0.5f)
+                    problems.Add($"floor {f}: DARK FIRES TOO LATE — {c.what} at x={left:F1} is only " +
+                                 $"{slack:F1}u past the trigger, and the candles need " +
+                                 $"{DarkCommitRun:F1}u to die");
+            }
+        }
     }
 
     /// <summary>
