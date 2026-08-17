@@ -98,7 +98,7 @@ namespace TrustIssues
             [TrapType.FakeFloor] = new[]
             {
                 "You trusted a floor. In THIS game.",
-                "The game is called Trust Issues. It's on the box.",
+                $"The game is called {Theme.Name}. It's on the box.",
                 "Solid ground is a rumour around here.",
                 "You stood on it like it owed you nothing.",
                 "Every floor lies. That one just went first.",

@@ -150,21 +150,35 @@ namespace TrustIssues
         // object in the same place; the whole point is that there is nothing else
         // there — the ground you are standing on is the trap.
 
+        // MINIMUM WIDTH OF A BETRAYAL FLOOR, and the reason the first pass of these
+        // felt like nothing. Run speed is 7.5 u/s, so a 2.6-wide slab is crossed in
+        // 0.35s and a 3-wide one in 0.40s — less time than the traps take to fire.
+        // Players reported walking straight over floors that were, on paper, in the
+        // middle of collapsing under them. Retuning the traps to fire in ~0.25s only
+        // half-fixed it: the slab also has to be wide enough that finishing the
+        // crossing isn't an option. At 4.2 the crossing takes 0.56s, so a floor that
+        // commits in 0.30s catches you barely half way — decisively, every time.
+        //
+        // Still well inside a 5.6-unit maximum jump, so every one of them remains
+        // clearable by a player who reads the creak on approach. Enforced here in
+        // the builder rather than at ~60 call sites so no floor can opt out.
+        public const float BetrayalMinW = 4.2f;
+
         /// <summary>Floor that hinges under your weight and pours you off.</summary>
         public float TiltFloor(float w = 3f)
-        { float cx = cur + w / 2f; T(TrapType.TiltFloor, cx, -3f, w, 0.6f); cur += w; return cx; }
+        { w = Mathf.Max(w, BetrayalMinW); float cx = cur + w / 2f; T(TrapType.TiltFloor, cx, -3f, w, 0.6f); cur += w; return cx; }
 
         /// <summary>Floor that slides out sideways, opening a pit where you stand.</summary>
         public float SlideFloor(float w = 3f)
-        { float cx = cur + w / 2f; T(TrapType.SlideFloor, cx, -3f, w, 0.6f); cur += w; return cx; }
+        { w = Mathf.Max(w, BetrayalMinW); float cx = cur + w / 2f; T(TrapType.SlideFloor, cx, -3f, w, 0.6f); cur += w; return cx; }
 
-        /// <summary>Floor that falls WITH you and lands lower down. Survivable — it's a fork, not a kill.</summary>
+        /// <summary>The trapdoor: falls away beneath you into the dark. Lethal.</summary>
         public float DropFloor(float w = 3.2f)
-        { float cx = cur + w / 2f; T(TrapType.DropFloor, cx, -3f, w, 0.6f); cur += w; return cx; }
+        { w = Mathf.Max(w, BetrayalMinW); float cx = cur + w / 2f; T(TrapType.DropFloor, cx, -3f, w, 0.6f); cur += w; return cx; }
 
         /// <summary>Ground that lifts you into the ceiling and presses. Get off it.</summary>
         public float RiseFloor(float w = 3f)
-        { float cx = cur + w / 2f; T(TrapType.RiseFloor, cx, -3f, w, 0.6f); cur += w; return cx; }
+        { w = Mathf.Max(w, BetrayalMinW); float cx = cur + w / 2f; T(TrapType.RiseFloor, cx, -3f, w, 0.6f); cur += w; return cx; }
 
         /// <summary>
         /// A wall parked off-lane that drives in as you pass. It does NOT advance
@@ -408,32 +422,49 @@ namespace TrustIssues
         }
 
         /// <summary>
-        /// THE FIRST NIGHT — the tutorial floor, and the only floor in the game that
-        /// isn't trying to kill you on purpose.
+        /// THE FIRST NIGHT — the tutorial floor.
         ///
-        /// It's a plain corridor (no rooms, no camera locks, no rules) laid out so
-        /// each lesson gets its own stretch of empty ground: a long run to find the
-        /// stick, one honest gap to find JUMP, one spike standing in plain sight, and
-        /// exactly one lie at the end so the player meets the game's actual promise
-        /// before the Castle does it to them for real. Tutorial.cs reads the same
-        /// x positions to know when to speak.
+        /// The first version of this taught the wrong game. It spent 18 units (2.2
+        /// seconds of holding one direction, nothing happening) teaching RUN, then
+        /// showed a spike, then one ambush — and never once showed the thing this
+        /// game is actually about, which is that the GROUND lies to you. A player
+        /// finished it knowing how to jump over furniture and knowing nothing about
+        /// floors that tip, slide or simply leave.
         ///
-        /// Deliberately generous: every platform is wide enough to stop, look and
-        /// start again, and nothing here is blind.
+        /// This one halves the dead opening and spends the space it saves on the
+        /// real vocabulary. Five lessons, ending on the two that matter: a floor
+        /// that tips you off, and a floor that isn't there any more. Both kill.
+        /// That's the honest introduction — the castle does exactly this, forever,
+        /// and better to learn it here where the retry is instant.
+        ///
+        /// Tutorial.cs reads these x positions to know when to speak, so moving a
+        /// platform here without moving its constant strands a caption.
         /// </summary>
-        public const float TutorialJumpX  = 6.5f;    // right edge of the opening run
-        public const float TutorialSpikeX = 17.2f;   // the spike in plain sight
-        public const float TutorialLieX   = 32.9f;   // the ambush spike
+        public const float TutorialJumpX  = -1.5f;   // right edge of the opening run
+        public const float TutorialSpikeX = 7.2f;    // the spike in plain sight
+        public const float TutorialLieX   = 18.5f;   // the ambush spike
+        public const float TutorialTiltX  = 24.6f;   // the floor that tips
+        public const float TutorialDropX  = 31.9f;   // the floor that leaves
         public static Level Tutorial()
         {
-            var b = new B();
-            b.Plat(18f);              // nothing but floor: learn to run
+            var b = new B();          // cursor starts at spawn - 1.5 = -11.5
+            b.Plat(10f);              // -11.5 -> -1.5   learn to run (was 18: too long)
             b.Gap(2.2f);              // one honest jump, no hazard attached
-            float a = b.Plat(12f);
-            b.Spike(a + 2.5f);        // a spike you can see from a long way off
+            float a = b.Plat(9f);     // 0.7 -> 9.7
+            b.Spike(a + 2f);          // 7.2  a spike you can see from a long way off
             b.Gap(2.2f);
-            float c = b.Plat(12f);
-            b.LateSpike(c + 4f);      // and the lesson the whole game is built on
+            float c = b.Plat(8f);     // 11.9 -> 19.9
+            b.LateSpike(c + 2.6f);    // 18.5 the first thing that lies to you
+            // The last two lessons both kill, and they are the first killing floors
+            // a new player ever meets. Without this they would replay the run, the
+            // jump and both spikes every attempt — the exact "levels are too long"
+            // complaint, aimed at the one floor that has to feel welcoming.
+            float d = b.Plat(3.2f);
+            b.Checkpoint(d);          // 21.5
+            b.TiltFloor(3f);          // 24.6 and now the GROUND lies
+            b.Plat(4.2f);
+            b.DropFloor(3.2f);        // 31.9 …and now it simply leaves
+            b.Plat(6f);
             return b.Finish();        // the coffin
         }
 

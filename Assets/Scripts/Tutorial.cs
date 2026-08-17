@@ -39,13 +39,22 @@ namespace TrustIssues
             new Step { fromX = Levels.TutorialJumpX - 5.5f,
                        title  = "THE FLOOR ENDS HERE",
                        body   = "JUMP across. Hold the button longer to jump higher." },
-            new Step { fromX = Levels.TutorialSpikeX - 7f,
+            new Step { fromX = Levels.TutorialSpikeX - 6f,
                        title  = "SPIKES KILL INSTANTLY",
                        body   = "Bright steel, ringed in blood. This one is standing still — go over it." },
-            new Step { fromX = Levels.TutorialLieX - 7.5f,
-                       title  = "NOW THE REAL LESSON",
-                       body   = "Some traps wait until you're close. Nothing in this castle is honest." },
-            new Step { fromX = Levels.TutorialLieX + 2.5f,
+            new Step { fromX = Levels.TutorialLieX - 6.5f,
+                       title  = "THAT ONE WAS HONEST",
+                       body   = "The next one isn't. Some traps wait until you're close enough." },
+            // The two that matter. Everything above is furniture standing on solid
+            // ground; from here the ground itself is the enemy, which is the actual
+            // subject of the game and used to go completely untaught.
+            new Step { fromX = Levels.TutorialTiltX - 6f,
+                       title  = "NOW STOP TRUSTING THE FLOOR",
+                       body   = "Hear it creak? That slab will tip you off. Jump it — don't walk it." },
+            new Step { fromX = Levels.TutorialDropX - 6f,
+                       title  = "THIS ONE JUST LEAVES",
+                       body   = "Grit falling means the floor is about to go. It will not wait for you." },
+            new Step { fromX = Levels.TutorialDropX + 4f,
                        title  = "THE COFFIN IS THE WAY OUT",
                        body   = "Not doors. Not stairs. Only coffins. Climb in." },
         };

@@ -50,13 +50,18 @@ namespace TrustIssues
             t.position = home;
         }
 
-        /// <summary>Grit falling off a slab that is about to betray you.</summary>
+        /// <summary>
+        /// Grit falling off a slab that is about to betray you. Sized for a PHONE:
+        /// at ~120 px per world unit the old 0.07 specks were 8 px of dull grey
+        /// against dark stone. These are wider, brighter and spread across the
+        /// slab, so the shower reads as "this thing is letting go".
+        /// </summary>
         public static void Dust(Vector3 at, int n = 6)
         {
             for (int i = 0; i < n; i++)
             {
-                var go = Theme.Box("Grit", null, at + new Vector3(Random.Range(-0.8f, 0.8f), -0.2f, 0f),
-                                   new Vector2(0.07f, 0.07f), new Color(0.55f, 0.5f, 0.52f, 0.8f), 4);
+                var go = Theme.Box("Grit", null, at + new Vector3(Random.Range(-1.6f, 1.6f), -0.2f, 0f),
+                                   new Vector2(0.12f, 0.12f), new Color(0.78f, 0.70f, 0.66f, 0.95f), 4);
                 go.AddComponent<Grit>();
             }
         }
@@ -75,6 +80,70 @@ namespace TrustIssues
         {
             var p = GameRoot.I != null ? GameRoot.I.PlayerTransform : null;
             return p == null ? 999f : Vector3.Distance(p.position, at);
+        }
+
+        /// <summary>
+        /// Is the player still WALKING TOWARD this slab, close enough to be warned?
+        ///
+        /// This is the fix for the mistake that made the first version of every
+        /// floor betrayal pointless. They armed on CONTACT and then spent ~0.3s
+        /// telegraphing — but at 7.5 u/s a player crosses a 3-unit slab in 0.40s,
+        /// so the warning and the trap were fighting over the same fifth of a
+        /// second. The slab was still leaning 12 degrees as the player stepped off
+        /// the far edge; the drop floor had fallen five centimetres. The telegraph
+        /// ate the trap.
+        ///
+        /// Warning on approach separates them: ~0.4s of groaning while the player
+        /// can still stop, jump or turn back, and then the betrayal itself is free
+        /// to be fast and final.
+        /// </summary>
+        public static bool Approaching(Transform t, Vector2 size, float from = 3.0f)
+            => Near(t.position) < from + size.x * 0.5f;
+
+        /// <summary>
+        /// The approach tell: grit, a groan, and a slab that will not hold still.
+        /// Cancels the instant the real betrayal starts (via <paramref name="stop"/>)
+        /// so it can never fight the kinematic body for the transform.
+        /// </summary>
+        /// <summary>The colour a slab flushes to while it is about to betray you.</summary>
+        public static readonly Color WarnTint = new Color(0.72f, 0.26f, 0.21f);
+
+        public static IEnumerator Creak(Transform t, System.Func<bool> stop, float time = 0.6f)
+        {
+            Audio.Play("click", 0.32f);
+            Dust(t.position, 6);
+
+            // THE SLAB HAS TO CHANGE COLOUR, not just wobble.
+            //
+            // The camera shows about 20 world units across, so on a 1080p phone one
+            // unit is ~120 px and the old 0.035 shudder was a FOUR PIXEL wiggle —
+            // invisible at arm's length to a player watching their own thumb. Now
+            // that these floors kill, a tell nobody can see makes the game unfair
+            // rather than funny. A whole-slab tint is the only warning that survives
+            // a small screen, so the shudder is now the supporting act.
+            var sr = t.GetComponent<SpriteRenderer>();
+            Color home = sr != null ? sr.color : Color.white;
+
+            Vector3 hp = t.position;
+            float e = 0f;
+            while (e < time && !stop())
+            {
+                e += Time.deltaTime;
+                t.position = hp + new Vector3(Mathf.Sin(e * 46f) * 0.055f, 0f, 0f);
+                if (sr != null)
+                {
+                    // Pulses rather than holds: a steady colour reads as decoration,
+                    // a throb reads as a countdown.
+                    float pulse = 0.4f + 0.6f * Mathf.Abs(Mathf.Sin(e * 9f));
+                    sr.color = Color.Lerp(home, WarnTint, pulse * Mathf.Clamp01(e / 0.15f));
+                }
+                if (e > time * 0.4f && Random.value < 0.10f) Dust(hp, 1);
+                yield return null;
+            }
+            t.position = hp;
+            // Fired → stay red (it is mid-betrayal). Walked away → back to stone, so
+            // a slab you chose not to touch doesn't stay marked for the whole floor.
+            if (sr != null) sr.color = stop() ? WarnTint : home;
         }
     }
 
@@ -110,10 +179,15 @@ namespace TrustIssues
     public class TiltSlab : MonoBehaviour
     {
         public Vector2 size = new Vector2(3f, 0.6f);
-        public float tipAngle = -72f, delay = 0.30f, tipTime = 0.42f;
+        // 0.05 + 0.22 = fully over a quarter-second after your weight lands, and a
+        // 3-unit slab takes 0.40s to walk. So the hinge gives way at roughly
+        // two-thirds across: too late to finish, which is the entire point. The
+        // first version spent 0.30s on a warning lean and reached 12 degrees
+        // before the player was already gone.
+        public float tipAngle = -78f, delay = 0.05f, tipTime = 0.22f;
 
         Rigidbody2D _rb;
-        bool _going;
+        bool _going, _armed;
 
         void Awake()
         {
@@ -124,6 +198,11 @@ namespace TrustIssues
 
         void Update()
         {
+            if (!_armed && Betray.Approaching(transform, size))
+            {
+                _armed = true;
+                StartCoroutine(Betray.Creak(transform, () => _going));
+            }
             if (_going || !Betray.Riding(transform, size)) return;
             _going = true;
             StartCoroutine(Tip());
@@ -131,27 +210,19 @@ namespace TrustIssues
 
         IEnumerator Tip()
         {
-            Audio.Play("click", 0.35f);
-            Betray.Dust(transform.position, 5);
-            // A small warning lean, then the real one. Two stages so a fast player
-            // can read "this is going" and still be gone before it commits.
+            Audio.Play("dash", 0.4f);
+            Betray.Dust(transform.position, 6);
+            yield return new WaitForSeconds(delay);
             float e = 0f;
-            while (e < delay)
-            {
-                e += Time.deltaTime;
-                _rb.MoveRotation(Mathf.Lerp(0f, tipAngle * 0.12f, e / delay));
-                yield return null;
-            }
-            e = 0f;
-            float from = tipAngle * 0.12f;
             while (e < tipTime)
             {
                 e += Time.deltaTime;
                 float k = e / tipTime;
-                _rb.MoveRotation(Mathf.Lerp(from, tipAngle, k * k));   // accelerating, like a hinge giving way
+                _rb.MoveRotation(Mathf.Lerp(0f, tipAngle, k * k));   // accelerating, like a hinge giving way
                 yield return null;
             }
             _rb.MoveRotation(tipAngle);
+            GameRoot.I?.ShakeCam(0.18f, 0.1f);
         }
     }
 
@@ -165,10 +236,14 @@ namespace TrustIssues
     public class SlideSlab : MonoBehaviour
     {
         public Vector2 size = new Vector2(3f, 0.6f);
-        public float travel = 3.4f, delay = 0.26f, slideTime = 0.34f;
+        // Out from under you in 0.24s against the 0.40s you need to cross it, and
+        // it travels its own full width so the hole it leaves is a real hole. At
+        // the old 0.26 + 0.34 it had shifted about a unit before you were clear —
+        // visibly moving, never actually a threat.
+        public float travel = 3.4f, delay = 0.05f, slideTime = 0.19f;
 
         Rigidbody2D _rb;
-        bool _going;
+        bool _going, _armed;
 
         void Awake()
         {
@@ -179,6 +254,11 @@ namespace TrustIssues
 
         void Update()
         {
+            if (!_armed && Betray.Approaching(transform, size))
+            {
+                _armed = true;
+                StartCoroutine(Betray.Creak(transform, () => _going));
+            }
             if (_going || !Betray.Riding(transform, size)) return;
             _going = true;
             StartCoroutine(Slide());
@@ -187,9 +267,10 @@ namespace TrustIssues
         IEnumerator Slide()
         {
             Vector2 home = transform.position;
-            Audio.Play("click", 0.3f);
-            yield return Betray.Shudder(transform, delay, 0.06f);
-            Betray.Dust(transform.position, 4);
+            Audio.Play("dash", 0.45f);
+            Betray.Dust(transform.position, 6);
+            GameRoot.I?.ShakeCam(0.2f, 0.1f);
+            yield return new WaitForSeconds(delay);
             float e = 0f;
             while (e < slideTime)
             {
@@ -203,26 +284,32 @@ namespace TrustIssues
     }
 
     /// <summary>
-    /// THE FLOOR THAT TAKES YOU WITH IT. The slab drops as one piece, with the
-    /// player still standing on it, and stops at a lower level.
+    /// THE TRAPDOOR. The floor you are standing on stops being a floor. It falls
+    /// away beneath you into the dark and you go down with it.
     ///
-    /// This one is deliberately NOT lethal by itself — it is the game's only
-    /// betrayal that is survivable by doing nothing, which is what makes it
-    /// useful: it drops you somewhere ELSE. Whatever is waiting down there is the
-    /// actual hazard, and a level can use it as a fork rather than a punishment.
+    /// The first version of this dropped 1.7 units and stopped, on the reasoning
+    /// that max jump height is 2.94 so anything deeper would strand the player in
+    /// a hole. That reasoning was sound and the result was worthless: it was a
+    /// lift, not a trap — you rode it down and hopped out, which is exactly what
+    /// playtesters reported. "Stranded" was the wrong thing to protect against.
+    /// The right answer is to drop the slab clean past the kill plane so the
+    /// player falls to their death instead of standing in a pit, which is both
+    /// more honest and far funnier.
+    ///
+    /// Fairness lives entirely in the approach: the slab creaks and sheds grit for
+    /// ~0.4s while you walk at it, and it is 3.2 wide against a 5.6-unit jump, so
+    /// it is always clearable by someone who read the warning.
     /// </summary>
     public class DropSlab : MonoBehaviour
     {
         public Vector2 size = new Vector2(3f, 0.6f);
-        // 1.7, and it is a HARD CEILING on this number. Jump speed is 14 against a
-        // rise gravity of 3.4 on Unity's -9.81, which is a maximum jump height of
-        // 2.94 units — so a slab that drops further than that leaves the player
-        // standing in a hole they cannot climb out of, and the floor becomes
-        // unfinishable. The first draft of this used 3.2 and did exactly that.
-        public float drop = 1.7f, delay = 0.34f, fallTime = 0.5f;
+        // Deep enough to clear the kill plane (floor sits at -3, the plane is at
+        // -9), fast enough that you cannot outrun it: gone in a quarter second
+        // against the 0.43s it takes to cross.
+        public float drop = 8.5f, delay = 0.04f, fallTime = 0.26f;
 
         Rigidbody2D _rb;
-        bool _going;
+        bool _going, _armed;
 
         void Awake()
         {
@@ -233,6 +320,11 @@ namespace TrustIssues
 
         void Update()
         {
+            if (!_armed && Betray.Approaching(transform, size))
+            {
+                _armed = true;
+                StartCoroutine(Betray.Creak(transform, () => _going));
+            }
             if (_going || !Betray.Riding(transform, size)) return;
             _going = true;
             StartCoroutine(Fall());
@@ -241,9 +333,10 @@ namespace TrustIssues
         IEnumerator Fall()
         {
             Vector2 home = transform.position;
-            yield return Betray.Shudder(transform, delay, 0.07f);
-            Betray.Dust(transform.position, 7);
-            Audio.Play("dash", 0.45f);
+            Betray.Dust(transform.position, 10);
+            Audio.Play("dash", 0.55f);
+            GameRoot.I?.ShakeCam(0.3f, 0.12f);
+            yield return new WaitForSeconds(delay);
             float e = 0f;
             while (e < fallTime)
             {
@@ -253,7 +346,7 @@ namespace TrustIssues
                 yield return null;
             }
             _rb.MovePosition(home + new Vector2(0f, -drop));
-            GameRoot.I?.ShakeCam(0.25f, 0.16f);
+            Destroy(gameObject, 0.3f);   // it is gone; nothing left to land on
         }
     }
 
@@ -272,10 +365,15 @@ namespace TrustIssues
         // edge arms (ceiling 3.1, arming when the headroom drops under 1.15, i.e.
         // slab y > 1.65). At the first draft's 4.6 it topped out at exactly 1.6 and
         // the press could never kill anyone — an intimidating lift and nothing more.
-        public float rise = 5.2f, delay = 0.38f, riseTime = 0.85f, ceilY = 3.1f;
+        // The slowest of the betrayals, and the last one that could still be
+        // outrun: at 0.08 + 0.50 it finished in 0.58s, while a player crosses even
+        // a 4.2-wide slab in 0.56s. Now it commits in 0.37s — and because it
+        // CARRIES you, you are airborne with it long before that, so stepping off
+        // the side stops being a stroll and becomes a fall.
+        public float rise = 5.2f, delay = 0.05f, riseTime = 0.32f, ceilY = 3.1f;
 
         Rigidbody2D _rb;
-        bool _going;
+        bool _going, _armed;
         GameObject _crush;
 
         void Awake()
@@ -287,6 +385,11 @@ namespace TrustIssues
 
         void Update()
         {
+            if (!_armed && Betray.Approaching(transform, size))
+            {
+                _armed = true;
+                StartCoroutine(Betray.Creak(transform, () => _going));
+            }
             if (_going || !Betray.Riding(transform, size)) return;
             _going = true;
             StartCoroutine(Push());
@@ -295,8 +398,10 @@ namespace TrustIssues
         IEnumerator Push()
         {
             Vector2 home = transform.position;
-            yield return Betray.Shudder(transform, delay, 0.05f);
-            Audio.Play("dash", 0.4f);
+            Betray.Dust(transform.position, 6);
+            Audio.Play("dash", 0.5f);
+            GameRoot.I?.ShakeCam(0.22f, 0.12f);
+            yield return new WaitForSeconds(delay);
 
             // The killing edge only exists once the gap to the ceiling is too small
             // to stand in — before that the slab is just a lift.

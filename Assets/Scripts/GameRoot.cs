@@ -1770,7 +1770,7 @@ namespace TrustIssues
                 Crimson.Btn(plate.transform, "SHARE THE DEPTH", new Vector2(0.5f, 0f), new Vector2(0, 30),
                     new Vector2(340, 54), () => StartCoroutine(ShareCard.CaptureAndShare(
                         "trust_issues_depth.png",
-                        $"I got {deepest}m down in TRUST ISSUES before the castle took me.")),
+                        $"I got {deepest}m down in {Theme.Name.ToUpperInvariant()} before the castle took me.")),
                     false, 20);
             }
             else
@@ -3110,7 +3110,7 @@ namespace TrustIssues
                     _editMap.Save();
                     string code = _editMap.ToCode();
                     NativeShare.ShareText(
-                        "I built a trap in Trust Issues. Beat my map if you can. Code: " + code, GameLink);
+                        $"I built a trap in {Theme.Name}. Beat my map if you can. Code: " + code, GameLink);
                     Analytics.Track("map_shared", new System.Collections.Generic.Dictionary<string, object>
                     { { "lie", _editMap.lie.ToString() } });
                     BossToast("CODE SENT - " + code);
@@ -3218,7 +3218,7 @@ namespace TrustIssues
             Gothic.Button(root, "CHALLENGE THEM", new Vector2(-340, -120), new Vector2(400, 96), () =>
                 {
                     NativeShare.ShareText(
-                        $"I beat this Trust Issues map in {CustomMap.Fmt(secs)} with {_floorDeaths} deaths. Try it. Code: {code}",
+                        $"I beat this {Theme.Name} map in {CustomMap.Fmt(secs)} with {_floorDeaths} deaths. Try it. Code: {code}",
                         GameLink);
                     Analytics.Track("map_challenge", new System.Collections.Generic.Dictionary<string, object>
                     { { "seconds", secs } });
@@ -6806,7 +6806,7 @@ namespace TrustIssues
             string lbMode = _mode == Mode.Endless ? "endless" : "daily";
             Leaderboard.Submit(lbMode, _mode == Mode.Endless ? endlessMetres : _deaths);
             string brag = _mode == Mode.Endless
-                ? $"I survived {endlessMetres} METRES in Endless Night in Trust Issues \U0001F987 — beat that"
+                ? $"I survived {endlessMetres} METRES in Endless Night in {Theme.Name} \U0001F987 — beat that"
                 : $"I fell on night {_levelIndex + 1} of tonight's Blood Moon \U0001F987";
             if (_mode == Mode.Daily && Rumor.Discovered)
                 brag += $" — and I proved the rumor: \"{Rumor.CrypticLine}\"";
@@ -6899,7 +6899,7 @@ namespace TrustIssues
                 ? $"survive {CurrentEndlessMeters} metres"
                 : $"survive floor {_levelIndex + 1}";
             string msg = NativeShare.Sanitize(
-                $"I cursed you in Trust Issues \U0001F987 {challenge} with {_floorDeaths} deaths or less, or my ghost stays");
+                $"I cursed you in {Theme.Name} \U0001F987 {challenge} with {_floorDeaths} deaths or less, or my ghost stays");
             NativeShare.ShareText(msg, link);
             Analytics.Track("curse_sent", new System.Collections.Generic.Dictionary<string, object>
             {
@@ -7270,14 +7270,98 @@ namespace TrustIssues
         // a short-room game lives on is the half-second between finishing one room
         // and being inside the next. The map is still one tap from the pause menu
         // for anyone who wants to look at it.
+        static void StampAlpha(Text t, float a) { if (t == null) return; var c = t.color; c.a = a; t.color = c; }
+
+        /// <summary>
+        /// THE WIN BEAT.
+        ///
+        /// The version this replaces was one line of text and a 0.75s wait. It was
+        /// written to fix a real complaint — clearing a floor made you tap NEXT and
+        /// then DESCEND — but it threw out the reward along with the taps, and
+        /// playtesters said finishing a floor stopped feeling like anything at all.
+        ///
+        /// Level Devil never asks for a tap either and still lands the win, because
+        /// it SPENDS the moment rather than skipping it: the game stops dead, hits
+        /// you with sound and a punch of motion, and only then moves on. It also
+        /// saves the loud version for the end of a door of five levels, so ordinary
+        /// levels stay cheap and the SET is the thing you feel.
+        ///
+        /// This floor already is that door — a roomed floor is five stages — so the
+        /// beat lands here, with a bigger one every fifth floor as a wing of the
+        /// castle closes. Hitstop first (the best juice per unit of work there is:
+        /// it turns a state change into an event), then the punch, then a stamp
+        /// that overshoots and settles, your time, your deaths, and the only brag
+        /// this game offers — clearing a floor without dying once. Still zero taps.
+        /// </summary>
         IEnumerator FloorClearedFlash()
         {
-            _state = State.Win;   // block input during the banner
+            _state = State.Win;   // block input during the beat
             Memory.RunEndedCleanly();   // reached a result beat = not a rage-quit
-            if (_toast != null) _toast.text = $"FLOOR {_levelIndex} CLEARED";
-            Audio.Play("win", 0.6f);
-            yield return new WaitForSecondsRealtime(0.75f);
+
+            float took  = LevelDurationMs / 1000f;   // read before BuildLevel restarts the clock
+            bool  clean = _floorDeaths == 0;
+            bool  wing  = _mode == Mode.Curated && _levelIndex % 5 == 0;
+
             if (_toast != null) _toast.text = "";
+
+            // 1. HITSTOP — the world stops for a beat so the win registers.
+            Time.timeScale = 0f;
+            Audio.Play("win", wing ? 0.8f : 0.62f);
+            yield return new WaitForSecondsRealtime(wing ? 0.14f : 0.085f);
+            Time.timeScale = 1f;
+            ShakeCam(wing ? 0.34f : 0.20f, 0.2f);
+
+            // 2. THE STAMP.
+            var holder = new GameObject("ClearStamp", typeof(RectTransform));
+            holder.transform.SetParent(Theme.Canvas.transform, false);
+            var hrt = (RectTransform)holder.transform;
+            hrt.anchorMin = hrt.anchorMax = new Vector2(0.5f, 0.5f);
+            hrt.pivot = new Vector2(0.5f, 0.5f);
+            hrt.anchoredPosition = new Vector2(0f, 130f);
+            hrt.sizeDelta = new Vector2(1500f, 300f);
+
+            var big = Theme.Label(holder.transform,
+                wing ? "WING CLEARED" : $"FLOOR {_levelIndex} CLEARED",
+                wing ? 92 : 72, Theme.Exit,
+                new Vector2(0.5f, 0.5f), new Vector2(0, 46), new Vector2(1500, 130));
+            if (Theme.TitleFont != null) big.font = Theme.TitleFont;
+            big.raycastTarget = false;
+
+            string dead = _floorDeaths == 1 ? "1 death" : $"{_floorDeaths} deaths";
+            var small = Theme.Label(holder.transform,
+                wing ? $"FLOORS {_levelIndex - 4}-{_levelIndex}   ·   {_deaths} deaths so far"
+                     : $"{took:0.0}s   ·   {dead}",
+                34, Gothic.Faint,
+                new Vector2(0.5f, 0.5f), new Vector2(0, -34), new Vector2(1500, 60));
+            small.raycastTarget = false;
+
+            // A floor taken without dying is the one thing here worth being smug
+            // about, so it gets its own line and the exit's gold.
+            Text flawless = null;
+            if (clean)
+            {
+                flawless = Theme.Label(holder.transform, "NO DEATHS", 40, Theme.Exit,
+                    new Vector2(0.5f, 0.5f), new Vector2(0, -92), new Vector2(1500, 60));
+                flawless.raycastTarget = false;
+            }
+
+            // Unscaled throughout: the stamp has to animate even though the hitstop
+            // above and any pause below leave timeScale untrustworthy.
+            float hold = wing ? 1.5f : 0.9f;
+            float e = 0f;
+            while (e < hold)
+            {
+                e += Time.unscaledDeltaTime;
+                float k = Mathf.Clamp01(e / 0.26f);
+                float ease = 1f - Mathf.Pow(1f - k, 3f);                  // fast in, settling
+                float s = Mathf.LerpUnclamped(0.62f, 1f, ease) * (1f + 0.10f * Mathf.Sin(k * Mathf.PI));
+                hrt.localScale = new Vector3(s, s, 1f);
+                float fade = e > hold - 0.22f ? Mathf.Clamp01((hold - e) / 0.22f) : 1f;
+                StampAlpha(big, fade); StampAlpha(small, fade); StampAlpha(flawless, fade);
+                yield return null;
+            }
+            Destroy(holder);
+
             if (_levelRoot != null) Destroy(_levelRoot.gameObject);
             _hasCheckpoint = false;
             ResetFloorState();
@@ -7299,8 +7383,8 @@ namespace TrustIssues
             string lbMode = daily ? "daily" : "castle";
             Leaderboard.Submit(lbMode, _deaths);
             string brag = daily
-                ? $"I cleared tonight's Blood Moon in Trust Issues with {_deaths} deaths \U0001F987 — beat that"
-                : $"I escaped the castle in Trust Issues — {_deaths} deaths \U0001F987";
+                ? $"I cleared tonight's Blood Moon in {Theme.Name} with {_deaths} deaths \U0001F987 — beat that"
+                : $"I escaped the castle in {Theme.Name} — {_deaths} deaths \U0001F987";
             if (daily && Rumor.Discovered)
                 brag += $" — and I proved the rumor: \"{Rumor.CrypticLine}\"";
             ResultFooter(root, panel, brag, lbMode);
