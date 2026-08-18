@@ -26,7 +26,18 @@ namespace TrustIssues
         FlameJet,   // a floor jet that erupts fire on a loop (cross while it's down)
         Chandelier, // a wide telegraphed drop from the ceiling (a big Faller)
         HolyWater,  // a floor puddle that turns lethal on a pulse (cross while dim)
-        BatSwoop    // a bat that hovers, then dives at you on a telegraph
+        BatSwoop,   // a bat that hovers, then dives at you on a telegraph
+        // ---- the room itself (see Betrayal.cs) ----
+        // Appended, never reordered: the Codex persists unlocks as "codex_" + (int)t
+        // and KillZone.trapTag stores the same number, so renumbering these would
+        // silently rewrite every player's Bestiary.
+        TiltFloor,     // a slab that hinges under your weight and pours you off
+        SlideFloor,    // a slab that slides out sideways, opening a pit where you stand
+        DropFloor,     // a slab that falls WITH you and lands somewhere else
+        RiseFloor,     // ground that lifts you into the ceiling and presses
+        SlamWall,      // a wall that drives in from off-lane as you pass
+        CeilingVolley, // a row of ceiling teeth that fire down in sequence, at you
+        ShyExit        // the coffin backs away when you reach for it — twice
     }
 
     /// <summary>
@@ -44,16 +55,64 @@ namespace TrustIssues
         // brightness changes instead — tinting a painted sprite red erases the art.
         public bool paintedArt;
         /// <summary>
-        /// Blood red. The Bestiary draws the spikes as forged iron on a lit page, but
-        /// in the HALL they are red — that's how the gameplay artwork paints them, and
-        /// the dark metal simply vanished against a near-black floor. Multiplying the
-        /// painted art by this keeps every highlight and shadow of the illustration
-        /// and lands it on the artwork's colour, which is the one tint on painted art
-        /// this game allows.
+        /// SPIKE STEEL — the blade itself.
+        ///
+        /// This colour has been wrong twice, and the measurements say why. Painted the
+        /// hall's own red, a spike came out at roughly the same brightness as the wall
+        /// behind it. Painted black iron, it measured DARKER than the wall (luminance
+        /// 20 against 22) and identical to the floor — invisible by construction, on a
+        /// stage that is already red and already black.
+        ///
+        /// A sprite tint can only ever MULTIPLY, so tinting a mid-tone illustration
+        /// with a dark colour throws away the art and everything that made it legible.
+        /// The Bestiary's spike illustration averages luminance 76 with highlights up
+        /// to 239 — all the shape and shadow needed is already painted in. So the
+        /// blade is now left nearly untinted, a hair cool, and reads as what it is:
+        /// forged steel, several times brighter than anything around it.
+        ///
+        /// The red the theme wants comes from the rim below, not from the blade. Hue
+        /// was never going to do this job — only brightness.
         /// </summary>
-        public static readonly Color SpikeRed = new Color(1f, 0.34f, 0.34f, 1f);
+        public static readonly Color SpikeRed = new Color(0.94f, 0.92f, 0.97f, 1f);
+        /// <summary>
+        /// The hot blood edge drawn larger BEHIND the blade. It does two jobs: it
+        /// keeps spikes speaking the game's red hazard language, and it separates the
+        /// silhouette on a pale floor the way the steel separates it on a dark one —
+        /// so a spike reads in every theme, not just the ones it was checked against.
+        /// </summary>
+        public static readonly Color SpikeRim = new Color(1f, 0.13f, 0.18f, 0.95f);
+
+        /// <summary>
+        /// Paint a spike so it can actually be seen: black iron blade, blood rim.
+        /// Every spike in the game (static, grown, ambush, falling) goes through here
+        /// so they can never drift apart again.
+        /// </summary>
+        public static void PaintSpike(GameObject go, bool painted)
+        {
+            var sr = go.GetComponent<SpriteRenderer>();
+            if (sr == null) return;
+            sr.color = painted ? SpikeRed : Theme.Danger;
+            if (!painted) return;   // the flat fallback box has no silhouette to outline
+
+            // The rim is a copy of the same sprite, scaled up a hair and pushed one
+            // sorting step back. A child (not a sibling) so it follows the blade
+            // through every rise, grow and fall animation for free.
+            var rim = new GameObject("Rim");
+            rim.transform.SetParent(go.transform, false);
+            // Scaled from the centre, so it's nudged UP by the same fraction it grew:
+            // otherwise the halo sinks below the blade's base and bleeds onto the
+            // stone. Wider than it is taller, because it's the vertical silhouette of
+            // the blades that has to separate from the floor.
+            rim.transform.localPosition = new Vector3(0f, 0.05f, 0f);
+            rim.transform.localScale = new Vector3(1.26f, 1.18f, 1f);
+            var rimSr = rim.AddComponent<SpriteRenderer>();
+            rimSr.sprite = sr.sprite;
+            rimSr.color = SpikeRim;
+            rimSr.sortingOrder = sr.sortingOrder - 1;
+        }
         float _animTimer;
         SpriteRenderer _sr;
+        SpriteRenderer _rim;   // the blood outline behind a painted spike, if it has one
         BoxCollider2D _col;
         bool _armed = true;
         Transform _spike;
@@ -80,6 +139,8 @@ namespace TrustIssues
         void Start()
         {
             _sr = GetComponent<SpriteRenderer>();
+            var rimT = transform.Find("Rim");
+            if (rimT != null) _rim = rimT.GetComponent<SpriteRenderer>();
             _col = GetComponent<BoxCollider2D>();
             _origin = transform.position;
 
@@ -175,11 +236,13 @@ namespace TrustIssues
             yield return new WaitForSeconds(Random.Range(0f, 1f)); // desync multiple columns
             while (true)
             {
-                var sp = Assets.TrapArt("arrowrain") ?? Assets.Sprite("spike");
+                var painted = Assets.TrapArt("arrowrain");
+                var sp = painted ?? Assets.Sprite("spike");
                 var spawn = transform.position + Vector3.up * 5.5f;
                 var go = sp != null
                     ? Theme.SpriteBox("RainDart", transform, spawn, new Vector2(0.8f, 0.6f), sp, 4)
                     : Theme.Box("RainDart", transform, spawn, new Vector2(0.3f, 0.7f), Theme.Danger, 4);
+                if (sp != null) PaintSpike(go, painted != null);   // black blade, blood rim — visible mid-fall
                 var col = go.AddComponent<BoxCollider2D>(); col.isTrigger = true;
                 col.size *= 0.8f; // reliable spike hitbox
                 var kz = go.AddComponent<KillZone>(); kz.msg = "Impaled by a falling spike.";
@@ -226,11 +289,14 @@ namespace TrustIssues
                 transform.position = new Vector3(_origin.x, _growBottomY + curH / 2f, 0f);
                 bool lethal = k > 0.55f;
                 if (_col != null) _col.enabled = lethal;       // only deadly when grown
-                // Brighten as it rises so the lethal phase reads at a glance.
-                if (_sr != null)
-                    _sr.color = paintedArt
-                        ? (lethal ? SpikeRed : SpikeRed * 0.45f)                        // painted: same red, dimmed when safe
-                        : (lethal ? Theme.Danger : new Color(0.55f, 0.12f, 0.14f, 1f)); // flat sprite: red = lethal
+                // The lethal phase has to read at a glance. The blade itself is black
+                // iron now (see SpikeRed), and dimming black reads as nothing at all —
+                // so on painted spikes the BLOOD RIM carries the telegraph: it burns
+                // when the blade is up and goes cold when it's safe to cross.
+                if (_rim != null)
+                    _rim.color = lethal ? SpikeRim : SpikeRim * 0.30f;
+                else if (_sr != null)
+                    _sr.color = lethal ? Theme.Danger : new Color(0.55f, 0.12f, 0.14f, 1f); // flat fallback: red = lethal
             }
 
             // A pendulum blade: swing the pivot back and forth. The chain + blade
@@ -493,8 +559,9 @@ namespace TrustIssues
             GameObject go = sp != null
                 ? Theme.SpriteBox("Spikes", transform.parent, pos, painted != null ? new Vector2(1.4f, 0.9f) : new Vector2(1f, 1f), sp, 3)
                 : Theme.Box("Spikes", transform.parent, pos, new Vector2(0.7f, 0.9f), Theme.Danger, 3);
-            // Blood red either way — the painted iron is multiplied onto it (see SpikeRed).
-            if (sp != null) go.GetComponent<SpriteRenderer>().color = painted != null ? SpikeRed : Theme.Danger;
+            // Black iron with a blood rim, so an ambush spike is unmistakable the
+            // instant it clears the floor (see PaintSpike).
+            if (sp != null) PaintSpike(go, painted != null);
             var col = go.AddComponent<BoxCollider2D>();
             col.isTrigger = true;
             col.size *= 0.8f; // reliable spike hitbox

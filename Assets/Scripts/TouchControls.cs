@@ -327,19 +327,31 @@ namespace TrustIssues
             }
         }
 
-        // Tilt → speed response. Raw knob position was fed to movement 1:1, which
-        // testers read as "too fast / can't place myself": with a thumb, almost any
-        // tilt was full tilt. A small deadzone kills resting-thumb jitter, and the
-        // squared curve makes the lower half of the stick a precision walk (half
-        // tilt ≈ quarter speed) while FULL tilt still returns exactly 1 — max run
-        // speed is untouched, so every gap tuned by JumpArcProbe stays clearable.
+        // Tilt → speed response.
+        //
+        // The squared curve this used to run made the whole ring a walk: at 70% tilt
+        // you got half speed, and only a thumb pinned exactly on the rim ran. Players
+        // read that as "it doesn't run unless I drag past the circle" — because on a
+        // real thumb the rim is where the ring visually ends, and they were pushing
+        // outside it hunting for a run that should already have arrived.
+        //
+        // So the stick now reaches FULL RUN before the rim (at RunAt of the travel)
+        // and holds it out to the edge and beyond, which is what "push it all the way
+        // and you're running" means. Below that band it still ramps smoothly for
+        // placing yourself on a ledge, but with a gentler curve than the old square,
+        // so a half-tilt is a real jog rather than a crawl. Max speed is unchanged —
+        // 1 is still 1 — so every gap tuned by JumpArcProbe stays clearable.
+        const float Dead = 0.14f;    // resting-thumb jitter
+        const float RunAt = 0.62f;   // full speed from here to the rim (and past it)
         static float Shape(float raw)
         {
-            const float Dead = 0.12f;
             float a = Mathf.Min(1f, Mathf.Abs(raw));
             if (a < Dead) return 0f;
-            float t = (a - Dead) / (1f - Dead);
-            return Mathf.Sign(raw) * t * t;
+            if (a >= RunAt) return Mathf.Sign(raw);
+            float t = (a - Dead) / (RunAt - Dead);
+            // Slight ease-in so the first millimetre off the deadzone is a step, not
+            // a lurch; 0.35 minimum keeps a nudge from being an unmovable crawl.
+            return Mathf.Sign(raw) * Mathf.Lerp(0.35f, 1f, t * t);
         }
 
         Vector2 LocalOffset(Vector2 screen)

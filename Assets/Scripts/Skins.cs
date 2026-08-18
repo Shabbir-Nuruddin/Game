@@ -49,7 +49,11 @@ namespace TrustIssues
                           ability = "Twin Dash (K) + speed", dash = true, moveMul = 1.1f,
                           unlockHint = "Die 50 Times",
                           unlocked = () => PlayerPrefs.GetInt("castle_deaths", 0) >= 50 },
-            new SkinDef { id = "pink",    name = "Pink Menace",    pinkman = true, tint = Color.white,
+            // pinkman was a stand-in for skins that had no vampire art of their own.
+            // Every avatar now ships real redressed sheets (see SkinArt), so the whole
+            // roster keeps one silhouette — which is what keeps hitboxes and animation
+            // timing identical no matter what you wear.
+            new SkinDef { id = "pink",    name = "Pink Menace",    tint = Color.white,
                           ability = "Fleet-Footed (+speed)", moveMul = 1.18f,
                           unlockHint = "Reach Castle Floor 15",
                           unlocked = () => PlayerPrefs.GetInt("castle_unlocked", 0) >= 14 },
@@ -63,7 +67,7 @@ namespace TrustIssues
             new SkinDef { id = "nosferatu", name = "Nosferatu",    tint = Theme.Hex("4FB7A4"),
                           ability = "Balanced", unlockHint = "Reach Castle Floor 30",
                           unlocked = () => PlayerPrefs.GetInt("castle_unlocked", 0) >= 29 },
-            new SkinDef { id = "royal",   name = "Royal Blood",    pinkman = true, tint = Theme.Hex("C62032"),
+            new SkinDef { id = "royal",   name = "Royal Blood",    tint = Theme.Hex("C62032"),
                           ability = "Balanced", unlockHint = "Reach Endless Nights Floor 25",
                           unlocked = () => PlayerPrefs.GetInt("best_endless", 0) >= 24 },
         };
@@ -76,7 +80,12 @@ namespace TrustIssues
         // live player and the Wardrobe preview so they always match.
         public static Color Shade(SkinDef s) => Color.Lerp(Color.white, s.tint, 0.5f);
 
-        public static bool IsUnlocked(SkinDef s) => s.unlocked == null || s.unlocked();
+        /// <summary>Screenshot-harness escape hatch. Equipping a locked avatar
+        /// silently falls back to The Heir, which made a shot run of all ten skins
+        /// come back as ten identical Heirs. Never set outside ShotBot.</summary>
+        public static bool DevUnlockAll;
+
+        public static bool IsUnlocked(SkinDef s) => DevUnlockAll || s.unlocked == null || s.unlocked();
 
         public static SkinDef Get(string id) => All.Find(s => s.id == id) ?? All[0];
 

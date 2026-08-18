@@ -39,6 +39,12 @@ namespace TrustIssues
             }
             if (string.IsNullOrEmpty(dir)) return;   // a normal launch — do nothing at all
 
+            // The tutorial auto-runs on a machine that has never played, which would
+            // put a teaching floor under the "menu" shot on some runs and not others.
+            // Marked as taught so the itinerary is identical every time; the tutorial
+            // gets its own deliberate shot below.
+            PlayerPrefs.SetInt("ti_tutorial_done", 1);
+
             // -touch forces the PHONE layout on in a desktop shot. The on-screen
             // controls are the part of the game most often checked against the
             // reference artwork, and they're invisible on desktop by default —
@@ -84,13 +90,53 @@ namespace TrustIssues
             yield return new WaitForSecondsRealtime(1.2f);
             yield return Shot("wardrobe");
 
-            root.DevOpenAuraWardrobe();
-            yield return new WaitForSecondsRealtime(1.2f);
-            yield return Shot("wardrobe_aura");
+            // The AURA and OUTFIT pages are gone — the Wardrobe is one shelf of
+            // skins — so there is nothing left to shoot after the shelf itself.
+            root.DevCloseOverlay();
+            yield return new WaitForSecondsRealtime(0.4f);
 
-            root.DevOpenOutfitWardrobe();
-            yield return new WaitForSecondsRealtime(1.2f);
-            yield return Shot("wardrobe_outfit");
+            // Equip each avatar in turn and respawn, so a shot run proves the
+            // character sprite genuinely changes with the Wardrobe rather than
+            // only the card art doing so.
+            Skins.DevUnlockAll = true;   // otherwise a locked avatar quietly equips The Heir
+            foreach (var s in Skins.All)
+            {
+                Skins.Equip(s.id);
+                // Floor 1 is the flat two-trap trial: the character stays put at the
+                // spawn, so every skin lands in the same pixels and the shots can be
+                // laid side by side.
+                root.DevStartFloor(0);
+                yield return new WaitForSecondsRealtime(0.8f);
+                ProbeSkin(s.id);
+                yield return Shot("skin_" + s.id);
+            }
+            Skins.DevUnlockAll = false;
+            Skins.Equip("heir");
+
+            // THE TUTORIAL, with the coach's caption and the joystick thumb hint. The
+            // stick has to be the live movement mode for the hint to exist at all, so
+            // it's forced on for these two shots and put back afterwards (the -touch
+            // flag above deliberately prefers the arrow pads).
+            int stickWas = PlayerPrefs.GetInt("opt_joystick", 1);
+            PlayerPrefs.SetInt("opt_joystick", 1);
+            root.DevStartTutorial();
+            yield return new WaitForSecondsRealtime(1.6f);
+            yield return Shot("tutorial_start");
+            root.DevWarp(Levels.TutorialSpikeX - 5f);
+            yield return new WaitForSecondsRealtime(1.1f);
+            yield return Shot("tutorial_spike");
+            PlayerPrefs.SetInt("opt_joystick", stickWas);
+            // …and the screen that sends them into the Castle, which is a wall of
+            // copy and therefore the easiest one in the game to overflow.
+            root.DevOpenTutorialDone();
+            yield return new WaitForSecondsRealtime(0.9f);
+            yield return Shot("tutorial_done");
+
+            // JUMP + BAT + DASH together — the cluster that used to collide.
+            root.DevStartFlightFloor();
+            yield return new WaitForSecondsRealtime(1.4f);
+            yield return Shot("cluster_flight");
+            Skins.Equip("heir");
 
             root.DevStartFloor(_floor - 1);
             yield return new WaitForSecondsRealtime(1.6f);   // let the player land and the camera settle
@@ -107,6 +153,17 @@ namespace TrustIssues
             root.DevOpenBestiary();
             yield return new WaitForSecondsRealtime(1.2f);
             yield return Shot("bestiary");
+
+            // Both leaderboard states, because they are genuinely different screens:
+            // ranked (your row highlighted mid-table, with the rival above you named)
+            // and unranked (never scored — the board still has to look alive).
+            root.DevOpenLeaderboard("endless", 655);
+            yield return new WaitForSecondsRealtime(1.0f);
+            yield return Shot("leaderboard_endless");
+
+            root.DevOpenLeaderboard("castle", 0);
+            yield return new WaitForSecondsRealtime(1.0f);
+            yield return Shot("leaderboard_castle_unranked");
 
             // The castle map, with progress faked to the floor being shot, so the
             // "you are here" glow can be checked against the right seal.
@@ -128,8 +185,49 @@ namespace TrustIssues
             yield return new WaitForSecondsRealtime(1.0f);
             yield return Shot("lobby");
 
+            // The two screens a player sees more than any other. Death is shot twice:
+            // a short run well under the record (the common case, and the one whose
+            // comparison bar has to look like a challenge rather than an insult) and a
+            // record-breaking one, because that flips three separate labels.
+            root.DevOpenPause(false);
+            yield return new WaitForSecondsRealtime(0.9f);
+            yield return Shot("pause");
+            root.DevOpenPause(true);
+            yield return new WaitForSecondsRealtime(0.9f);
+            yield return Shot("pause_endless");
+            root.DevCloseOverlay();
+
+            root.DevOpenDeath(9, 706);
+            yield return new WaitForSecondsRealtime(1.1f);
+            yield return Shot("death");
+            root.DevOpenDeath(842, 706);
+            yield return new WaitForSecondsRealtime(1.1f);
+            yield return Shot("death_record");
+
             Debug.Log("SHOTBOT_DONE " + _dir);
             Application.Quit();
+        }
+
+        // Which art is the live character actually wearing? A screenshot can't settle
+        // this on its own — death echoes put several differently-coloured vampires on
+        // screen at once, and a costume that failed to load still leaves a vampire
+        // standing there. The texture name is unambiguous.
+        static void ProbeSkin(string expected)
+        {
+            var pc = Object.FindFirstObjectByType<PlayerController>();
+            if (pc == null) { Debug.Log("SHOTBOT_SKIN " + expected + " NO_PLAYER"); return; }
+            var sr = pc.GetComponentInChildren<SpriteRenderer>();
+            var tex = sr != null && sr.sprite != null ? sr.sprite.texture : null;
+            var cam = Camera.main;
+            string where = "";
+            if (cam != null && sr != null)
+            {
+                var sp = cam.WorldToScreenPoint(sr.bounds.center);
+                where = $" screen=({sp.x:F0},{Screen.height - sp.y:F0}) size={sr.bounds.size}";
+            }
+            Debug.Log($"SHOTBOT_SKIN {expected} tex={(tex != null ? tex.name : "NONE")} " +
+                      $"frame={SkinArt.Frame(expected)} hasArt={SkinArt.Has(expected)} " +
+                      $"tint={(sr != null ? sr.color.ToString() : "-")}{where}");
         }
 
         // What the camera can actually SEE, and where the scenery sits inside it.

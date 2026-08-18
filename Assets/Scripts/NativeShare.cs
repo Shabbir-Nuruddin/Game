@@ -117,7 +117,7 @@ namespace TrustIssues
                         using var resolver = activity.Call<AndroidJavaObject>("getContentResolver");
                         using var media = new AndroidJavaClass("android.provider.MediaStore$Images$Media");
                         string uriStr = media.CallStatic<string>("insertImage", resolver, imagePath,
-                                                                 "Trust Issues", "Trust Issues");
+                                                                 Theme.Name, Theme.Name);
                         if (!string.IsNullOrEmpty(uriStr))
                         {
                             using var uriClass = new AndroidJavaClass("android.net.Uri");

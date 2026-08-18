@@ -172,17 +172,44 @@ namespace TrustIssues
                 var art = Assets.Sprite("bg_castle");
                 if (art != null)
                 {
-                    for (int s = 0; s < 2; s++)
+                    // THE CASTLE WAS INVISIBLE. This silhouette was painted
+                    // (0.055, 0.02, 0.04) against a #07040A sky — a luminance of
+                    // about 3 against a background of 3. It was black on black, so
+                    // every screen using this backdrop read as what was actually
+                    // left: a red-to-black gradient with a moon on it.
+                    //
+                    // It's now drawn in THREE PLANES at rising contrast — far
+                    // towers, the ridge, and a near gatehouse — because one
+                    // silhouette at any brightness is a sticker, and three at
+                    // different brightnesses is a distance.
+                    (float x, float y, float w, float h, float lum, bool flip)[] planes =
                     {
-                        var c = Img(root, "Ridge", art, new Color(0.055f, 0.02f, 0.04f, 1f));
+                        (0.50f, 0.585f, 1500f, 520f, 0.075f, false),   // far, almost weather
+                        (0.22f, 0.620f, 1000f, 560f, 0.150f, false),   // the ridge itself
+                        (0.80f, 0.620f, 1000f, 560f, 0.150f, true),
+                        (0.06f, 0.700f,  760f, 620f, 0.235f, false),   // near, framing the road
+                        (0.96f, 0.700f,  760f, 620f, 0.235f, true),
+                    };
+                    foreach (var p in planes)
+                    {
+                        var c = Img(root, "Ridge", art,
+                                    new Color(p.lum * 0.92f, p.lum * 0.42f, p.lum * 0.62f, 1f));
                         c.preserveAspect = true;
-                        Place(c, new Vector2(s == 0 ? 0.22f : 0.80f, 0.62f), Vector2.zero, new Vector2(1000, 560));
-                        if (s == 1) c.rectTransform.localScale = new Vector3(-1f, 1f, 1f);
+                        Place(c, new Vector2(p.x, p.y), Vector2.zero, new Vector2(p.w, p.h));
+                        if (p.flip) c.rectTransform.localScale = new Vector3(-1f, 1f, 1f);
                     }
-                    for (int w = 0; w < 2; w++)
+                    // Lit windows: two on the ridge, two more on the near towers.
+                    // The only warm points in the picture besides the moon, and the
+                    // thing that says someone is home.
+                    (float x, float y, float s)[] wins =
+                    {
+                        (0.235f, 0.615f, 26f), (0.775f, 0.615f, 26f),
+                        (0.075f, 0.705f, 32f), (0.945f, 0.705f, 32f),
+                    };
+                    foreach (var w in wins)
                     {
                         var win = Img(root, "Window", Halo, new Color(1f, 0.26f, 0.34f, 0.9f));
-                        Place(win, new Vector2(w == 0 ? 0.235f : 0.775f, 0.615f), Vector2.zero, Vector2.one * 26f);
+                        Place(win, new Vector2(w.x, w.y), Vector2.zero, Vector2.one * w.s);
                     }
                 }
             }
@@ -191,6 +218,30 @@ namespace TrustIssues
             var fog = Stretch(root, "Fog", Color.white, Vector2.zero, new Vector2(1f, 0.42f));
             fog.sprite = Theme.Gradient(new Color(Blood.r, Blood.g, Blood.b, 0f),
                                         new Color(Blood.r * 0.5f, 0.02f, 0.05f, 0.55f));
+
+            // Embers off the fog. The same drifting motes the pause hall uses, for
+            // the same reason: a still picture of a place reads as wallpaper, and
+            // three or four things moving slowly at different speeds reads as air.
+            if (!Options.ReducedMotion)
+            {
+                (float x, float y, float s, float dur, float delay)[] motes =
+                {
+                    (0.14f, 0.10f, 5f, 11f, 0f),   (0.31f, 0.06f, 4f, 14f, 2.5f),
+                    (0.63f, 0.12f, 6f, 9f,  4f),   (0.81f, 0.08f, 4f, 13f, 1.2f),
+                    (0.93f, 0.14f, 5f, 15f, 6f),
+                };
+                foreach (var m in motes)
+                {
+                    var e = Img(root, "Ember", Theme.Circle, new Color(1f, 0.42f, 0.28f, 0.5f));
+                    Place(e, new Vector2(m.x, m.y), Vector2.zero, Vector2.one * m.s);
+                    var glow = Img(e.transform, "EmberGlow", Halo, new Color(1f, 0.35f, 0.2f, 0.35f));
+                    var grt = glow.rectTransform;
+                    grt.anchorMin = Vector2.zero; grt.anchorMax = Vector2.one;
+                    grt.offsetMin = new Vector2(-7f, -7f); grt.offsetMax = new Vector2(7f, 7f);
+                    var drift = e.gameObject.AddComponent<MoteDrift>();
+                    drift.dur = m.dur; drift.delay = m.delay; drift.rise = 320f;
+                }
+            }
 
             // Bats. Reduced Motion turns their drift off (the sprites stay).
             var batSprite = Assets.Sprite("bat_fly") ?? Theme.BatGlyph;
@@ -292,6 +343,136 @@ namespace TrustIssues
             return null;
         }
 
+        /// <summary>
+        /// A button wearing the PAINTED metal from the landing artwork: a forged end-cap
+        /// on each side and a stretched middle between them, with the interior darkened
+        /// so type reads against the metal. The caps are separate art files precisely so
+        /// a button can be any width without the ironwork smearing — only the plain
+        /// middle stretches.
+        ///
+        /// Falls back to the code-drawn <see cref="Btn"/> when the art isn't installed,
+        /// so the menu still works on a checkout without the ui/ pictures.
+        /// </summary>
+        public static Button MetalBtn(Transform parent, string text, Vector2 anchor, Vector2 pos, Vector2 size,
+                                      System.Action onClick, int fontSize = 34, string caption = null,
+                                      bool enabled = true)
+        {
+            if (Skin.Cut("btn_capL") == null)
+                return Btn(parent, text, anchor, pos, size, onClick, false, fontSize, caption, true, enabled);
+            var go = new GameObject("MBtnHost", typeof(RectTransform));
+            go.transform.SetParent(parent, false);
+            var rt = (RectTransform)go.transform;
+            rt.anchorMin = rt.anchorMax = anchor;
+            rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.anchoredPosition = pos;
+            rt.sizeDelta = size;
+            return MetalBtnIn(rt, text, onClick, fontSize, caption, enabled);
+        }
+
+        /// <summary>
+        /// The same button, filling a rect somebody else has already positioned —
+        /// which is how the landing uses it, because a control that has to sit on a
+        /// painted button must be placed in FRACTIONS of the artwork, not in canvas
+        /// units. Everything inside is proportional (the caps hold their aspect via
+        /// an AspectRatioFitter, the wash and the type are anchored by percentage),
+        /// so the same button is correct at any size or screen shape.
+        /// </summary>
+        public static Button MetalBtnIn(RectTransform host, string text, System.Action onClick,
+                                        int fontSize = 34, string caption = null, bool enabled = true)
+        {
+            var capL = Skin.Cut("btn_capL");
+            var capR = Skin.Cut("btn_capR");
+            var mid = Skin.Cut("btn_mid");
+            host.gameObject.name = "MBtn_" + text;
+
+            if (capL != null && capR != null && mid != null)
+            {
+                // The mid runs the full width and the caps are drawn opaque over its
+                // ends, so nothing has to know how wide a cap will turn out to be.
+                var m = Img(host, "Mid", mid, Color.white);
+                Fill(m.rectTransform, Vector2.zero, Vector2.one);
+                Cap(host, "CapL", capL, true);
+                Cap(host, "CapR", capR, false);
+            }
+            else
+            {
+                var edge = Img(host, "Edge", null, enabled ? Gold : Iron);
+                Fill(edge.rectTransform, Vector2.zero, Vector2.one);
+                var fill = Img(edge.transform, "Fill", null, Plate);
+                Fill(fill.rectTransform, Vector2.zero, Vector2.one);
+                fill.rectTransform.offsetMin = new Vector2(2, 2);
+                fill.rectTransform.offsetMax = new Vector2(-2, -2);
+            }
+
+            // The interior wash: the metal is bright enough to eat type on its own.
+            var wash = Img(host, "Wash", null, new Color(0.024f, 0.012f, 0.024f, 0.70f));
+            Fill(wash.rectTransform, new Vector2(0.055f, 0.14f), new Vector2(0.945f, 0.86f));
+
+            // The design's label is a red gradient with a black drop — two passes of
+            // flat type get the same read without a custom shader. Best-fit so a long
+            // label in a short slot shrinks instead of spilling over the ironwork.
+            float split = caption != null ? 0.34f : 0f;
+            var back = Text_(host, text, fontSize, new Color(0, 0, 0, 0.95f),
+                             new Vector2(0.10f, split), new Vector2(0.90f, 1f));
+            back.rectTransform.anchoredPosition = new Vector2(0, -3f);
+            Text_(host, text, fontSize, enabled ? BloodLit : Dead,
+                  new Vector2(0.10f, split), new Vector2(0.90f, 1f));
+            if (caption != null)
+                Text_(host, caption, Mathf.Max(14, Mathf.RoundToInt(fontSize * 0.42f)),
+                      enabled ? Theme.Hex("9A6E68") : Dead,
+                      new Vector2(0.06f, 0.08f), new Vector2(0.94f, split));
+
+            if (!enabled || onClick == null) return null;
+
+            var hit = Img(host, "Hit", null, new Color(0, 0, 0, 0));
+            Fill(hit.rectTransform, Vector2.zero, Vector2.one);
+            hit.raycastTarget = true;
+            var btn = host.gameObject.AddComponent<Button>();
+            btn.targetGraphic = hit;
+            var colors = btn.colors;
+            colors.highlightedColor = new Color(1f, 1f, 1f, 0.10f);   // hit is clear; tint it to flash
+            colors.pressedColor = new Color(1f, 1f, 1f, 0.20f);
+            colors.fadeDuration = 0.07f;
+            btn.colors = colors;
+            btn.onClick.AddListener(() => { Audio.Play("click", 0.6f); onClick(); });
+            return btn;
+        }
+
+        // One forged end-cap, pinned to an end and full height. The art is 168x196
+        // and an AspectRatioFitter derives the width from whatever height the button
+        // ends up with, so the ironwork can never squash.
+        static void Cap(RectTransform host, string name, Sprite art, bool left)
+        {
+            var img = Img(host, name, art, Color.white);
+            var rt = img.rectTransform;
+            rt.anchorMin = new Vector2(left ? 0 : 1, 0);
+            rt.anchorMax = new Vector2(left ? 0 : 1, 1);
+            rt.pivot = new Vector2(left ? 0 : 1, 0.5f);
+            rt.offsetMin = new Vector2(rt.offsetMin.x, 0);
+            rt.offsetMax = new Vector2(rt.offsetMax.x, 0);
+            var fit = img.gameObject.AddComponent<UnityEngine.UI.AspectRatioFitter>();
+            fit.aspectMode = UnityEngine.UI.AspectRatioFitter.AspectMode.HeightControlsWidth;
+            fit.aspectRatio = 168f / 196f;
+        }
+
+        // A percentage-anchored child rect.
+        static void Fill(RectTransform rt, Vector2 min, Vector2 max)
+        {
+            rt.anchorMin = min; rt.anchorMax = max;
+            rt.offsetMin = rt.offsetMax = Vector2.zero;
+        }
+
+        // A percentage-anchored line of best-fit type.
+        static Text Text_(RectTransform host, string text, int size, Color color, Vector2 min, Vector2 max)
+        {
+            var t = Theme.Label(host, text, size, color, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
+            if (Theme.MenuFont != null) t.font = Theme.MenuFont;
+            t.fontStyle = FontStyle.Bold;
+            t.raycastTarget = false;
+            Fill(t.rectTransform, min, max);
+            return Skin.Fit(t, size, Mathf.Max(9, size / 3));
+        }
+
         // The pair of blood diamonds set into a plate's left and right rails.
         static void Studs(Transform parent, Vector2 size)
         {
@@ -307,6 +488,47 @@ namespace TrustIssues
         /// and the words "BLOOD SHARDS" — the design's call, and the shorter label is
         /// what lets it sit in a screen corner without a line break.
         /// </summary>
+        /// <summary>
+        /// The blood counter filling a rect somebody else has positioned — the
+        /// landing's version, placed in fractions of the artwork. Everything inside
+        /// is proportional, so a phone (far wider than 16:9, and therefore a much
+        /// SHORTER canvas) can't push it off the top of the screen.
+        /// </summary>
+        public static RectTransform BloodCounterIn(RectTransform slot, int size = 30)
+        {
+            var edge = Img(slot, "Panel", null, Rail);
+            Fill(edge.rectTransform, Vector2.zero, Vector2.one);
+            var inner = Img(edge.transform, "Fill", null, Panel);
+            Fill(inner.rectTransform, Vector2.zero, Vector2.one);
+            inner.rectTransform.offsetMin = new Vector2(2, 2);
+            inner.rectTransform.offsetMax = new Vector2(-2, -2);
+
+            var d = Img(slot, "Drop", Drop, Color.white);
+            Fill(d.rectTransform, new Vector2(0.05f, 0.14f), new Vector2(0.05f, 0.86f));
+            var fit = d.gameObject.AddComponent<UnityEngine.UI.AspectRatioFitter>();
+            fit.aspectMode = UnityEngine.UI.AspectRatioFitter.AspectMode.HeightControlsWidth;
+            fit.aspectRatio = 1f;
+
+            Text_(slot, Currency.Balance.ToString("N0"), size, GoldLit,
+                  new Vector2(0.20f, 0.05f), new Vector2(0.62f, 0.95f));
+            Text_(slot, "BLOOD", Mathf.RoundToInt(size * 0.6f), Mute,
+                  new Vector2(0.62f, 0.05f), new Vector2(0.96f, 0.95f)).color = Mute;
+            return slot;
+        }
+
+        /// <summary>A bordered plate with one line of best-fit type, filling a slot.</summary>
+        public static RectTransform ChipIn(RectTransform slot, string text, int size, Color ink)
+        {
+            var edge = Img(slot, "Panel", null, Rail);
+            Fill(edge.rectTransform, Vector2.zero, Vector2.one);
+            var inner = Img(edge.transform, "Fill", null, Panel);
+            Fill(inner.rectTransform, Vector2.zero, Vector2.one);
+            inner.rectTransform.offsetMin = new Vector2(2, 2);
+            inner.rectTransform.offsetMax = new Vector2(-2, -2);
+            Text_(slot, text, size, ink, new Vector2(0.05f, 0.05f), new Vector2(0.95f, 0.95f));
+            return slot;
+        }
+
         public static RectTransform BloodCounter(Transform parent, Vector2 anchor, Vector2 pos, int size = 30)
         {
             float w = size * 9f, h = size * 2f;

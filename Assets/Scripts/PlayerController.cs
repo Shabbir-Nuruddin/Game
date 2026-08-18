@@ -35,15 +35,35 @@ namespace TrustIssues
         public Sprite[] deathFrames;             // played once on death (optional)
         public Sprite batSprite;                 // shown while flying (bat form)
 
-        // Bat glide: only works in the AIR (jump first), drains fast, refills slowly.
-        // It's a short hop to extend a jump / cross one gap — NOT a fly-over-the-level.
+        // Bat glide. Drains fast, refills slowly: it's a short hop to extend a
+        // jump / cross one gap — NOT a fly-over-the-level.
         public float flightMeter = 1f;           // 0..1, read by the HUD
         public float glideFall = 2.2f, flyDrain = 0.95f, flyRefill = 0.45f;
         public bool canFly = true;               // off in The Castle (pure precision mode)
         bool _flying;
 
+        // ONE-TOUCH TAKE-OFF. Flight used to demand "jump, THEN hold FLY" — two
+        // buttons in the right order, in the air, usually while something was
+        // already trying to kill you. On a phone that combination is close to
+        // unusable and it was the single biggest reason Blood Moon's glide gaps
+        // read as impossible. Pressing FLY from the ground now launches you into
+        // the air by itself and the same press carries straight on into the glide,
+        // so flight is one button that always does the whole thing.
+        //
+        // It costs meter, so it is still a resource: you cannot pogo up a wall,
+        // and the launch is deliberately weaker than a jump (you gain height by
+        // gliding, not by punching upward).
+        public float batLaunchSpeed = 11.5f;     // lift-off kick, vs jumpSpeed for a jump
+        public float batLaunchCost = 0.22f;      // meter spent taking off
+        bool _batLaunch;                         // queued in Update, spent in FixedUpdate
+        bool _flyWasHeld;                        // touch-button edge detector
+        float _launchGrace;                      // brief window where bat form shows on/near the ground
+
         Rigidbody2D _rb;
         BoxCollider2D _col;
+        // Ground-check scratch space, allocated once (see FixedUpdate).
+        readonly RaycastHit2D[] _groundHits = new RaycastHit2D[4];
+        ContactFilter2D _groundFilter;
         Transform _visual;       // child we squash/stretch (so physics box is stable)
         float _coyote, _buffer;
         bool _jumpHeld;          // jump key/button still down — releasing mid-rise cuts the jump
@@ -94,8 +114,11 @@ namespace TrustIssues
         public float moveMul = 1f, jumpMul = 1f;
         public bool dashEnabled = false;
         public int extraAirJumps = 0;            // double-jump etc.
-        public float dashSpeed = 19f, dashDur = 0.16f, dashCooldown = 0.85f;
+        public float dashSpeed = 19f, dashDur = 0.16f, dashCooldown = 1.25f;
         float _dashCdLeft, _dashLeft, _dashDir;
+        /// <summary>How much of the dash cooldown is left, 1 → 0. Drives the on-screen
+        /// recharge sweep, so the rule the code enforces is the rule the player sees.</summary>
+        public float DashCooldown01 => dashCooldown > 0.001f ? Mathf.Clamp01(_dashCdLeft / dashCooldown) : 0f;
         int _airJumpsLeft;
         bool _isDashing;
 
@@ -268,8 +291,15 @@ namespace TrustIssues
 
             // Vampire DASH (skin ability): a quick mist-burst in the facing direction.
             _dashCdLeft -= Time.deltaTime;
-            if (dashEnabled && _dashCdLeft <= 0f && _dashLeft <= 0f &&
-                (Input.GetKeyDown(Controls.Dash) || TouchInput.ConsumeDash()))
+            // The tap is ALWAYS consumed, even while recharging. It used to sit behind
+            // the cooldown test, so a short-circuit left the press in the buffer and
+            // the dash fired by itself the moment the cooldown expired — mash the
+            // button and you got a phantom dash a second later, usually off a ledge.
+            // A press during recharge is now simply refused, which is what a cooldown
+            // is supposed to mean.
+            bool dashTap = Input.GetKeyDown(Controls.Dash) | TouchInput.ConsumeDash();
+            bool dashReady = _dashCdLeft <= 0f && _dashLeft <= 0f;
+            if (dashEnabled && dashTap && dashReady)
             {
                 _dashLeft = dashDur; _dashDir = _facing; _dashCdLeft = dashCooldown;
                 Audio.PlayOr("dash", "jump", 0.5f);
@@ -294,7 +324,27 @@ namespace TrustIssues
 
             // Bat flight: hold the glide key (or the on-screen FLY) to glide; drains meter.
             bool flyHeld = canFly && (Input.GetKey(Controls.Fly) || TouchInput.FlyHeld);
-            _flying = flyHeld && flightMeter > 0f && !_grounded; // must be airborne (no ground hover)
+            // The moment the button goes down — keyboard and touch alike (the touch
+            // panel only reports "held", so we detect its rising edge ourselves).
+            bool flyPressed = canFly && ((Input.GetKeyDown(Controls.Fly) && !_frozen)
+                                        || (TouchInput.FlyHeld && !_flyWasHeld));
+            _flyWasHeld = TouchInput.FlyHeld;
+
+            // TAKE OFF from standing. One press: up into the sky, then glide.
+            _launchGrace = Mathf.Max(0f, _launchGrace - Time.deltaTime);
+            if (flyPressed && _grounded && flightMeter > batLaunchCost + 0.05f)
+            {
+                _batLaunch = true;                 // FixedUpdate applies the actual lift
+                _launchGrace = 0.2f;               // show bat form immediately, not next frame
+                flightMeter = Mathf.Max(0f, flightMeter - batLaunchCost);
+                Audio.Play("jump", 0.45f);
+                Fx.Dust(transform.position + Vector3.down * (0.4f * GravDir));
+            }
+
+            // Airborne, or in the instant after a launch while our feet are still
+            // technically touching the pad. (The ground test stays, so holding FLY
+            // while standing never turns into a free hover.)
+            _flying = flyHeld && flightMeter > 0f && (!_grounded || _launchGrace > 0f);
             // TATTERED WING charm drains the flight meter slower, so a glide simply
             // lasts longer — it buys reach, never new abilities.
             if (_flying) flightMeter = Mathf.Max(0f, flightMeter - flyDrain * Time.deltaTime);
@@ -381,13 +431,16 @@ namespace TrustIssues
 
             // Ground check: cast our own collider a hair toward whatever surface
             // gravity currently calls "down" (the ceiling, when inverted).
-            var filter = new ContactFilter2D { useTriggers = false };
-            filter.SetLayerMask(Physics2D.AllLayers);
-            var hits = new RaycastHit2D[4];
-            int n = _col.Cast(Vector2.down * GravDir, filter, hits, 0.08f);
+            // Reused buffers: this runs 50x a second for the whole session, and
+            // allocating a fresh hit array every physics step is pure garbage for
+            // the collector to sweep up — on a low-end phone that shows up as
+            // periodic hitches, which in a precision platformer is a death.
+            _groundFilter.useTriggers = false;
+            _groundFilter.SetLayerMask(Physics2D.AllLayers);
+            int n = _col.Cast(Vector2.down * GravDir, _groundFilter, _groundHits, 0.08f);
             _grounded = false;
             for (int i = 0; i < n; i++)
-                if (hits[i].collider != null && hits[i].normal.y * GravDir > 0.5f) { _grounded = true; break; }
+                if (_groundHits[i].collider != null && _groundHits[i].normal.y * GravDir > 0.5f) { _grounded = true; break; }
             if (_grounded) _coyote = coyoteTime;
 
             // Landing dust on a real impact (juice).
@@ -425,6 +478,18 @@ namespace TrustIssues
                 _buffer = 0f; _airJumpsLeft--;
                 _risingFromJump = true;
                 Audio.Play("jump", 0.6f);
+            }
+
+            // ONE-TOUCH TAKE-OFF: the FLY press from the ground becomes the lift.
+            // Not marked as "our jump" on purpose — a take-off must not be cut
+            // short by letting go of the JUMP key, and the glide below is what the
+            // player is steering with anyway.
+            if (_batLaunch)
+            {
+                _batLaunch = false;
+                v.y = batLaunchSpeed * GravDir;
+                _risingFromJump = false;
+                _coyote = 0f;                  // spent — no free jump out of a launch
             }
 
             // Bat form GLIDES: it slows the fall to a gentle descent but cannot

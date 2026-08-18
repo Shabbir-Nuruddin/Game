@@ -122,6 +122,7 @@ public static class DumpDifficulty
             foreach (var r in lvl.Rooms)
                 if (!Grounded(lvl, r.MinX + 1.3f))
                     problems.Add($"floor {f}: NO RESPAWN GROUND at {r.MinX + 1.3f:F1}");
+            CheckFairness(lvl, f, problems);
 
             // ---- shape ----
             float lo = float.MaxValue, hi = float.MinValue, longest = 0f;
@@ -161,7 +162,275 @@ public static class DumpDifficulty
         Debug.Log(problems.Count == 0
             ? "CASTLE_PLAYABLE_OK — every floor crossable, every chamber has respawn ground"
             : $"CASTLE_PROBLEMS ({problems.Count})\n" + string.Join("\n", problems.ToArray()));
+
+        DumpBloodMoon();
+        DumpGenerated();
+        DumpTrapCoverage();
         Debug.Log("DIFFICULTY_DONE -> Builds/difficulty.csv");
+    }
+
+    /// <summary>
+    /// The same x-ray, pointed at BLOOD MOON. The Castle got audited for a year
+    /// while the daily mode — the one that asks people to come back every night —
+    /// was never scored at all, which is how it ended up harder than any Castle
+    /// floor. Blood Moon is meant to sit a step ABOVE the Castle's ramp and no
+    /// more, so this prints each night's score next to the Castle floor it should
+    /// feel like, plus the two things that actually make a night unfinishable:
+    /// blind traps with no honest ground between them, and no checkpoints.
+    /// </summary>
+    static void DumpBloodMoon()
+    {
+        var t = new StringBuilder();
+        t.AppendLine("night | plats | traps | untel | checkpts | widest gap | score");
+        var problems = new List<string>();
+
+        // Three different days, because the seed varies the spacing — if the ramp
+        // only holds on one day's layout it does not hold.
+        int[] seeds = { 20260808, 20260809, 20261225 };
+        // The authored curve, verified by this tool. Night 1 sits at Castle floor
+        // 1-2; night 5 sits between Castle 24 and 29 — a step above where a new
+        // player will be in the campaign, which is exactly what a nightly
+        // challenge should feel like, and nowhere near the old ~14.
+        float[] target = { 1.5f, 3.2f, 4.8f, 5.6f, 6.8f };
+
+        for (int night = 1; night <= 5; night++)
+        {
+            float scoreSum = 0f; int runs = 0;
+            int traps = 0, untel = 0, checkpts = 0, plats = 0;
+            float widest = 0f;
+
+            foreach (int seed in seeds)
+            {
+                var lvl = Levels.BloodMoonNight(seed * 31 + (night - 1) * 7919, night);
+                int tr = 0, un = 0, cp = 0;
+                float lastBlindX = -9999f;
+                foreach (var sp in lvl.Traps)
+                {
+                    if (sp.type == TrapType.Checkpoint) { cp++; continue; }
+                    if (Cosmetic.Contains(sp.type)) continue;
+                    tr++;
+                    if (!Untelegraphed.Contains(sp.type)) continue;
+                    un++;
+                    // THE TROLL RHYTHM: a blind trap needs honest ground in front
+                    // of it, or the player never gets to form the instinct the
+                    // trap is punishing — it just reads as a wall.
+                    if (sp.pos.x - lastBlindX < 7f)
+                        problems.Add($"night {night} (seed {seed}): blind traps only " +
+                                     $"{sp.pos.x - lastBlindX:F1}u apart at x={sp.pos.x:F1}");
+                    lastBlindX = sp.pos.x;
+                }
+                float g = WidestGap(lvl, -9999f, 9999f);
+                // Glide gaps are INTENDED to be uncrossable on foot (that is the
+                // flight lesson), so they are scored, not flagged. Anything past
+                // the bat's reach is a different matter.
+                if (g > 7.5f) problems.Add($"night {night} (seed {seed}): {g:F1}u gap — past glide reach");
+                if (night >= 2 && cp == 0) problems.Add($"night {night} (seed {seed}): NO CHECKPOINT");
+
+                scoreSum += (tr - un) * 0.33f + un * 1.0f + (g >= 4.7f ? 0.5f : 0f);
+                traps = tr; untel = un; checkpts = cp; plats = lvl.Platforms.Count;
+                widest = Mathf.Max(widest, g); runs++;
+            }
+
+            float score = scoreSum / Mathf.Max(1, runs);
+            t.AppendLine($"{night,5} | {plats,5} | {traps,5} | {untel,5} | {checkpts,8} | " +
+                         $"{widest,10:F2} | {score,5:F1}");
+            if (Mathf.Abs(score - target[night - 1]) > 1.6f)
+                problems.Add($"night {night}: score {score:F1} is off its authored target {target[night - 1]:F1}");
+        }
+
+        Debug.Log("BLOODMOON_XRAY (Castle floors run 1.3 → 8.6 across FORTY floors)\n" + t);
+        Debug.Log(problems.Count == 0
+            ? "BLOODMOON_OK — five nights, ramped, checkpointed, every blind trap spaced"
+            : $"BLOODMOON_PROBLEMS ({problems.Count})\n" + string.Join("\n", problems.ToArray()));
+    }
+
+    /// <summary>
+    /// Endless and the Versus race track are rolled fresh every time, so the only
+    /// honest audit is a big sample. Walks many seeds of each and reports the
+    /// score spread plus anything physically uncrossable — a generated level that
+    /// cannot be finished is a far worse bug than a hard one, and it only ever
+    /// showed up as a player standing at a hole.
+    /// </summary>
+    static void DumpGenerated()
+    {
+        var t = new StringBuilder();
+        t.AppendLine("mode | sample | avg traps | avg untel | worst gap | avg score | worst score");
+        var problems = new List<string>();
+
+        // Endless tiers 1-7 over its rhythm profiles, and the race track as it is
+        // actually built (difficulty 2, race pool).
+        Sample(t, problems, "endless", 240, i =>
+            Levels.Generate(9001 + i * 7919, Mathf.Min(7, 1 + i / 2), false, i));
+        Sample(t, problems, "versus", 120, i =>
+            Levels.Generate(4200 + i * 101, 2, race: true));
+
+        Debug.Log("GENERATED_XRAY\n" + t);
+        Debug.Log(problems.Count == 0
+            ? "GENERATED_OK — every sampled Endless chunk and race track is crossable"
+            : $"GENERATED_PROBLEMS ({problems.Count})\n" + string.Join("\n", problems.ToArray()));
+    }
+
+    static void Sample(StringBuilder t, List<string> problems, string name, int n,
+                       System.Func<int, Level> make)
+    {
+        float sumTraps = 0f, sumUntel = 0f, sumScore = 0f, worstGap = 0f, worstScore = 0f;
+        for (int i = 0; i < n; i++)
+        {
+            var lvl = make(i);
+            int tr = 0, un = 0;
+            foreach (var sp in lvl.Traps)
+            {
+                if (Cosmetic.Contains(sp.type)) continue;
+                tr++;
+                if (Untelegraphed.Contains(sp.type)) un++;
+            }
+            float hole = WidestHole(lvl, out bool aided);
+            // 12u is the bat's practical reach (jump + a full glide). Past that a
+            // generated chunk is a dead end, not a challenge.
+            if (hole > 12f && !aided) problems.Add($"{name} #{i}: UNCROSSABLE {hole:F1}u hole");
+            float g = WidestGap(lvl, -9999f, 9999f);
+            float score = (tr - un) * 0.33f + un * 1.0f + (g >= 4.7f ? 0.5f : 0f);
+            sumTraps += tr; sumUntel += un; sumScore += score;
+            worstGap = Mathf.Max(worstGap, g); worstScore = Mathf.Max(worstScore, score);
+        }
+        t.AppendLine($"{name,7} | {n,6} | {sumTraps / n,9:F1} | {sumUntel / n,9:F1} | " +
+                     $"{worstGap,9:F1} | {sumScore / n,9:F1} | {worstScore,11:F1}");
+    }
+
+    /// <summary>
+    /// Every trap in the Bestiary has to be EARNABLE. A page unlocks the first
+    /// time that trap kills you, so a trap type sitting in Codex.Entries that no
+    /// level actually builds is a collection nobody on earth can complete —
+    /// invisible from inside the game, and exactly the kind of thing a player
+    /// grinds for hours before working out it was never possible. This walks
+    /// every hand-built floor, all five Blood Moon nights and a wide sample of
+    /// generated content, and reports which book pages are reachable where.
+    /// </summary>
+    static void DumpTrapCoverage()
+    {
+        var seen = new Dictionary<TrapType, List<string>>();
+        void Note(Level lvl, string where)
+        {
+            if (lvl == null) return;
+            foreach (var t in lvl.Traps)
+            {
+                if (!seen.TryGetValue(t.type, out var list)) seen[t.type] = list = new List<string>();
+                if (!list.Contains(where)) list.Add(where);
+            }
+        }
+
+        for (int f = 1; f <= Floors; f++) Note(GetFloor(f), "castle");
+        for (int n = 1; n <= 5; n++) Note(Levels.BloodMoonNight(20260809 * 31 + (n - 1) * 7919, n), "bloodmoon");
+        for (int i = 0; i < 240; i++) Note(Levels.Generate(9001 + i * 7919, Mathf.Min(7, 1 + i / 2), false, i), "endless");
+        for (int i = 0; i < 120; i++) Note(Levels.Generate(4200 + i * 101, Mathf.Min(3, 2 + i / 2), race: true), "versus");
+
+        var t2 = new StringBuilder();
+        t2.AppendLine("bestiary page | reachable in");
+        var unreachable = new List<string>();
+        foreach (var entry in Codex.Entries)
+        {
+            bool found = seen.TryGetValue(entry, out var where);
+            t2.AppendLine($"{entry,-14}| {(found ? string.Join(" ", where.ToArray()) : "NOWHERE")}");
+            if (!found) unreachable.Add(entry.ToString());
+        }
+        Debug.Log($"TRAP_COVERAGE ({Codex.Entries.Length} book pages)\n" + t2);
+        Debug.Log(unreachable.Count == 0
+            ? "TRAP_COVERAGE_OK — every Bestiary page can actually be earned in play"
+            : $"TRAP_COVERAGE_PROBLEMS — unearnable pages: {string.Join(", ", unreachable.ToArray())}");
+    }
+
+    // Hazards you meet at floor level — the ones that decide whether a patch of
+    // ground is somewhere you can actually stand. Overhead things (pendulums,
+    // bats, arrow timers) and the harmless furniture are not in here.
+    static readonly HashSet<TrapType> GroundLethal = new()
+    {
+        TrapType.SpikeStatic, TrapType.GrowSpike, TrapType.LateSpike, TrapType.Dart,
+        TrapType.Faller, TrapType.Chandelier, TrapType.Surprise, TrapType.Saw,
+        TrapType.Crusher, TrapType.FlameJet, TrapType.HolyWater,
+    };
+
+    const float PlayerHalf = 0.275f;    // GameRoot.SpawnPlayer: 0.55 wide collider
+    const float SawSweep = 2.5f;        // Trap.cs: saws slide sin(t)*2.5 around their origin
+    // Candles snuff over RoomDirector.DarkFade (0.55s) and conditional floors
+    // flip at darkT>0.5, so the rule actually resolves half a fade after the
+    // trigger — 7.5 u/s * 0.275s of ground the player crosses believing the
+    // room is still honest.
+    const float DarkCommitRun = 7.5f * 0.55f * 0.5f;
+
+    /// <summary>
+    /// The three ways a hand-laid floor becomes unplayable that the gap and
+    /// respawn-ground checks above cannot see. All three shipped on floor 12 at
+    /// once, which is what made it the wall nobody got past:
+    ///
+    ///   • a stage respawn point sitting INSIDE a hazard, so every death after
+    ///     banking that stage puts you back in the thing that killed you;
+    ///   • two hazards with less clear floor between them than the player is
+    ///     wide, so the pair can only be crossed as one committed jump;
+    ///   • a Dark rule firing so close to a night/ghost floor that the floor
+    ///     resolves while the player is already standing on it (or already past
+    ///     the ledge of a bridge that has not materialised yet).
+    /// </summary>
+    static void CheckFairness(Level lvl, int f, List<string> problems)
+    {
+        // Two views of the same hazards. STANDING spans are where a thing can
+        // ever be, so a saw counts as its whole sweep — you cannot respawn in
+        // the middle of one and call it fair. RESTING spans are the footprint at
+        // an instant, which is what "is there floor to stand on between these
+        // two?" means: a saw slides away, a spike never does.
+        var swept = new List<(float l, float r, string name)>();
+        var resting = new List<(float l, float r, string name)>();
+        foreach (var t in lvl.Traps)
+        {
+            if (!GroundLethal.Contains(t.type)) continue;
+            float l = t.pos.x - t.size.x / 2f, r = t.pos.x + t.size.x / 2f;
+            resting.Add((l, r, t.type.ToString()));
+            float pad = t.type == TrapType.Saw ? SawSweep : 0f;
+            swept.Add((l - pad, r + pad, t.type.ToString()));
+        }
+        foreach (var s in lvl.ShiftSpikes)
+        {
+            resting.Add((s.x - 0.35f, s.x + 0.35f, "ShiftSpike(lit)"));
+            resting.Add((s.y - 0.35f, s.y + 0.35f, "ShiftSpike(dark)"));
+            swept.Add((s.x - 0.35f, s.x + 0.35f, "ShiftSpike(lit)"));
+            swept.Add((s.y - 0.35f, s.y + 0.35f, "ShiftSpike(dark)"));
+        }
+
+        foreach (var room in lvl.Rooms)
+        {
+            float sx = room.MinX + 1.3f;
+            foreach (var h in swept)
+                if (sx + PlayerHalf > h.l - 0.2f && sx - PlayerHalf < h.r + 0.2f)
+                    problems.Add($"floor {f}: RESPAWN IN HAZARD — stage spawn x={sx:F1} " +
+                                 $"sits in {h.name} [{h.l:F1}..{h.r:F1}]");
+        }
+
+        resting.Sort((a, b) => a.l.CompareTo(b.l));
+        for (int i = 1; i < resting.Count; i++)
+        {
+            float slot = resting[i].l - resting[i - 1].r;
+            if (slot > 0f && slot < PlayerHalf * 2f + 0.35f)
+                problems.Add($"floor {f}: PINCH — {slot:F2}u of floor between {resting[i - 1].name} " +
+                             $"and {resting[i].name} at x={resting[i].l:F1} " +
+                             $"(player is {PlayerHalf * 2f:F2} wide)");
+        }
+
+        var conditional = new List<(Rect2 floor, string what)>();
+        foreach (var nf in lvl.NightFloors) conditional.Add((nf, "night floor"));
+        foreach (var gf in lvl.GhostFloors) conditional.Add((gf, "ghost bridge"));
+        foreach (var room in lvl.Rooms)
+        {
+            if (room.Rule != RoomRule.Dark) continue;
+            foreach (var c in conditional)
+            {
+                float left = c.floor.pos.x - c.floor.size.x / 2f;
+                if (left < room.MinX || left >= room.MaxX) continue;
+                float slack = left - room.TriggerX;
+                if (slack >= 0f && slack < DarkCommitRun + 0.5f)
+                    problems.Add($"floor {f}: DARK FIRES TOO LATE — {c.what} at x={left:F1} is only " +
+                                 $"{slack:F1}u past the trigger, and the candles need " +
+                                 $"{DarkCommitRun:F1}u to die");
+            }
+        }
     }
 
     /// <summary>
