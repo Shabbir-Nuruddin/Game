@@ -12,15 +12,13 @@ namespace TrustIssues
     public static class Theme
     {
         // Working title + mascot name (swappable).
-        // 12 characters, same as the old title, so the 104pt menu logo and its
-        // offset shadow keep their exact layout.
-        public const string Title = "SKILL ISSUE!";
-        // The same name as it reads inside a sentence — share text, jokes, the
-        // Android share-sheet heading. Separate from Title because the logo's "!"
-        // collides with sentence punctuation ("…in Skill Issue!. Beat my map").
-        // Every player-visible mention goes through one of these two, so renaming
-        // the game is a two-line change instead of a hunt through string literals.
-        public const string Name = "Skill Issue";
+        // Title is the all-caps logo on the menu, drawn at 104pt with an offset
+        // shadow; Name is the same game as it reads inside a sentence (share text,
+        // jokes, the Android share-sheet heading). Every player-visible mention of
+        // the game goes through one of these two, so renaming is a two-line change
+        // here instead of a hunt through string literals scattered across the code.
+        public const string Title = "TRUST ISSUES";
+        public const string Name = "Trust Issues";
         public const string Mascot = "the Heir";
 
         // Palette — VAMPIRE: black night, blood red, candle gold.
