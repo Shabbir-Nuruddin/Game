@@ -216,10 +216,10 @@ namespace TrustIssues
             float e = 0f;
             while (e < tipTime)
             {
-                e += Time.deltaTime;
+                e += Time.fixedDeltaTime;
                 float k = e / tipTime;
                 _rb.MoveRotation(Mathf.Lerp(0f, tipAngle, k * k));   // accelerating, like a hinge giving way
-                yield return null;
+                yield return new WaitForFixedUpdate();
             }
             _rb.MoveRotation(tipAngle);
             GameRoot.I?.ShakeCam(0.18f, 0.1f);
@@ -274,10 +274,10 @@ namespace TrustIssues
             float e = 0f;
             while (e < slideTime)
             {
-                e += Time.deltaTime;
+                e += Time.fixedDeltaTime;
                 float k = Mathf.SmoothStep(0f, 1f, e / slideTime);
                 _rb.MovePosition(home + new Vector2(-travel * k, 0f));
-                yield return null;
+                yield return new WaitForFixedUpdate();
             }
             _rb.MovePosition(home + new Vector2(-travel, 0f));
         }
@@ -340,10 +340,10 @@ namespace TrustIssues
             float e = 0f;
             while (e < fallTime)
             {
-                e += Time.deltaTime;
+                e += Time.fixedDeltaTime;
                 float k = e / fallTime;
                 _rb.MovePosition(home + new Vector2(0f, -drop * k * k));   // gravity-ish
-                yield return null;
+                yield return new WaitForFixedUpdate();
             }
             _rb.MovePosition(home + new Vector2(0f, -drop));
             Destroy(gameObject, 0.3f);   // it is gone; nothing left to land on
@@ -408,7 +408,7 @@ namespace TrustIssues
             float e = 0f;
             while (e < riseTime)
             {
-                e += Time.deltaTime;
+                e += Time.fixedDeltaTime;
                 float k = Mathf.SmoothStep(0f, 1f, e / riseTime);
                 Vector2 at = home + new Vector2(0f, rise * k);
                 _rb.MovePosition(at);
@@ -423,7 +423,7 @@ namespace TrustIssues
                     kz.msg = "The floor pressed you into the ceiling.";
                     kz.trapTag = (int)TrapType.RiseFloor;
                 }
-                yield return null;
+                yield return new WaitForFixedUpdate();
             }
             GameRoot.I?.ShakeCam(0.3f, 0.2f);
         }
@@ -472,9 +472,9 @@ namespace TrustIssues
             float e = 0f;
             while (e < slamTime)
             {
-                e += Time.deltaTime;
+                e += Time.fixedDeltaTime;
                 _rb.MovePosition(home + new Vector2(dir * travel * (e / slamTime), 0f));
-                yield return null;
+                yield return new WaitForFixedUpdate();
             }
             _rb.MovePosition(home + new Vector2(dir * travel, 0f));
             yield return new WaitForSeconds(hold);
@@ -483,9 +483,9 @@ namespace TrustIssues
             e = 0f;
             while (e < 0.8f)
             {
-                e += Time.deltaTime;
+                e += Time.fixedDeltaTime;
                 _rb.MovePosition(home + new Vector2(dir * travel * (1f - e / 0.8f), 0f));
-                yield return null;
+                yield return new WaitForFixedUpdate();
             }
             _rb.MovePosition(home);
             _going = false;

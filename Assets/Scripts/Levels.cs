@@ -989,6 +989,34 @@ namespace TrustIssues
         // 1 — TRUST NOTHING. The handshake. One lie, one honest spike, the door.
         // Deliberately the smallest room in the castle: 24 units, about three
         // seconds, and the only thing it teaches is that the floor can be absent.
+        // ====================================================================
+        // WORLD 1 (floors 1-10) — ONE VERB AT A TIME.
+        //
+        // The first cut of this world introduced a brand-new killer on floors 2,
+        // 3, 4, 5, 6, 7 AND 8 — seven unfamiliar mechanics in seven floors, to a
+        // player still learning which thumb does what. Testers said the obstacles
+        // "just appear" and that the opening had "no progression", and they were
+        // describing exactly that: variety was being mistaken for teaching.
+        //
+        // Level Devil introduces ONE new idea per door of five levels. This world
+        // now introduces four across ten floors, and every one of them follows the
+        // same three-beat shape:
+        //
+        //   SHOW   the mechanic alone on its own floor, with nothing else that can
+        //          kill you and wide ground on both sides, so the first time you
+        //          meet it you can watch it work (and if it kills you, you KNOW
+        //          what did it).
+        //   USE    it again a floor later, this time paired with something you
+        //          already know, so it becomes a tool instead of a surprise.
+        //   MIX    it into the gatehouse recap at floor 10.
+        //
+        // SlamWall, RisePress and the lying exit are deliberately NOT here. They
+        // debut in World 2, which was already using them without ever teaching
+        // them.
+        // ====================================================================
+
+        // 1 — HONEST GROUND, ONE LIE. Walk, jump, and learn the promise of the
+        // game in a single step: the floor is not necessarily a floor.
         static Level L1()
         {
             var b = new B();
@@ -1000,154 +1028,146 @@ namespace TrustIssues
             return b.Finish();
         }
 
-        // 2 — THE FLOOR TIPS. The first betrayal that is not a hole: stone that
-        // leans under your weight and pours you into the gap beside it.
+        // 2 — STEADY HANDS. Nothing new. A spike and a saw, spaced out, over
+        // ground that behaves — the floor where the controls stop being the
+        // hard part. Cutting this to make room for another mechanic is what
+        // broke the opening the first time.
         static Level L2()
-        {
-            var b = new B();
-            b.Room(RoomRule.None);
-            b.Plat(4.5f);
-            b.TiltFloor(3f);                    // NEW: it leans, then it lets go
-            b.Plat(3.5f);
-            b.Gap(2.2f);
-            float a = b.Plat(6f); b.GrowSpike(a + 1.5f);
-            b.Gap(2.2f);
-            b.TiltFloor(2.8f);                  // …and again, now over a real drop
-            b.Plat(4.5f);
-            return b.Finish();
-        }
-
-        // 3 — THE FLOOR LEAVES. Same betrayal, opposite answer: this slab is
-        // still there, it just slides out of your way. Running beats jumping.
-        static Level L3()
-        {
-            var b = new B();
-            b.Room(RoomRule.None);
-            b.Plat(4.5f);
-            b.SlideFloor(3.2f);                 // NEW: it goes sideways, not down
-            b.Plat(4f);
-            float a = b.Plat(5f); b.Saw(a + 1f);
-            b.Gap(2.2f);
-            b.SlideFloor(3f);
-            float c = b.Plat(5.5f); b.Spike(c + 1.4f);
-            b.Plat(4f);
-            return b.Finish();
-        }
-
-        // 10 — THE GATEHOUSE. The world-1 recap, behind a biting portcullis:
-        // one of each verb, and the door itself is now a thing that can kill.
-        static Level L10()
-        {
-            var b = new B();
-            b.Room(RoomRule.None, 0.2f, true);
-            b.Plat(4.5f);
-            b.TiltFloor(2.8f);
-            float a = b.Plat(5f); b.CeilingVolley(a, 4);
-            b.Gap(2.2f);
-            b.SlideFloor(2.8f);
-            float c = b.Plat(5f); b.Saw(c + 1f);
-            b.Plat(4.5f);
-            return b.Finish();
-        }
-
-        // 4 — THE CEILING HAS TEETH. Everything so far came from below. This
-        // room's one idea arrives from directly above, aimed at where you are.
-        static Level L4()
-        {
-            var b = new B();
-            b.Room(RoomRule.None);
-            b.Plat(5f);
-            float a = b.Plat(7f); b.CeilingVolley(a, 5);   // NEW: fires in sequence, at you
-            b.Gap(2.2f);
-            float c = b.Plat(6f); b.Spike(c + 1.6f);
-            b.Gap(2.2f);
-            float d = b.Plat(6f); b.CeilingVolley(d, 4);
-            b.Plat(4f);
-            return b.Finish();
-        }
-
-        // 5 — THE LONG WAY DOWN. A slab that falls WITH you. It cannot kill you;
-        // it decides where you land, and the room below is not the room above.
-        static Level L5()
-        {
-            var b = new B();
-            b.Room(RoomRule.None);
-            b.Plat(5f);
-            b.DropFloor(3.4f);                  // NEW: rides down to a lower shelf
-            b.Plat(3.5f);
-            float a = b.Plat(6f); b.Pendulum(a);
-            b.Gap(2.3f);
-            b.DropFloor(3.2f);
-            float c = b.Plat(6f); b.Spike(c + 1.8f);
-            b.Plat(4f);
-            return b.Finish();
-        }
-
-        // 6 — THE WALL ARRIVES. The sides of the room join in: stone drives
-        // across the lane as you reach it, and the gap it leaves is the route.
-        static Level L6()
-        {
-            var b = new B();
-            b.Room(RoomRule.None);
-            float p = b.Plat(6f);
-            b.SlamWall(p + 3.5f, 3.4f);         // NEW: grinds in from off-lane
-            b.Plat(4f);
-            b.Gap(2.2f);
-            float a = b.Plat(6f); b.Saw(a + 1.2f);
-            float q = b.Plat(5f);
-            b.SlamWall(q, 3.2f, true);          // and from the other side
-            b.Plat(5f);
-            return b.Finish();
-        }
-
-        // 7 — THE PRESS. The Crusher spent six floors teaching you to stay low.
-        // This floor kills you for it: the ground rises into the ceiling.
-        static Level L7()
-        {
-            var b = new B();
-            b.Room(RoomRule.None);
-            b.Plat(5f);
-            b.RiseFloor(3f);                    // NEW: get off, or be pressed
-            b.Plat(4f);
-            float a = b.Plat(5f); b.Crusher(a);  // the lesson it inverts, side by side
-            b.Gap(2.2f);
-            b.RiseFloor(3f);
-            b.Plat(5f);
-            return b.Finish();
-        }
-
-        // 8 — THE COFFIN RUNS. The exit itself lies. Twice it backs away; the
-        // third approach catches it, so the joke ends with the player winning.
-        static Level L8()
         {
             var b = new B();
             b.Room(RoomRule.None);
             b.Plat(5f);
             float a = b.Plat(6f); b.Spike(a + 1.5f);
             b.Gap(2.2f);
-            b.TiltFloor(3f);
-            float c = b.Plat(6f); b.Saw(c);
-            float e = b.Plat(9f);
-            b.ShyExit(e - 2f);                  // NEW: it doesn't want to be caught
-            return b.FinishBare();
+            float c = b.Plat(6f); b.Saw(c + 1f);
+            b.Gap(2.2f);
+            b.Plat(5f);
+            return b.Finish();
         }
 
-        // 9 — ★ THE FIRST WALL. Flipped hands, over ground that will not hold
-        // still. Nothing new is introduced — that's what makes it a wall: it is
-        // floors 2, 3 and 6 at once, with the controls reversed.
+        // 3 — SHOW: THE FLOOR TIPS. Two tilting slabs and nothing else in the
+        // room. It creaks and reddens as you walk at it, and the only thing it
+        // can teach you is what a tipping floor does.
+        static Level L3()
+        {
+            var b = new B();
+            b.Room(RoomRule.None);
+            b.Plat(6f);
+            b.TiltFloor();                      // NEW — and the only hazard here
+            b.Plat(5f);
+            b.TiltFloor();                      // again, so the lesson lands twice
+            b.Plat(5f);
+            return b.Finish();
+        }
+
+        // 4 — USE: TIP INTO THE GAP. Same lean, now with somewhere to fall and a
+        // spike you already respect.
+        static Level L4()
+        {
+            var b = new B();
+            b.Room(RoomRule.None);
+            b.Plat(5f);
+            b.TiltFloor();
+            b.Plat(4f);
+            b.Gap(2.2f);
+            float a = b.Plat(6f); b.Spike(a + 1.5f);
+            b.Gap(2.2f);
+            b.TiltFloor();
+            b.Plat(5f);
+            return b.Finish();
+        }
+
+        // 5 — SHOW: THE FLOOR LEAVES. The opposite answer to floor 3. This slab
+        // is still there — it just isn't under you any more. Alone again.
+        static Level L5()
+        {
+            var b = new B();
+            b.Room(RoomRule.None);
+            b.Plat(6f);
+            b.SlideFloor();                     // NEW — slides out sideways
+            b.Plat(5f);
+            b.SlideFloor();
+            b.Plat(6f);
+            return b.Finish();
+        }
+
+        // 6 — USE: TIP OR SLIDE. The two floor betrayals in one room, back to
+        // back, because telling them apart at a glance is the actual skill.
+        static Level L6()
+        {
+            var b = new B();
+            b.Room(RoomRule.None);
+            b.Plat(5f);
+            b.TiltFloor();
+            b.Plat(4f);
+            b.SlideFloor();
+            b.Plat(4f);
+            float a = b.Plat(5f); b.Saw(a + 1f);
+            b.Plat(4f);
+            return b.Finish();
+        }
+
+        // 7 — SHOW: THE CEILING HAS TEETH. Everything so far came from below.
+        // This room's one idea arrives from directly above, aimed at where you
+        // are, and the ground is safe the whole way.
+        static Level L7()
+        {
+            var b = new B();
+            b.Room(RoomRule.None);
+            b.Plat(6f);
+            float a = b.Plat(7f); b.CeilingVolley(a, 5);   // NEW — fires in sequence, at you
+            b.Plat(5f);
+            float c = b.Plat(6f); b.CeilingVolley(c, 4);
+            b.Plat(5f);
+            return b.Finish();
+        }
+
+        // 8 — USE: TEETH AND STEEL. Volleys from above with saws on the floor,
+        // so "run through ahead of the wave" now costs something.
+        static Level L8()
+        {
+            var b = new B();
+            b.Room(RoomRule.None);
+            b.Plat(5f);
+            float a = b.Plat(6f); b.CeilingVolley(a, 4);
+            b.Gap(2.2f);
+            float c = b.Plat(6f); b.Saw(c + 1f);
+            b.Gap(2.2f);
+            float d = b.Plat(6f); b.CeilingVolley(d, 5);
+            b.Plat(4f);
+            return b.Finish();
+        }
+
+        // 9 — SHOW: THE TRAPDOOR. The one that actually kills you: the floor
+        // falls away into the dark and takes you with it. It gets a room of its
+        // own precisely BECAUSE it is lethal — the first time you meet it there
+        // must be nothing else to blame.
         static Level L9()
         {
             var b = new B();
-            b.Room(RoomRule.Reverse, 0.18f);
+            b.Room(RoomRule.None);
+            b.Plat(6f);
+            b.DropFloor();                      // NEW — and it does not stop
+            b.Plat(6f);
+            b.DropFloor();
+            b.Plat(6f);
+            return b.Finish();
+        }
+
+        // 10 — THE GATEHOUSE. The world-1 exam behind a biting portcullis: all
+        // four verbs you were taught, once each, in the order you learned them.
+        static Level L10()
+        {
+            var b = new B();
+            b.Room(RoomRule.None, 0.2f, true);
             b.Plat(4.5f);
-            b.TiltFloor(2.8f);
-            b.Plat(3f);
-            b.SlideFloor(3f);
-            float a = b.Plat(5f); b.Spike(a + 1.2f);
-            float q = b.Plat(4.5f);
-            b.SlamWall(q, 3f);
+            b.TiltFloor();
+            float a = b.Plat(5f); b.CeilingVolley(a, 4);
             b.Gap(2.2f);
-            b.Plat(5f);
+            b.SlideFloor();
+            b.Plat(4f);
+            b.DropFloor();
+            b.Plat(4.5f);
             return b.Finish();
         }
 
@@ -1239,19 +1259,22 @@ namespace TrustIssues
             return b.Finish();
         }
 
-        // 16 — THE FERRY. One unjumpable gap, one bobbing slab, and a wall that
-        // arrives while you are standing on it with nowhere to go.
+        // 16 — SHOW: THE WALL ARRIVES. The sides of the room join in. It gets
+        // the opening stretch to itself, on ground that cannot drop you, so the
+        // first wall you ever meet is one you are allowed to study — THEN the
+        // ferry, where the same trick has somewhere much worse to catch you.
         static Level L16()
         {
             var b = new B();
             b.Room(RoomRule.None);
+            float p = b.Plat(6f);
+            b.SlamWall(p + 3.5f, 3.4f);         // NEW — alone, over solid ground
             b.Plat(5f);
-            b.MoverGap(6.8f);
+            b.MoverGap(6.8f);                   // now the ferry
             float a = b.Plat(6f); b.Saw(a + 1.5f);
             float q = b.Plat(5f);
-            b.SlamWall(q, 3.2f);
-            b.Gap(2.2f);
-            b.Plat(5f);
+            b.SlamWall(q, 3.2f, true);          // and from the other side
+            b.Plat(4f);
             return b.Finish();
         }
 
@@ -1276,8 +1299,9 @@ namespace TrustIssues
         {
             var b = new B();
             b.Room(RoomRule.None);
-            b.Plat(4.5f);
-            b.RiseFloor(3f);
+            b.Plat(5f);
+            b.RiseFloor();                      // NEW — safe ground both sides
+            b.Plat(5f);
             b.Gap(2.4f);
             float a = b.Plat(5f); b.GrowSpike(a + 1.2f);
             b.Gap(2.4f);

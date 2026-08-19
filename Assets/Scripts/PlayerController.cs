@@ -19,6 +19,20 @@ namespace TrustIssues
         public float riseGravity = 3.4f;
         public float coyoteTime = 0.10f;
         public float jumpBuffer = 0.10f;
+        // MINIMUM JUMP TIME — the floor under variable jump height.
+        //
+        // Releasing the button swaps riseGravity (3.4) for fallGravity (5.5) and
+        // cuts the rise. With no lower bound that gave a jump of 14 against 3.4 a
+        // full arc of 2.94 units, and an instant release only 1.82 — a 62% spread
+        // decided by how long a finger happens to rest on glass. Physics ticks at
+        // 50 Hz, so a natural tap is 2-4 frames of contact and the player cannot
+        // feel the difference: identical-seeming taps produced visibly different
+        // jumps. That is the "sometimes too high, sometimes too low" report.
+        //
+        // Holding riseGravity for the first 0.12s regardless of release narrows the
+        // range to 2.37-2.94 (24%), which still rewards holding for the full arc but
+        // makes the short hop repeatable instead of a coin toss.
+        public float minJumpTime = 0.12f;
 
         // Momentum: velocity eases toward the input instead of snapping to it.
         // Ground is near-instant (precision stays king); the air keeps SOME
@@ -68,6 +82,7 @@ namespace TrustIssues
         float _coyote, _buffer;
         bool _jumpHeld;          // jump key/button still down — releasing mid-rise cuts the jump
         bool _risingFromJump;    // this rise came from OUR jump (not a trampoline/knock-up)
+        float _jumpAge;          // seconds since that jump left the ground (see minJumpTime)
         bool _grounded, _wasGrounded;
         float _inputX;
         bool _frozen;
@@ -468,7 +483,7 @@ namespace TrustIssues
             {
                 v.y = jumpSpeed * jumpMul * GravDir;         // inverted = jump "down" toward the floor
                 _buffer = 0f; _coyote = 0f;
-                _risingFromJump = true;
+                _risingFromJump = true; _jumpAge = 0f;
                 Audio.Play("jump", 0.5f);
                 Fx.Dust(transform.position + Vector3.down * (0.4f * GravDir));
             }
@@ -476,7 +491,7 @@ namespace TrustIssues
             {
                 v.y = jumpSpeed * jumpMul * GravDir;         // mid-air (double) jump
                 _buffer = 0f; _airJumpsLeft--;
-                _risingFromJump = true;
+                _risingFromJump = true; _jumpAge = 0f;
                 Audio.Play("jump", 0.6f);
             }
 
@@ -506,8 +521,9 @@ namespace TrustIssues
             // external launches and keep the full riseGravity arc regardless.
             // "Rising" = moving away from the current floor; the gravity scale
             // carries GravDir's sign so the rigidbody falls the right way.
+            _jumpAge += Time.fixedDeltaTime;
             if (_rb.linearVelocity.y * GravDir <= 0.1f) _risingFromJump = false;
-            bool cutJump = _risingFromJump && !_jumpHeld;
+            bool cutJump = _risingFromJump && !_jumpHeld && _jumpAge >= minJumpTime;
             _rb.gravityScale = ((_rb.linearVelocity.y * GravDir > 0.1f && !cutJump) ? riseGravity : fallGravity) * GravDir;
         }
     }
