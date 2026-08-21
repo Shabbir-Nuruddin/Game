@@ -53,3 +53,6 @@ node_modules/
 Shots/
 CodexStoryInterludes.log
 Assets/trust issues/
+
+# Claude Code local settings (machine-specific, never shared)
+.claude/settings.local.json
