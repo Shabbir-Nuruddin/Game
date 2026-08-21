@@ -1217,10 +1217,23 @@ namespace TrustIssues
         // 6 — USE: TIP OR SLIDE. The two floor betrayals in one room, because
         // telling them apart at a glance is the actual skill.
         //
-        // The saw that used to close this floor is gone to floor 22. A player who
-        // has seen exactly one slide slab does not also need a moving blade in
-        // the same breath — that pairing was the second half of the floor-5/6
-        // wall, and this floor's whole job is "tell the two floors apart".
+        // ...AND THEN SOMETHING THAT ISN'T THE FLOOR. Floors 3, 4, 5 and 6 were all
+        // answered by reading a betraying slab — four rooms in a row with one idea
+        // between them, landing on a new player's fourth to seventh minute, which
+        // is exactly when they decide whether this game has anything else in it.
+        // The hazard COUNT across that stretch is fine (2, 3, 1, 2); the variety is
+        // what was missing, so the fix is a different verb, not a harder floor.
+        //
+        // The SHOW floors (3 and 5) stay pure on purpose — a room that introduces a
+        // mechanic should contain nothing else. The USE floors are where a second
+        // verb belongs: 4 already closes on a spike, and 6 now closes on a saw.
+        //
+        // A saw and not something new: it was taught on floor 2, so this asks for a
+        // known answer at a moment when everything else on screen is about reading
+        // the ground. It also sits alone on its own wide platform AFTER both slabs,
+        // so the "tell the two floors apart" lesson still lands first and nothing
+        // here is ever two threats at once — that pairing is what made the old
+        // floor-5/6 wall, and it is not coming back.
         static Level L6()
         {
             var b = new B();
@@ -1229,7 +1242,9 @@ namespace TrustIssues
             b.TiltFloor();                      // taught on 3 and 4
             b.Plat(5f);
             b.SlideFloor();                     // taught on 5
-            b.Plat(6f);
+            b.Plat(5f);
+            float s = b.Plat(6f); b.Saw(s + 1.5f);   // taught on 2 — the room's one non-floor beat
+            b.Plat(5f);
             return b.Finish();
         }
 

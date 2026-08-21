@@ -1717,22 +1717,38 @@ namespace TrustIssues
             BuildCastlePlate(root, mid);
 
             // ---- The footer ----------------------------------------------------------
-            // The design's three, plus the two it dropped: Multiplayer and the
-            // Leaderboard are working features, and a feature you can't reach is a
-            // feature you don't have.
+            // The design's three, plus the ones it dropped: Multiplayer, the
+            // Leaderboard and the map editor are all working features, and a feature
+            // you can't reach is a feature you don't have.
+            //
+            // BUILD A TRAP is the important one. It was fully written — paint a
+            // level, prove it is beatable, share the code, watch a friend die on it
+            // — and every reference to ShowMapEditor came from inside the editor
+            // itself, so nothing could ever open it. For a game that plans to grow
+            // by word of mouth that is the wrong feature to leave unreachable: a
+            // trap somebody built on purpose to ruin a specific friend's day is the
+            // only thing here that makes a player do the advertising.
             (string label, System.Action go)[] nav =
             {
                 ("WARDROBE", ShowWardrobe),
                 ($"BESTIARY {Codex.KnownCount()}/{Codex.Total}", ShowCodex),
+                ("BUILD A TRAP", ShowMapEditor),
                 ("MULTIPLAYER", ShowVersusLobby),
                 ("LEADERBOARD", () => ShowLeaderboard("daily")),
                 ("SETTINGS", ShowSettings),
             };
+            // Laid out from the row's own width rather than a hardcoded step. The
+            // old .135 + i * .1475 was measured by hand for exactly five buttons, so
+            // adding a sixth pushed it off the right edge of the artwork; deriving
+            // the step means the row stays centred at any count.
+            const float NavLeft = 0.085f, NavRight = 0.915f, NavGap = 0.008f;
+            float navStep = (NavRight - NavLeft) / nav.Length;
+            float navW = navStep - NavGap;
             for (int i = 0; i < nav.Length; i++)
             {
-                float x0 = .135f + i * .1475f;
-                Crimson.MetalBtnIn(Slot(root, "Nav" + i, x0, .7844f, x0 + .14f, .8422f),
-                    nav[i].label, nav[i].go, 20);
+                float x0 = NavLeft + i * navStep;
+                Crimson.MetalBtnIn(Slot(root, "Nav" + i, x0, .7844f, x0 + navW, .8422f),
+                    nav[i].label, nav[i].go, 19);
             }
 
             // A curse is rare and loud, so it gets its own line rather than a corner.
@@ -1743,7 +1759,8 @@ namespace TrustIssues
 
             // Balance top-left, streak top-right, exactly as the design frames them —
             // in fractions, or a phone's short canvas pushes them off the top edge.
-            Crimson.BloodCounterIn(Slot(root, "Blood", .156f, .062f, .268f, .108f), 30);
+            if (Currency.Visible)
+                Crimson.BloodCounterIn(Slot(root, "Blood", .156f, .062f, .268f, .108f), 30);
             if (Meta.Streak > 0 && Meta.StreakAlive)
                 Crimson.ChipIn(Slot(root, "Streak", .766f, .062f, .906f, .108f),
                     $"{Meta.Streak}-NIGHT STREAK", 21, Crimson.Gold);
@@ -1935,15 +1952,22 @@ namespace TrustIssues
             FitLine(Slot(root, "WelcomeName", .142f, .918f, .2385f, .948f),
                 Meta.Nick.ToUpperInvariant(), 26, Crimson.BloodHot, TextAnchor.MiddleLeft);
 
-            // Right: tonight's tithe, in the painted reward plate. The chip starts
-            // after the painted gift box.
+            // Right: the return-visit plate. While the economy is hidden this shows
+            // the STREAK rather than the payout — a daily reward denominated in a
+            // currency the player cannot spend is worse than no reward at all, but
+            // "you have come back four nights running" is a real thing to say and
+            // needs no shop to mean something. Restores itself the moment
+            // Currency.Visible goes back on.
             Skin.Chip(root, .812f, .885f, .901f, .950f, Skin.Interior);
             FitLine(Slot(root, "TitheKicker", .814f, .888f, .901f, .916f),
-                $"NIGHTLY TITHE · NIGHT {Mathf.Max(1, Meta.Streak)}", 15, Crimson.Mute,
+                Currency.Visible ? $"NIGHTLY TITHE · NIGHT {Mathf.Max(1, Meta.Streak)}"
+                                 : "THE CASTLE REMEMBERS", 15, Crimson.Mute,
                 TextAnchor.MiddleLeft);
             FitLine(Slot(root, "TitheValue", .814f, .918f, .901f, .948f),
-                tithe > 0 ? $"+{tithe} BLOOD" : "ALREADY PAID", 26,
-                tithe > 0 ? Crimson.GoldLit : Crimson.Body, TextAnchor.MiddleLeft);
+                Currency.Visible ? (tithe > 0 ? $"+{tithe} BLOOD" : "ALREADY PAID")
+                                 : $"NIGHT {Mathf.Max(1, Meta.Streak)}", 26,
+                Currency.Visible && tithe > 0 ? Crimson.GoldLit : Crimson.Body,
+                TextAnchor.MiddleLeft);
         }
 
         // An empty rect in ARTWORK space — fractions of the screen from the top-left,
@@ -2457,7 +2481,7 @@ namespace TrustIssues
             Crimson.Place(mark, top, new Vector2(70, -62), Vector2.one * 22f);
             Crimson.Line(root, "SETTINGS", 40, Crimson.Bone, new Vector2(104, -62), new Vector2(500, 56),
                 TextAnchor.MiddleLeft, top).fontStyle = FontStyle.Bold;
-            Crimson.BloodCounter(root, new Vector2(1f, 1f), new Vector2(-190, -62), 26);
+            if (Currency.Visible) Crimson.BloodCounter(root, new Vector2(1f, 1f), new Vector2(-190, -62), 26);
 
             string[] tabs = { "AUDIO", "CONTROLS", "DIFFICULTY", "DATA & LEGAL" };
             _settingsTab = Mathf.Clamp(_settingsTab, 0, tabs.Length - 1);
@@ -3070,7 +3094,7 @@ namespace TrustIssues
                 new Vector2(1f, 0f), new Vector2(-120, 52), new Vector2(212, 62),
                 descend, selHere, 22, null, false, !selLocked);
 
-            Crimson.BloodCounter(root, new Vector2(1f, 0f), new Vector2(-210, 74), 28);
+            if (Currency.Visible) Crimson.BloodCounter(root, new Vector2(1f, 0f), new Vector2(-210, 74), 28);
             // BACK lives in the top-right, out of the road's way and clear of the
             // selection plate that owns the bottom-left corner.
             Crimson.Btn(root, "‹  BACK", new Vector2(1f, 1f), new Vector2(-140, -150), new Vector2(220, 60),
