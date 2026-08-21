@@ -2,13 +2,14 @@
 // Charts are created once and updated in place on refresh.
 
 const COLORS = {
-  blood: '#e23b3b', bloodDk: '#7a1622', purple: '#7a2bb0',
-  gold: '#e0b33a', green: '#3ec97a', mid: '#9a8aa3', grid: 'rgba(255,255,255,.07)',
+  blood: '#e01834', bloodDk: '#5c0a16', purple: '#7a2bb0',
+  gold: '#c9a24b', green: '#4bbf7a', mid: '#8a7068',
+  grid: 'rgba(201,162,75,.09)',
 };
-const MODE_COLOR = { Curated: '#8e7bb0', Endless: '#7a2bb0', Daily: '#e23b3b', Versus: '#e0b33a' };
+const MODE_COLOR = { Curated: '#c9a24b', Endless: '#7a2bb0', Daily: '#e01834', Versus: '#4bbf7a' };
 
-Chart.defaults.color = '#9a8aa3';
-Chart.defaults.font.family = 'Segoe UI, Roboto, sans-serif';
+Chart.defaults.color = '#8a7068';
+Chart.defaults.font.family = 'Segoe UI, Roboto, system-ui, sans-serif';
 Chart.defaults.plugins.legend.labels.boxWidth = 12;
 
 const charts = {};

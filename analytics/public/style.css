@@ -1,136 +1,299 @@
+/* =====================================================================
+   TRUST ISSUES — ANALYTICS
+   Wearing the game's own skin, not a generic dark dashboard.
+
+   The palette is lifted straight from Crimson.cs so the dashboard reads as
+   part of the same object as the game: near-black stone, dried blood, one
+   gold accent, bone type. That is not decoration for its own sake — this is
+   the screen where the game gets judged, and a page that looks like the
+   thing it measures is one you actually open.
+   ===================================================================== */
+
 :root {
-  --bg: #0e0a12;
-  --panel: #181020;
-  --panel2: #20142b;
-  --ink: #f3e9ee;
-  --muted: #9a8aa3;
-  --blood: #e23b3b;
-  --blood-dk: #7a1622;
-  --purple: #7a2bb0;
-  --gold: #e0b33a;
-  --line: #2c1d38;
+  /* Stone — the ground everything sits on. */
+  --night:      #070309;
+  --stone:      #0d0610;
+  --plate:      #13070e;
+  --plate-lit:  #1a0b13;
+
+  /* Blood — the accent that carries alarm and identity at once. */
+  --blood:      #b9152a;
+  --blood-hot:  #e01834;
+  --blood-lit:  #e0384c;
+  --blood-deep: #5c0a16;
+
+  /* Gold — used sparingly. If everything is gold, nothing is. */
+  --gold:       #c9a24b;
+  --gold-lit:   #e8c87a;
+
+  /* Type. */
+  --bone:       #f0e2ce;
+  --bone-dim:   #d8c6b0;
+  --mute:       #8a7068;
+  --faint:      #6b5750;
+
+  /* Verdict colours for benchmarked numbers. */
+  --good:       #4bbf7a;
+  --warn:       #d9a13a;
+  --bad:        #e0384c;
+
+  --rail:       #7a5a2c;
+  --rail-dim:   #3a2a18;
+  --hair:       rgba(201, 162, 75, 0.16);
+
+  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --sans:  "Segoe UI", Roboto, system-ui, sans-serif;
 }
 
 * { box-sizing: border-box; }
 
 body {
   margin: 0;
-  background: radial-gradient(1200px 600px at 70% -10%, #2a1020 0%, var(--bg) 60%);
-  color: var(--ink);
-  font: 15px/1.45 -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  padding: 0 28px 64px;
+  background:
+    radial-gradient(1200px 620px at 78% -8%, rgba(224, 24, 52, 0.16), transparent 62%),
+    radial-gradient(820px 420px at 12% 4%, rgba(122, 43, 176, 0.09), transparent 60%),
+    var(--night);
+  color: var(--bone-dim);
+  font-family: var(--sans);
   min-height: 100vh;
 }
 
+/* ---- Header ---------------------------------------------------------- */
+
 header {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
+  gap: 24px;
   flex-wrap: wrap;
-  gap: 12px;
-  padding: 20px 28px;
-  border-bottom: 1px solid var(--line);
+  padding: 30px 0 20px;
+  border-bottom: 1px solid var(--hair);
+  margin-bottom: 8px;
 }
 
 h1 {
   margin: 0;
-  font-size: 26px;
-  letter-spacing: 1px;
-  color: var(--blood);
+  font-family: var(--serif);
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--blood-hot);
+  text-shadow: 0 0 26px rgba(224, 24, 52, 0.45);
 }
-.sub { margin: 2px 0 0; color: var(--muted); font-size: 14px; }
 
-/* Section headers between metric groups */
-h2.section {
-  margin: 30px 28px 4px;
-  font-size: 13px;
-  letter-spacing: 2px;
+.sub {
+  margin: 6px 0 0;
+  font-size: 12px;
+  letter-spacing: 0.22em;
   text-transform: uppercase;
-  color: var(--gold);
-  border-bottom: 1px solid var(--line);
-  padding-bottom: 8px;
+  color: var(--faint);
 }
-h2.section .note { color: var(--muted); letter-spacing: 0; text-transform: none; font-weight: 400; font-style: italic; }
-.card h3 { margin: 0 0 12px; font-size: 14px; color: var(--gold); font-weight: 600; }
 
 .bar { display: flex; align-items: center; gap: 14px; }
-.status { color: var(--muted); font-size: 13px; }
-.status.err { color: var(--blood); }
+
+.status {
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  color: var(--mute);
+}
+.status.err { color: var(--blood-lit); }
 
 button {
-  background: var(--blood-dk);
-  color: #fff;
-  border: 1px solid #a3263a;
-  padding: 8px 16px;
-  border-radius: 8px;
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--bone);
+  background: linear-gradient(180deg, var(--blood) 0%, var(--blood-deep) 100%);
+  border: 1px solid var(--rail);
+  border-radius: 3px;
+  padding: 10px 20px;
   cursor: pointer;
-  font-weight: 600;
+  transition: filter 0.15s, transform 0.05s;
 }
-button:hover { background: #99203a; }
+button:hover  { filter: brightness(1.22); }
+button:active { transform: translateY(1px); }
+
+/* ---- Section headings ------------------------------------------------ */
+/* A rule that runs to the right edge, with the title sitting in it — the
+   same "heading interrupts a hairline" device the game's menus use. */
+
+.section {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 44px 0 18px;
+  font-family: var(--serif);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+.section::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, var(--hair), transparent);
+}
+.section .note {
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  text-transform: none;
+  color: var(--faint);
+}
+
+/* A section that is the point of the page rather than background reading. */
+.section.primary { color: var(--blood-lit); }
+.section.primary::after {
+  background: linear-gradient(90deg, rgba(224, 56, 76, 0.28), transparent);
+}
+
+/* ---- KPI cards ------------------------------------------------------- */
 
 .kpis {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(178px, 1fr));
   gap: 14px;
-  padding: 22px 28px 6px;
 }
+
 .kpi {
   position: relative;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 16px 18px;
+  background: linear-gradient(180deg, var(--plate-lit), var(--plate));
+  border: 1px solid var(--rail-dim);
+  border-radius: 4px;
+  padding: 18px 18px 16px;
+  overflow: hidden;
 }
-.kpi .n { font-size: 30px; font-weight: 700; color: #fff; }
-.kpi .l { color: var(--ink); font-size: 13px; margin-top: 2px; font-weight: 600; }
-.kpi .sub2 { color: var(--muted); font-size: 12px; margin-top: 1px; }
-.kpi .bench { color: var(--muted); font-size: 11px; margin-top: 6px; }
-/* benchmark coloring */
-.kpi.good { border-color: rgba(62,201,122,.5); }
-.kpi.good .n { color: var(--green); }
-.kpi.warn .n { color: var(--gold); }
-.kpi.bad  .n { color: var(--blood); }
-.kpi.muted { opacity: .55; }
-.kpi.muted .n { color: var(--muted); }
+/* The blood seam down the left edge — colour-coded by verdict below. */
+.kpi::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 2px;
+  background: var(--rail-dim);
+}
+.kpi.good::before { background: var(--good); }
+.kpi.warn::before { background: var(--warn); }
+.kpi.bad::before  { background: var(--bad); }
 
-.money-help {
-  margin: 10px 28px 4px;
-  padding: 14px 18px;
-  background: var(--panel);
-  border: 1px dashed var(--line);
-  border-radius: 12px;
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 1.6;
+.kpi .n {
+  font-family: var(--serif);
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1.05;
+  color: var(--bone);
 }
-.money-help b { color: var(--ink); }
+.kpi.good .n { color: var(--good); }
+.kpi.warn .n { color: var(--warn); }
+.kpi.bad  .n { color: var(--bad); }
+
+.kpi .l {
+  margin-top: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--mute);
+}
+.kpi .sub2 { margin-top: 3px; font-size: 11px; color: var(--faint); }
+.kpi .bench {
+  margin-top: 9px;
+  padding-top: 8px;
+  border-top: 1px solid var(--rail-dim);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--faint);
+}
+
+/* ---- Chart cards ----------------------------------------------------- */
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
   gap: 16px;
-  padding: 16px 28px 40px;
 }
+
 .card {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 16px 18px 20px;
-  min-width: 0;
+  background: linear-gradient(180deg, var(--plate-lit), var(--plate));
+  border: 1px solid var(--rail-dim);
+  border-radius: 4px;
+  padding: 18px 20px 20px;
+  min-height: 300px;
+  display: flex;
+  flex-direction: column;
 }
-.card.wide { grid-column: 1 / -1; }
-/* full-width chart cards that live directly under <body> (not in the grid) */
-body > .card { margin: 14px 28px; }
-.card h2 { margin: 0 0 12px; font-size: 15px; color: var(--gold); font-weight: 600; }
-canvas { max-height: 320px; }
+.card.wide { grid-column: 1 / -1; margin-top: 16px; }
 
-.tablewrap { max-height: 340px; overflow: auto; }
-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
-td.props { color: var(--muted); white-space: normal; word-break: break-word; }
-.tag { background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 1px 8px; font-size: 12px; }
+.card h3 {
+  margin: 0 0 4px;
+  font-family: var(--serif);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--gold-lit);
+}
+/* The one line that says what to DO about the chart underneath. A dashboard
+   nobody can act on is a screensaver. */
+.card .why {
+  margin: 0 0 14px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--faint);
+}
+.card canvas { flex: 1; min-height: 210px; }
 
-footer { text-align: center; color: var(--muted); font-size: 12px; padding: 0 0 30px; }
+/* ---- Live event table ------------------------------------------------ */
+
+.tablewrap { overflow: auto; max-height: 300px; }
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+td {
+  padding: 7px 10px;
+  border-bottom: 1px solid rgba(201, 162, 75, 0.07);
+  color: var(--mute);
+  white-space: nowrap;
+}
+tr td:first-child { color: var(--bone-dim); font-weight: 600; }
+tr:hover td { background: rgba(224, 24, 52, 0.05); }
+
+/* ---- Footer / helper prose ------------------------------------------- */
+
+.money-help {
+  margin: 14px 0 0;
+  padding: 16px 18px;
+  background: rgba(19, 7, 14, 0.7);
+  border-left: 2px solid var(--rail-dim);
+  border-radius: 3px;
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: var(--faint);
+}
+.money-help b { color: var(--mute); }
+
+footer {
+  margin-top: 52px;
+  padding-top: 20px;
+  border-top: 1px solid var(--hair);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--faint);
+  text-align: center;
+}
+
+/* ---- Phone ----------------------------------------------------------- */
+/* The dashboard gets checked on a phone more than a desk, so the grids
+   collapse to one column and the big numbers stay legible. */
 
 @media (max-width: 760px) {
+  body { padding: 0 14px 44px; }
+  h1 { font-size: 25px; }
   .grid { grid-template-columns: 1fr; }
+  .kpis { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+  .kpi .n { font-size: 27px; }
+  .card { min-height: 260px; padding: 15px 15px 17px; }
+  .section { margin: 32px 0 14px; font-size: 13px; letter-spacing: 0.2em; }
 }

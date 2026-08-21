@@ -1705,13 +1705,46 @@ namespace TrustIssues
             // wider than 16:9, the painting stretches to fill it, and anything pinned
             // at a fixed offset from the centre drifts off its painted spot — which
             // is exactly how the bottom row ended up sitting on the painted plates.
-            Crimson.MetalBtnIn(Slot(root, "BloodMoon", .30f, .4356f, .70f, .5178f),
-                "BLOOD MOON", StartDaily, 30, $"TONIGHT  ·  {DailyLen} FLOORS  ·  SHARED SEED");
-            Crimson.MetalBtnIn(Slot(root, "Castle", .30f, .5333f, .70f, .6156f),
-                "THE CASTLE", OpenCastleMap, 30,
-                $"FLOOR {Mathf.Min(CastleUnlocked + 1, Levels.Count)} OF {Levels.Count}");
-            Crimson.MetalBtnIn(Slot(root, "Endless", .30f, .6311f, .70f, .7244f),
-                "ENDLESS NIGHTS", StartEndless, 38, "ONE RUN  ·  NO BOTTOM");
+            // ---- ONE BUTTON THAT IS OBVIOUSLY THE BUTTON --------------------------
+            //
+            // This used to be three equal plates — Blood Moon, the Castle, Endless —
+            // stacked and identically sized, with the HARDEST and most niche mode in
+            // the top slot where the eye lands first. So every visit opened with a
+            // decision, and the Castle plate did not even start the game: it opened
+            // the map. Resuming a run you were already in the middle of cost four
+            // taps — menu, map, floor, DESCEND.
+            //
+            // PlayNow() and PlayNowCaption() were written to fix exactly this and
+            // were never called by anything. They resume whatever you last played —
+            // floor N of the Castle, tonight's Blood Moon, a fresh Endless run — and
+            // drop a first-time player straight into floor 1.
+            //
+            // So the screen now leads with one dominant plate that says CONTINUE —
+            // FLOOR 12 and puts you there in a single tap, and the three modes become
+            // a quiet row underneath for when you actually want to switch. The
+            // complaint about this screen was never the NUMBER of things on it; it
+            // was that everything looked equally important, so nothing read as the
+            // way back into the game.
+            Crimson.MetalBtnIn(Slot(root, "PlayNow", .255f, .4356f, .745f, .5560f),
+                PlayNowCaption(), PlayNow, 40, ResumeCaption());
+
+            // The three ways down, demoted to one row. CASTLE opens the map here —
+            // browsing floors is a deliberate act, not the default — while the plate
+            // above skips it entirely.
+            (string label, System.Action go, string cap)[] ways =
+            {
+                ("CASTLE",  OpenCastleMap, $"MAP  ·  {Mathf.Min(CastleUnlocked + 1, Levels.Count)}/{Levels.Count}"),
+                ("ENDLESS", StartEndless,  "NO BOTTOM"),
+                ("MOON",    StartDaily,    $"{DailyLen} FLOORS"),
+            };
+            const float WaysL = 0.255f, WaysR = 0.745f, WaysGap = 0.014f;
+            float wayStep = (WaysR - WaysL) / ways.Length;
+            for (int i = 0; i < ways.Length; i++)
+            {
+                float x0 = WaysL + i * wayStep;
+                Crimson.MetalBtnIn(Slot(root, "Way" + i, x0, .5860f, x0 + wayStep - WaysGap, .6560f),
+                    ways[i].label, ways[i].go, 24, ways[i].cap);
+            }
 
             BuildRecordPlate(root, mid);
             BuildCastlePlate(root, mid);
@@ -3574,6 +3607,32 @@ namespace TrustIssues
                 default:        StartGame(Mathf.Min(CastleUnlocked, Levels.Count - 1)); break;
             }
             _modeSelectSource = "menu";
+        }
+
+        /// <summary>
+        /// The small line under the big button. PlayNowCaption says WHERE it takes
+        /// you; this says why it is worth going — the floor's name for the Castle,
+        /// the record to beat for Endless.
+        ///
+        /// A resume button that only says "CONTINUE" asks the player to remember
+        /// what they were doing. Naming the room they are walking back into is the
+        /// difference between a button and an invitation.
+        /// </summary>
+        string ResumeCaption()
+        {
+            if (FreshPlayer) return "STRAIGHT DOWN  ·  TRUST NOTHING";
+            switch (PlayerPrefs.GetString("ti_last_mode", "Curated"))
+            {
+                case "Daily":
+                    return Meta.Streak > 1 ? $"{Meta.Streak}-NIGHT STREAK ON THE LINE"
+                                           : "TONIGHT'S SHARED SEED";
+                case "Endless":
+                    int deep = PlayerPrefs.GetInt("best_endless_distance", 0);
+                    return deep > 0 ? $"YOUR RECORD  ·  {deep:N0}m" : "SET A FIRST RECORD";
+                default:
+                    int f = Mathf.Min(CastleUnlocked, Levels.Count - 1);
+                    return Floors.Name(f).ToUpperInvariant();
+            }
         }
 
         // What the big button promises — mirrors PlayNow's routing exactly.

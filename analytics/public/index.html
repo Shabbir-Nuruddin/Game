@@ -10,8 +10,8 @@
 <body>
   <header>
     <div>
-      <h1>🧛 TRUST ISSUES</h1>
-      <p class="sub">Live player analytics</p>
+      <h1>TRUST ISSUES</h1>
+      <p class="sub">Live player telemetry</p>
     </div>
     <div class="bar">
       <span id="status" class="status">loading…</span>
@@ -19,66 +19,109 @@
     </div>
   </header>
 
-  <!-- ACTIVE USERS -->
-  <h2 class="section">Active players</h2>
-  <section class="kpis" id="kpi-active"></section>
+  <!--
+    ORDERED BY WHAT YOU CAN ACT ON, NOT BY CONVENTION.
 
-  <!-- RETENTION -->
-  <h2 class="section">Retention <span class="note">“the multiplier on everything else”</span></h2>
+    The old page opened with DAU / WAU / MAU / stickiness — the standard
+    free-to-play header. Those are the right numbers for a game with a
+    marketing budget and a live-ops team, and the wrong ones to put first
+    here: with a handful of testers they are single digits that move for
+    no reason, and none of them tells anyone what to change on Monday.
+
+    The question this game actually has is "which floor makes people stop
+    playing". So the funnel, the deaths-per-floor and the time-per-floor go
+    at the top, and the audience numbers move below them, where they belong
+    until there is an audience worth counting.
+  -->
+
+  <h2 class="section primary">Where players stop <span class="note">the only question that matters right now</span></h2>
+  <section class="grid">
+    <div class="card wide">
+      <h3>Drop-off funnel — how far players get</h3>
+      <p class="why">
+        The tallest cliff is your wall. Everything after it is content almost nobody
+        has seen, so fixing anything past the cliff is wasted work until the cliff moves.
+      </p>
+      <canvas id="funnel"></canvas>
+    </div>
+    <div class="card wide">
+      <h3>Deaths per floor — which floors are hardest</h3>
+      <p class="why">
+        High deaths on a floor people still clear is a good floor. High deaths on the
+        floor where the funnel drops is the thing to change. Read this chart together
+        with the one above it, never alone.
+      </p>
+      <canvas id="deaths"></canvas>
+    </div>
+    <div class="card">
+      <h3>Time per floor (avg seconds)</h3>
+      <p class="why">
+        A floor that eats minutes without a matching death count is confusing rather
+        than hard — players are wandering, not failing.
+      </p>
+      <canvas id="time"></canvas>
+    </div>
+    <div class="card">
+      <h3>What kills players</h3>
+      <p class="why">
+        One trap dominating this list is a trap that is either overused or unfair. The
+        campaign is built to spread deaths across the roster.
+      </p>
+      <canvas id="causes"></canvas>
+    </div>
+  </section>
+
+  <h2 class="section">Retention <span class="note">the multiplier on everything else</span></h2>
   <section class="kpis" id="kpi-retention"></section>
   <div class="card wide">
     <h3>Retention curve — % of new players still active N days later</h3>
+    <p class="why">
+      D1 is the honest verdict on the first session. If D1 is weak, nothing further
+      down this page can be fixed by adding content.
+    </p>
     <canvas id="retentionCurve"></canvas>
   </div>
 
-  <!-- ENGAGEMENT -->
   <h2 class="section">Engagement</h2>
   <section class="kpis" id="kpi-engagement"></section>
+  <div class="card wide">
+    <h3>Mode popularity</h3>
+    <p class="why">
+      Which of the three ways down players actually choose. A mode nobody picks is a
+      mode to cut from the landing, not to improve.
+    </p>
+    <canvas id="modes"></canvas>
+  </div>
+
+  <h2 class="section">Audience <span class="note">small numbers here are expected during testing</span></h2>
+  <section class="kpis" id="kpi-active"></section>
   <div class="card wide">
     <h3>Daily active players — new vs returning</h3>
     <canvas id="activeDaily"></canvas>
   </div>
 
-  <!-- GAMEPLAY -->
-  <h2 class="section">Gameplay &amp; design</h2>
-  <section class="grid">
-    <div class="card">
-      <h3>Mode popularity</h3>
-      <canvas id="modes"></canvas>
-    </div>
-    <div class="card">
-      <h3>Drop-off funnel — how far players get</h3>
-      <canvas id="funnel"></canvas>
-    </div>
-    <div class="card wide">
-      <h3>Deaths per level — which levels are hardest</h3>
-      <canvas id="deaths"></canvas>
-    </div>
-    <div class="card wide">
-      <h3>Time spent per level (avg seconds) — where players linger</h3>
-      <canvas id="time"></canvas>
-    </div>
-    <div class="card">
-      <h3>What kills players</h3>
-      <canvas id="causes"></canvas>
-    </div>
-    <div class="card">
-      <h3>Recent events (live)</h3>
-      <div class="tablewrap"><table id="recent"><tbody></tbody></table></div>
-    </div>
-  </section>
+  <h2 class="section">Live feed</h2>
+  <div class="card wide">
+    <h3>Recent events</h3>
+    <p class="why">
+      Raw event stream, newest first. Useful for confirming a build is reporting at
+      all — if this is empty after someone plays, the client is not reaching the server.
+    </p>
+    <div class="tablewrap"><table id="recent"><tbody></tbody></table></div>
+  </div>
 
-  <!-- MONETIZATION (framework, not yet tracked) -->
-  <h2 class="section">Monetization <span class="note">not tracked yet — free game, no purchases/ads</span></h2>
+  <h2 class="section">Monetization <span class="note">not tracked — free game, no purchases or ads</span></h2>
   <section class="kpis" id="kpi-money"></section>
   <p class="money-help">
-    These are the revenue KPIs from the standard game-analytics framework. They light up once the
-    game has purchases, ads, or paid installs. To enable them we'd add <b>purchase</b>/<b>ad_impression</b>
-    events (for ARPU, ARPPU, conversion, LTV) and an <b>install source</b> tag (for CPI). Rule of thumb:
-    <b>LTV must exceed CPI</b> or the model breaks.
+    These are the revenue KPIs from the standard game-analytics framework, shown as a
+    placeholder for the shape of the model rather than as anything to act on. They light
+    up once the game has purchases, ads, or paid installs — which would mean adding
+    <b>purchase</b> / <b>ad_impression</b> events (for ARPU, ARPPU, conversion, LTV) and an
+    <b>install source</b> tag (for CPI). The rule the whole model rests on:
+    <b>LTV must exceed CPI</b>, or buying players loses money on every install.
   </p>
 
-  <footer>Anonymous gameplay telemetry · auto-refreshes every 30s · benchmarks shown are mobile free-to-play norms</footer>
+  <footer>Anonymous gameplay telemetry · auto-refreshes every 30s · benchmarks are mobile free-to-play norms</footer>
   <script src="app.js"></script>
 </body>
 </html>
