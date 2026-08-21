@@ -7193,6 +7193,7 @@ namespace TrustIssues
                                      : $"NIGHT {_levelIndex + 1} OF {DailyLen}",
                 blood      = Currency.Balance,
                 earned     = Mathf.Max(0, Currency.Balance - _runBloodStart),
+                deaths     = _deaths,
                 unit       = endless ? "METRES" : "NIGHTS",
                 score      = score,
                 best       = best,

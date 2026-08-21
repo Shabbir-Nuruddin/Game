@@ -51,6 +51,8 @@ namespace TrustIssues
             public string modeLabel = "ENDLESS NIGHT";  // top-left caption
             public string runLabel = "RUN 1";           // …and the line under it
             public int blood, earned;                   // balance, and what this run paid
+            public int deaths;                          // this run's tally — shown in place of
+                                                        // the payout while the economy is hidden
             public string headline = "YOU PERISHED";
             public string unit = "METRES";              // METRES for Endless, NIGHTS for Blood Moon
             public int score, best;                     // this run, and your record
@@ -87,12 +89,18 @@ namespace TrustIssues
             Label(surface, 82, 83, 400, 20, d.runLabel, 22, Gold, TextAnchor.UpperLeft, true);
 
             // The blood chip, right-aligned: a drop, the balance, and what tonight paid.
-            var chip = Box(surface, "BloodChip", 1518 - 300, 56, 300, 40);
-            Fill(chip, new Color(14 / 255f, 6 / 255f, 10 / 255f, 0.9f), Rail);
-            var drop = Crimson.Img(chip, "Drop", Theme.Circle, Theme.Hex("C21024"));
-            Crimson.Place(drop, new Vector2(0f, 0.5f), new Vector2(26, 0), new Vector2(17, 21));
-            LabelIn(chip, 44, 0, 110, 40, d.blood.ToString("N0"), 24, GoldLit, TextAnchor.MiddleLeft, true);
-            LabelIn(chip, 150, 0, 138, 40, $"+{d.earned} THIS RUN", 14, Faint, TextAnchor.MiddleRight);
+            // Hidden with the rest of the economy while the Crypt Shop has no door —
+            // the death screen is the worst place to show a growing number that buys
+            // nothing, because it is the screen a losing player reads most often.
+            if (Currency.Visible)
+            {
+                var chip = Box(surface, "BloodChip", 1518 - 300, 56, 300, 40);
+                Fill(chip, new Color(14 / 255f, 6 / 255f, 10 / 255f, 0.9f), Rail);
+                var drop = Crimson.Img(chip, "Drop", Theme.Circle, Theme.Hex("C21024"));
+                Crimson.Place(drop, new Vector2(0f, 0.5f), new Vector2(26, 0), new Vector2(17, 21));
+                LabelIn(chip, 44, 0, 110, 40, d.blood.ToString("N0"), 24, GoldLit, TextAnchor.MiddleLeft, true);
+                LabelIn(chip, 150, 0, 138, 40, $"+{d.earned} THIS RUN", 14, Faint, TextAnchor.MiddleRight);
+            }
 
             // ---- the headline, in the dripping face ------------------------------
             // The mockup gives it a red bloom, not a drop shadow. A hard offset copy
@@ -162,11 +170,17 @@ namespace TrustIssues
             // ---- the three-cell breakdown ----------------------------------------
             var cells = Box(surface, "Stats", ColX, 552, ColW, 74);
             Fill(cells, PlateTop, RailDim);
+            // The third cell follows the economy. While the Crypt Shop has no way in
+            // (Currency.Visible), "BLOOD EARNED +7" is the death screen advertising a
+            // reward the player can never spend — so it shows the floor's own tally
+            // instead, which is the thing this screen is actually about.
             (string k, string v, Color ink)[] stats =
             {
                 ("KILLED BY",    d.killedBy,        BloodLit),
                 ("TIME BELOW",   d.timeBelow,       Bone),
-                ("BLOOD EARNED", $"+{d.earned}",    GoldLit),
+                Currency.Visible
+                    ? ("BLOOD EARNED", $"+{d.earned}",       GoldLit)
+                    : ("DEATHS HERE",  d.deaths.ToString(),  GoldLit),
             };
             for (int i = 0; i < stats.Length; i++)
             {
