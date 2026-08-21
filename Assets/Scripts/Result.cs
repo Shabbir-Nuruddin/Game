@@ -29,6 +29,10 @@ namespace TrustIssues
         static readonly Color BloodHot = Theme.Hex("E01834");
         static readonly Color BloodLit = Theme.Hex("E0384C");
         static readonly Color Ember    = Theme.Hex("8E0C1A");
+        // The mockup's third accent. RESTART is neither "carry on" (red) nor "leave"
+        // (gold) — it throws away this attempt and only this attempt — so it gets
+        // its own stone rather than borrowing one and blurring the other two.
+        static readonly Color Violet   = Theme.Hex("7B3FA8");
         static readonly Color Caption  = Theme.Hex("8A7068");
         static readonly Color Faint    = Theme.Hex("7A625C");
         static readonly Color Rail     = Theme.Hex("7A5A2C");
@@ -103,7 +107,12 @@ namespace TrustIssues
             if (Theme.TitleFont != null) head.font = Theme.TitleFont;
 
             // ---- the number that matters ----------------------------------------
-            Label(surface, 0, 234, DesignW, 16, "YOU SURVIVED", 15, Caption, TextAnchor.MiddleCenter);
+            // The mockup separates the headline from the numbers with a skull sitting
+            // between two hairlines, and carries no caption at all — the figure below
+            // already reads "6 METRES", so a "YOU SURVIVED" label above it was saying
+            // the same thing twice and stealing the divider's line to do it. The rule
+            // takes that line instead.
+            SkullRule(surface, 242f);
             // Number and unit sit side by side on a shared baseline. Two boxes butted
             // against the centre rather than one string, so the huge figure keeps its
             // own weight and the unit stays small beside it.
@@ -171,24 +180,56 @@ namespace TrustIssues
                 }
             }
 
-            // ---- the one big way back in ------------------------------------------
-            BloodPlate(surface, 518, 654, 564, 82, d.retryLabel, 34, d.retrySub, d.retry);
-
-            // ---- and the four smaller ways out --------------------------------------
-            (string label, System.Action go)[] nav =
+            // ---- the three things you might SHARE, in a small row -----------------
+            //
+            // These used to sit in one flat row of four alongside MAIN MENU, which
+            // made leaving the game exactly as prominent as bragging about the run —
+            // and put the run's only viral action (CURSE A FRIEND) at the same weight
+            // as the button that ends the session. The mockup splits them: the social
+            // three stay small and together up here, and the two REAL decisions
+            // (go again / stop playing) get the ornate plates underneath.
+            (string label, System.Action go)[] social =
             {
-                ("SHARE", d.share), ("CURSE A FRIEND", d.curse),
-                ("LEADERBOARD", d.leaderboard), ("MAIN MENU", d.menu),
+                ("SHARE", d.share), ("CURSE A FRIEND", d.curse), ("LEADERBOARD", d.leaderboard),
             };
-            const float NavW = 216f, NavGap = 14f;
-            float navX = (DesignW - (nav.Length * NavW + (nav.Length - 1) * NavGap)) * 0.5f;
-            for (int i = 0; i < nav.Length; i++)
-                GoldPlate(surface, navX + i * (NavW + NavGap), 756, NavW, 54,
-                          nav[i].label, 17, null, nav[i].go);
+            const float NavW = 268f, NavGap = 18f;
+            float navX = (DesignW - (social.Length * NavW + (social.Length - 1) * NavGap)) * 0.5f;
+            for (int i = 0; i < social.Length; i++)
+                GoldPlate(surface, navX + i * (NavW + NavGap), 654, NavW, 56,
+                          social[i].label, 18, null, social[i].go);
 
-            Label(surface, 0, DesignH - 60, DesignW, 16,
-                  "TAP DESCEND AGAIN TO GO STRAIGHT BACK DOWN", 13, Theme.Hex("6E5A54"),
-                  TextAnchor.MiddleCenter);
+            // ---- and the two that actually decide the session ---------------------
+            // Side by side, both ornate, colour-coded the same way the pause screen
+            // codes its rows: red carries on, gold walks away.
+            const float BigW = 420f, BigH = 88f, BigGap = 36f;
+            float bigCy = 776f;
+            GemPlate(surface, DesignW * 0.5f - (BigW + BigGap) * 0.5f, bigCy, BigW, BigH,
+                     d.retryLabel, 32, BloodHot, d.retry, d.retrySub);
+            GemPlate(surface, DesignW * 0.5f + (BigW + BigGap) * 0.5f, bigCy, BigW, BigH,
+                     "MAIN MENU", 32, GoldLit, d.menu, "THE CASTLE KEEPS YOUR PLACE");
+        }
+
+        /// <summary>
+        /// A skull between two hairlines, centred — the death screen's divider.
+        /// `cy` is the line the rules sit on, in design coordinates.
+        /// </summary>
+        static void SkullRule(Transform surface, float cy)
+        {
+            var faint = new Color(Gold.r, Gold.g, Gold.b, 0.30f);
+            foreach (float dir in new[] { -1f, 1f })
+            {
+                var bar = Crimson.Img(surface, "SkullRule", null, faint);
+                Place(bar.rectTransform, DesignW * 0.5f + dir * 300f, cy, 320f, 1.5f);
+                bar.raycastTarget = false;
+                // A gem where each rule ends, pointing back at the skull.
+                var pip = Crimson.Img(surface, "RulePip", null, Blood);
+                Place(pip.rectTransform, DesignW * 0.5f + dir * 140f, cy, 9f, 9f);
+                pip.rectTransform.localEulerAngles = new Vector3(0, 0, 45f);
+                pip.raycastTarget = false;
+            }
+            var skull = Crimson.Img(surface, "Skull", Gothic.Skull, Gold);
+            Place(skull.rectTransform, DesignW * 0.5f, cy, 30f, 30f);
+            skull.raycastTarget = false;
         }
 
         // "m" for metres, nothing for a night count.
@@ -196,64 +237,82 @@ namespace TrustIssues
 
         // ==================== PAUSE ====================
 
+        // THE PAUSE SCREEN, rebuilt to the design pack's mockup.
+        //
+        // WHAT CHANGED AND WHY. The old screen pausedturn you into a 540-wide box
+        // floating in a cathedral: a header band, then five or six stacked plates
+        // each with a caption under it, then two toggle cells. Everything was the
+        // same size and the same two colours, so the eye had nowhere to land and
+        // the screen read as a settings dialog — which is exactly the wrong feeling
+        // to hand someone in the middle of a run they are enjoying.
+        //
+        // The mockup does the opposite. No box at all: the castle night IS the
+        // screen, the title hangs in it in the dripping face, and there are THREE
+        // buttons, colour-coded by what they cost you — resume (red, costs nothing),
+        // restart (violet, costs this attempt), leave (gold, costs the run). Fewer,
+        // bigger, further apart, and instantly distinguishable at arm's length.
+        //
+        // Endless and the Castle each add exactly one row, and the whole stack is
+        // centred on however many rows it turned out to have.
         public static void Paused(Transform surface, PauseInfo p)
         {
             Ground(surface);
-            // The mockup does NOT pause you into a black box — it pauses you into a
-            // room. A lit cathedral arcade, a rose window, dust in the light shafts.
-            // It carries its own vignette, so there's no separate blood wash here.
-            Hall(surface);
+            // The castle night, moon high on the right, exactly as the mockup frames
+            // it — and it costs nothing to ship because it is drawn, not photographed.
+            Crimson.Backdrop(surface, 300f, -30f, true, 3);
+            Vignette(surface, new Color(40 / 255f, 2 / 255f, 10 / 255f, 0.72f));
             Frame(surface);
 
-            bool endless = p.endRun != null;
-            float panelX = (DesignW - 540f) * 0.5f;
-            var panel = Box(surface, "PausePanel", panelX, 0f, 540f, 100f);
-            Fill(panel, new Color(24 / 255f, 9 / 255f, 13 / 255f, 0.97f), Rail);
-            Studs(panel, 11f, Blood, -6f);
+            // ---- the title, hanging in the night ---------------------------------
+            var bloom = Crimson.Img(surface, "PauseGlow", Crimson.Halo,
+                                    new Color(224 / 255f, 24 / 255f, 52 / 255f, 0.26f));
+            Place(bloom.rectTransform, DesignW * 0.5f, 150f, 1000f, 300f);
+            bloom.raycastTarget = false;
+            var title = Label(surface, 0, 96f, DesignW, 108f, "PAUSED", 96, BloodHot,
+                              TextAnchor.MiddleCenter, true);
+            if (Theme.TitleFont != null) title.font = Theme.TitleFont;
+            title.raycastTarget = false;
 
-            // Header band — a lit strip across the top of the panel, as the mockup has
-            // it. 118 tall, not 96: PAUSED is set in the dripping face, and its drips
-            // ran straight down into the line underneath at the shorter height.
-            var band = Box(panel, "Band", 0, 0, 540, 118);
-            band.anchorMin = band.anchorMax = new Vector2(0f, 1f);
-            Fill(band, new Color(120 / 255f, 10 / 255f, 24 / 255f, 0.30f), Theme.Hex("4A2A22"));
-            var paused = LabelIn(band, 0, 20, 540, 48, "PAUSED", 46, Bone, TextAnchor.MiddleCenter, true);
-            if (Theme.TitleFont != null) paused.font = Theme.TitleFont;
-            LabelIn(band, 0, 88, 540, 16, "THE CASTLE IS WAITING. IT DOESN'T MIND.", 14,
-                    Caption, TextAnchor.MiddleCenter);
-
-            float y = 144f;
-            BloodPlateIn(panel, 44, y, 452, 78, "RESUME", 30, "ESC  ·  NOTHING LOST", p.resume);
-            y += 78f + 13f;
-            GoldPlateIn(panel, 44, y, 452, 62, "RESTART FLOOR", 21, p.restartSub, p.restart);
-            y += 62f + 13f;
-            if (endless)
+            // ---- the rows this run actually needs --------------------------------
+            // Built as a list first so the stack can be centred on its real height.
+            // Endless can bank a strong attempt; the Castle can step out to the map.
+            var rows = new System.Collections.Generic.List<(string label, Color gem, System.Action go, string sub)>
             {
-                GoldPlateIn(panel, 44, y, 452, 62, "END RUN", 21, "BANK THE DISTANCE YOU HAVE", p.endRun);
-                y += 62f + 13f;
-            }
-            if (p.map != null)
+                ("RESUME", BloodHot, p.resume, null),
+                ("RESTART LEVEL", Violet, p.restart, p.restartSub),
+            };
+            if (p.endRun != null) rows.Add(("END RUN", Gold, p.endRun, "BANK THE DISTANCE YOU HAVE"));
+            if (p.map != null) rows.Add(("CASTLE MAP", Gold, p.map, "SEE HOW FAR YOU HAVE GOT"));
+            rows.Add(("MAIN MENU", GoldLit, p.menu, "THIS RUN IS LOST"));
+
+            const float BtnW = 700f, BtnH = 96f, Gap = 30f;
+            float stackH = rows.Count * BtnH + (rows.Count - 1) * Gap;
+            // Centred in the space BELOW the title rather than on the whole screen,
+            // so a two-row Castle pause and a four-row Endless one both sit right.
+            float top = 300f + Mathf.Max(0f, (DesignH - 300f - 96f - stackH) * 0.5f);
+
+            for (int i = 0; i < rows.Count; i++)
             {
-                GoldPlateIn(panel, 44, y, 452, 62, "CASTLE MAP", 21, "SEE HOW FAR YOU HAVE GOT", p.map);
-                y += 62f + 13f;
+                float cy = top + i * (BtnH + Gap) + BtnH * 0.5f;
+                var r = rows[i];
+                // The divider above each button, and one under the last — the
+                // mockup's rhythm. Drawn on the surface so hovering never nudges it.
+                GemRule(surface as RectTransform ?? (RectTransform)surface,
+                        DesignW * 0.5f, cy - BtnH * 0.5f - Gap * 0.5f, BtnW * 0.86f, r.gem);
+                GemPlate(surface, DesignW * 0.5f, cy, BtnW, BtnH, r.label, 38, r.gem, r.go, r.sub);
             }
-            GoldPlateIn(panel, 44, y, 452, 62, "MAIN MENU", 21, "THIS RUN IS LOST", p.menu);
-            y += 62f + 16f;
+            GemRule(surface as RectTransform ?? (RectTransform)surface, DesignW * 0.5f,
+                    top + stackH + Gap * 0.5f, BtnW * 0.86f, rows[rows.Count - 1].gem);
 
-            // The two quick switches. Mid-run is exactly when someone needs the sound
-            // off in a hurry, and making them walk out to Settings to do it is how you
-            // lose the session instead of the noise.
-            SwitchIn(panel, 44, y, 220, 40, "MUSIC", () => Audio.MusicVol > 0.01f,
-                     on => Audio.MusicVol = on ? 1f : 0f);
-            SwitchIn(panel, 276, y, 220, 40, "SOUND", () => Audio.SfxVol > 0.01f,
-                     on => Audio.SfxVol = on ? 1f : 0f);
-
-            // The panel is sized from its contents rather than guessed at, then centred
-            // on what it turned out to be — Endless has one row more than the Castle,
-            // and a fixed y left one of the two sitting high on the screen.
-            float finalH = y + 40f + 26f;
-            panel.sizeDelta = new Vector2(540f, finalH);
-            panel.anchoredPosition = new Vector2(panelX, -(DesignH - finalH) * 0.5f);
+            // ---- the two quick switches ------------------------------------------
+            // Mid-run is exactly when someone needs the sound off in a hurry, and
+            // sending them out to Settings for it loses the session, not the noise.
+            // Tucked into the bottom corner now instead of sitting in the main stack,
+            // where they were competing with RESUME for the same glance.
+            SwitchIn((RectTransform)surface, DesignW * 0.5f - 214f, DesignH - 92f, 200f, 38f,
+                     "MUSIC", () => Audio.MusicVol > 0.01f, on => Audio.MusicVol = on ? 1f : 0f);
+            SwitchIn((RectTransform)surface, DesignW * 0.5f + 14f, DesignH - 92f, 200f, 38f,
+                     "SOUND", () => Audio.SfxVol > 0.01f, on => Audio.SfxVol = on ? 1f : 0f);
         }
 
         // ==================== THE HALL (pause backdrop) ====================
@@ -740,6 +799,155 @@ namespace TrustIssues
                 LabelIn(host, 0, h * 0.5f + 6f, host.sizeDelta.x, 16, sub, 12,
                         Theme.Hex("8A6E68"), TextAnchor.MiddleCenter);
             Clickable(host, go, BtnFace, new Color(70 / 255f, 10 / 255f, 22 / 255f, 0.95f));
+        }
+
+        // ==================== THE GEM PLATE ====================
+        //
+        // The ornate button from the design pack, and the one shape both the pause
+        // and death mockups are built out of: a dark face in the action's own
+        // colour, a hairline of that colour running inside the top and bottom
+        // edges, and a gold end-cap at each end carrying a cut gem.
+        //
+        // WHY IT IS ITS OWN THING. The screens already had BloodPlate (red, primary)
+        // and GoldPlate (dark, secondary) — two states, so every screen could only
+        // ever say "this one" and "the others". The mockups colour-code by WHAT THE
+        // BUTTON COSTS YOU instead: red resumes, violet restarts, gold leaves. That
+        // needs a plate that takes its accent as an argument, so this one does.
+        //
+        // All of it is baked or drawn from primitives — no new art files, and it
+        // stays sharp at any size, which matters because these screens are the same
+        // layout on a phone and a 1440p monitor.
+
+        static Sprite _star;
+        /// <summary>
+        /// A four-pointed sparkle with concave sides — the ornament dotted through
+        /// both mockups. An astroid: |x|^k + |y|^k &lt;= 1 with k below 1 pulls the
+        /// edges inward, and 0.5 gives the classic pinched star. Baked white so it
+        /// can be tinted per use.
+        /// </summary>
+        public static Sprite Star
+        {
+            get
+            {
+                if (_star != null) return _star;
+                const int S = 64;
+                var tex = new Texture2D(S, S, TextureFormat.RGBA32, false)
+                { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
+                float c = (S - 1) / 2f;
+                for (int y = 0; y < S; y++)
+                    for (int x = 0; x < S; x++)
+                    {
+                        float u = Mathf.Abs(x - c) / c, v = Mathf.Abs(y - c) / c;
+                        float d = Mathf.Sqrt(u) + Mathf.Sqrt(v);
+                        // Soft edge over the last sliver so the points don't stair-step.
+                        float a = Mathf.Clamp01((1.02f - d) / 0.10f);
+                        tex.SetPixel(x, y, new Color(1f, 1f, 1f, a));
+                    }
+                tex.Apply();
+                _star = Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), S);
+                return _star;
+            }
+        }
+
+        /// <summary>A tinted sparkle at a point, sized in design units.</summary>
+        static Image Sparkle(Transform parent, Vector2 anchor, Vector2 pos, float size, Color col)
+        {
+            var img = Crimson.Img(parent, "Sparkle", Star, col);
+            var rt = img.rectTransform;
+            rt.anchorMin = rt.anchorMax = anchor;
+            rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.anchoredPosition = pos;
+            rt.sizeDelta = new Vector2(size, size);
+            img.raycastTarget = false;
+            return img;
+        }
+
+        /// <summary>
+        /// The gold cap that closes each end of a gem plate: a broad gold sparkle
+        /// with the action's gem burning in its middle, and a small bright pip
+        /// riding on top of that so the stone reads as cut rather than painted.
+        /// </summary>
+        static void GemCap(RectTransform host, float ax, float h, Color gem)
+        {
+            var at = new Vector2(ax, 0.5f);
+            float dir = ax < 0.5f ? 1f : -1f;
+            var pos = new Vector2(dir * h * 0.30f, 0f);
+            Sparkle(host, at, pos, h * 1.02f, Gold);
+            Sparkle(host, at, pos, h * 0.62f, GoldLit);
+            Sparkle(host, at, pos, h * 0.40f, gem);
+            Sparkle(host, at, pos, h * 0.16f, BoneLit);
+        }
+
+        /// <summary>
+        /// A hairline with a gem at its centre — the divider the mockups run above
+        /// and below every button. Drawn on the BUTTON's parent, not the button, so
+        /// it never moves when a plate is hovered.
+        /// </summary>
+        static void GemRule(RectTransform parent, float cx, float cy, float w, Color gem)
+        {
+            var line = Crimson.Img(parent, "Rule", null, new Color(Gold.r, Gold.g, Gold.b, 0.42f));
+            Place(line.rectTransform, cx, cy, w, 1.5f);
+            line.raycastTarget = false;
+            var d = Crimson.Img(parent, "RuleGem", null, gem);
+            Place(d.rectTransform, cx, cy, 11f, 11f);
+            d.rectTransform.localEulerAngles = new Vector3(0, 0, 45f);
+            d.raycastTarget = false;
+            var e = Crimson.Img(parent, "RuleGemLit", null, GoldLit);
+            Place(e.rectTransform, cx, cy, 4.5f, 4.5f);
+            e.rectTransform.localEulerAngles = new Vector3(0, 0, 45f);
+            e.raycastTarget = false;
+        }
+
+        /// <summary>
+        /// One ornate action. `gem` is the accent: it tints the face, both inner
+        /// rules and the two end-cap stones, so the button's colour IS its meaning.
+        /// </summary>
+        static RectTransform GemPlate(Transform surface, float cx, float cy, float w, float h,
+                                      string label, int size, Color gem, System.Action go,
+                                      string sub = null)
+        {
+            var host = Box(surface, "Gem_" + label, cx - w * 0.5f, cy - h * 0.5f, w, h);
+
+            // Face: near-black carrying a breath of the gem colour, so three buttons
+            // in a column read as three different actions at a glance rather than
+            // three identical slabs with different words on them.
+            var face = Fill(host, new Color(Mathf.Lerp(0.055f, gem.r, 0.20f),
+                                            Mathf.Lerp(0.020f, gem.g, 0.20f),
+                                            Mathf.Lerp(0.045f, gem.b, 0.20f), 0.97f), Gold, 2f);
+
+            // The two inner hairlines. These are what make the shape read as forged
+            // metal instead of a rounded rectangle — the mockup's whole trick.
+            foreach (float t in new[] { 1f, 0f })
+            {
+                var bar = Crimson.Img(host, "Inner", null, new Color(gem.r, gem.g, gem.b, 0.85f));
+                var rt = bar.rectTransform;
+                rt.anchorMin = new Vector2(0f, t); rt.anchorMax = new Vector2(1f, t);
+                rt.pivot = new Vector2(0.5f, t);
+                rt.anchoredPosition = new Vector2(0f, t > 0.5f ? -7f : 7f);
+                rt.sizeDelta = new Vector2(-34f, 1.6f);
+                bar.raycastTarget = false;
+            }
+
+            GemCap(host, 0f, h, gem);
+            GemCap(host, 1f, h, gem);
+
+            var t2 = LabelIn(host, 0, sub == null ? 0 : -11f, w, h, label, size, Bone,
+                             TextAnchor.MiddleCenter, true);
+            if (Theme.MenuFont != null) t2.font = Theme.MenuFont;
+            if (sub != null)
+                LabelIn(host, 0, h * 0.5f - 4f, w, 18, sub, 13, new Color(Bone.r, Bone.g, Bone.b, 0.52f),
+                        TextAnchor.MiddleCenter);
+
+            var btn = host.gameObject.AddComponent<Button>();
+            btn.targetGraphic = face;
+            var colors = btn.colors;
+            colors.normalColor = Color.white;
+            colors.highlightedColor = new Color(1.35f, 1.22f, 1.22f, 1f);
+            colors.pressedColor = new Color(0.78f, 0.78f, 0.78f, 1f);
+            colors.fadeDuration = 0.08f;
+            btn.colors = colors;
+            btn.onClick.AddListener(() => { Audio.Play("click"); go?.Invoke(); });
+            return host;
         }
 
         /// <summary>A compact on/off cell — the pause screen's quick sound switches.</summary>

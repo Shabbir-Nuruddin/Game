@@ -174,6 +174,9 @@ namespace TrustIssues
         // for, the stick is never sitting on top of the action.
         //
         // FIXED mode keeps the old behaviour: the rect IS the ring, always visible.
+        /// <summary>The colour the knob glows at full running speed — the UI's "on" gold.</summary>
+        static readonly Color RunHot = new Color(1f, 0.80f, 0.42f);
+
         RectTransform _rt, _base, _knob;
         Graphic[] _graphics = System.Array.Empty<Graphic>();
         float[] _idleAlpha = System.Array.Empty<float>();
@@ -280,12 +283,50 @@ namespace TrustIssues
             {
                 knobOffset = Vector2.ClampMagnitude(knobOffset, _radius);
                 if (_knob != null) _knob.anchoredPosition = knobOffset;
-                TouchInput.X = _radius > 0.01f ? Shape(knobOffset.x / _radius) : 0f;
+                float raw = _radius > 0.01f ? knobOffset.x / _radius : 0f;
+                TouchInput.X = Shape(raw);
+
+                // SHOW THE PLAYER WHEN THEY ARE ACTUALLY RUNNING.
+                //
+                // A stick with an invisible threshold is a stick nobody learns.
+                // Testers pushed it a third of the way, got a jog, and concluded
+                // the character was sluggish — they had no way to know there was
+                // more speed available, because nothing on screen changed between
+                // "jogging" and "flat out".
+                //
+                // The knob now goes hot at full speed: it brightens to the blood
+                // gold the rest of the UI uses for "yes, this is on". One frame of
+                // colour teaches the whole control, permanently, without a tutorial
+                // caption telling anybody to push harder.
+                if (_knob != null)
+                {
+                    var kg = _knob.GetComponent<Graphic>();
+                    if (kg != null)
+                    {
+                        bool running = AtRunSpeed(raw);
+                        var want = running ? RunHot : Color.white;
+                        var c = kg.color;
+                        // Lerped rather than snapped so it reads as the stick
+                        // heating up, not as a light bulb flicking on and off at
+                        // the threshold when a thumb rests right on the boundary.
+                        var lit = Color.Lerp(new Color(c.r, c.g, c.b), want, 14f * Time.deltaTime);
+                        kg.color = new Color(lit.r, lit.g, lit.b, c.a);
+                    }
+                }
             }
             else if (_held)
             {
                 // Just released: snap the knob home, hide a floating ring, stop moving.
-                if (_knob != null) _knob.anchoredPosition = Vector2.zero;
+                if (_knob != null)
+                {
+                    _knob.anchoredPosition = Vector2.zero;
+                    var kg = _knob.GetComponent<Graphic>();
+                    if (kg != null)
+                    {
+                        var c = kg.color;                    // cool off, keep the authored alpha
+                        kg.color = new Color(1f, 1f, 1f, c.a);
+                    }
+                }
                 HideBase();
                 TouchInput.X = 0f;
             }
@@ -342,7 +383,21 @@ namespace TrustIssues
         // so a half-tilt is a real jog rather than a crawl. Max speed is unchanged —
         // 1 is still 1 — so every gap tuned by JumpArcProbe stays clearable.
         const float Dead = 0.14f;    // resting-thumb jitter
-        const float RunAt = 0.62f;   // full speed from here to the rim (and past it)
+        // FULL SPEED FROM HALF A TILT.
+        //
+        // Was 0.62. Watching testers, essentially nobody pushes a floating stick
+        // to its rim — the thumb rotates around its own knuckle, so a natural,
+        // committed-feeling push lands somewhere around half deflection and stays
+        // there. Every one of those players was running at ~85% speed while
+        // believing they were at full pelt, which is exactly the report that came
+        // back as "the movement is not smooth" and "sometimes the jump is shorter."
+        // It was never the jump: it was the run-up.
+        //
+        // 0.5 means a normal thumb push is genuinely maximum speed, and the band
+        // below it is still a real analogue ramp for edging up to a ledge. Max
+        // speed itself is unchanged — 1 is still 1 — so every gap tuned by
+        // JumpArcProbe stays exactly as clearable as it was.
+        const float RunAt = 0.50f;
         static float Shape(float raw)
         {
             float a = Mathf.Min(1f, Mathf.Abs(raw));
@@ -353,6 +408,9 @@ namespace TrustIssues
             // a lurch; 0.35 minimum keeps a nudge from being an unmovable crawl.
             return Mathf.Sign(raw) * Mathf.Lerp(0.35f, 1f, t * t);
         }
+
+        /// <summary>Is the stick pushed far enough to be at full running speed?</summary>
+        public static bool AtRunSpeed(float raw) => Mathf.Abs(raw) >= RunAt;
 
         Vector2 LocalOffset(Vector2 screen)
         {

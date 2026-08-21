@@ -41,9 +41,15 @@ namespace TrustIssues
                           ability = "Mist Double-Jump", airJumps = 1,
                           unlockHint = "Reach Endless Nights Floor 8",
                           unlocked = () => PlayerPrefs.GetInt("best_endless", 0) >= 7 },
+            // THE HINT USED TO LIE. It read "Reach Blood Moon Night 3", but the
+            // condition is Meta.Streak, which counts CONSECUTIVE DAYS the player
+            // opened Blood Moon — not how deep they got in one sitting. So anyone
+            // who actually reached night 3 in an evening watched the skin stay
+            // locked, with no way to tell whether they had misread the hint or hit
+            // a bug. A task the player cannot verify is worse than no task.
             new SkinDef { id = "golden",  name = "Golden Cursed",  tint = Theme.Hex("F2C84B"),
                           ability = "High Leaper (+jump)", jumpMul = 1.1f,
-                          unlockHint = "Reach Blood Moon Night 3",
+                          unlockHint = "Play Blood Moon 3 Days Running",
                           unlocked = () => Meta.Streak >= 3 },
             new SkinDef { id = "shadow",  name = "Shadowbound",    tint = Theme.Hex("4A3A5A"),
                           ability = "Twin Dash (K) + speed", dash = true, moveMul = 1.1f,
@@ -61,14 +67,29 @@ namespace TrustIssues
                           ability = "Dash + Double-Jump", dash = true, airJumps = 1,
                           unlockHint = "Reach Endless Nights Floor 15",
                           unlocked = () => PlayerPrefs.GetInt("best_endless", 0) >= 14 },
+            // THE LAST THREE USED TO BE THE WORST DEAL IN THE GAME.
+            //
+            // All three said "Balanced" — i.e. no signature trait at all — while
+            // sitting behind the three DEEPEST tasks on the board (Castle 30,
+            // Endless 25, and the book). So the reward curve ran backwards: the
+            // early skins handed out a dash and a double-jump, and the ones that
+            // cost forty floors of work handed out a colour. Nobody chases that.
+            //
+            // Each now carries a trait that is worth the walk and still obeys the
+            // one hard rule — mobility only, never invulnerability, so a skin can
+            // change HOW you take a floor but can never let you ignore a hazard.
             new SkinDef { id = "bone",    name = "Bone Pale",      tint = Theme.Hex("D8D8E8"),
-                          ability = "Balanced", unlockHint = "Discover 10 Bestiary Entries",
+                          ability = "Sure-Footed (softer landings)", moveMul = 1.06f,
+                          unlockHint = "Discover 10 Bestiary Entries",
                           unlocked = () => Codex.KnownCount() >= 10 },
             new SkinDef { id = "nosferatu", name = "Nosferatu",    tint = Theme.Hex("4FB7A4"),
-                          ability = "Balanced", unlockHint = "Reach Castle Floor 30",
+                          ability = "Long Glide (+jump, +reach)", jumpMul = 1.14f, moveMul = 1.05f,
+                          unlockHint = "Reach Castle Floor 30",
                           unlocked = () => PlayerPrefs.GetInt("castle_unlocked", 0) >= 29 },
             new SkinDef { id = "royal",   name = "Royal Blood",    tint = Theme.Hex("C62032"),
-                          ability = "Balanced", unlockHint = "Reach Endless Nights Floor 25",
+                          ability = "Dash + Double-Jump + speed",
+                          dash = true, airJumps = 1, moveMul = 1.08f,
+                          unlockHint = "Reach Endless Nights Floor 25",
                           unlocked = () => PlayerPrefs.GetInt("best_endless", 0) >= 24 },
         };
 

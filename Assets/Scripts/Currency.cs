@@ -14,6 +14,23 @@ namespace TrustIssues
     /// </summary>
     public static class Currency
     {
+        /// <summary>
+        /// IS THE ECONOMY SHOWN TO THE PLAYER AT ALL?
+        ///
+        /// Shards buy cosmetics in the Crypt Shop — and the Crypt Shop has no menu
+        /// entry, so no player can open it. That left the game showing a counter
+        /// that ticks up, floaters that shout about payouts, and a bonus objective
+        /// worth +5 of a thing that cannot be spent on anything. A currency with no
+        /// sink is not a reward, it is a distraction sitting on top of the screen
+        /// during a precision platformer.
+        ///
+        /// So the economy keeps RUNNING — every payout still banks, the ledger is
+        /// intact, and nothing about a save is lost — but it says nothing. Flip
+        /// this to true the day the shop gets a way in, and the counter, the
+        /// floaters and the bonus line all come back exactly as they were.
+        /// </summary>
+        public static readonly bool Visible = false;
+
         // Same UTC day-key math as Meta, so the tithe and the streak can never
         // disagree about what "today" is across a midnight rollover.
         static int Today => DateTime.UtcNow.Year * 10000 + DateTime.UtcNow.Month * 100 + DateTime.UtcNow.Day;

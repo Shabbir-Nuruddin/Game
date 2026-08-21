@@ -87,6 +87,63 @@ namespace TrustIssues
         static int TakeTrap() { int t = _lastTrap; _lastTrap = -1; return t; }
 
         // ------------------------------------------------------------------
+        //  HOW you died, not just WHAT killed you
+        // ------------------------------------------------------------------
+        // "You fell" is true of most deaths in this game and interesting about
+        // none of them. The player, though, always knows exactly which of these
+        // three just happened to them — and a narrator that names the one they
+        // are already thinking reads as the castle watching over their shoulder,
+        // which is the whole joke. Reported by GameRoot at the moment of death
+        // from the flags PlayerController keeps.
+        public enum FallKind { None, Slipped, Misjudged, Flapped, SpikeTip }
+        static FallKind _lastFall = FallKind.None;
+        public static void ReportFall(FallKind kind) { _lastFall = kind; }
+        static FallKind TakeFall() { var f = _lastFall; _lastFall = FallKind.None; return f; }
+
+        // Walked off the end of a platform. The most quietly infuriating death in
+        // any platformer, so the castle is deliberately gentle and patronising
+        // about it — that reads as far more annoying than an insult would.
+        static readonly string[] Slipped =
+        {
+            "I think you might have slipped.",
+            "Oh no. Did the edge move?",
+            "You just... walked off. No notes.",
+            "That was a whole floor, and you found the end of it.",
+            "Nobody pushed you. I checked.",
+            "You strolled into the void. Lovely form.",
+        };
+
+        // Jumped and got the distance wrong.
+        static readonly string[] Misjudged =
+        {
+            "Bold jump. Terrible jump, but bold.",
+            "You cleared almost none of that.",
+            "Close. Not close. But close to close.",
+            "The gap won. The gap wasn't even trying.",
+            "Great arc. Wrong direction.",
+        };
+
+        // Held the fly button on the way down with nothing to fly with.
+        static readonly string[] Flapped =
+        {
+            "I think you tried to fly. You can't.",
+            "You mashed that button all the way down.",
+            "Flapping. On the way down. Genuinely beautiful.",
+            "No wings tonight. You gave it a real go though.",
+            "That button does nothing here. You pressed it eleven times.",
+        };
+
+        // Landed on a spike from above — the very top of it.
+        static readonly string[] SpikeTip =
+        {
+            "You died to the tip. The actual tip.",
+            "Straight down onto the point. Perfect aim.",
+            "It didn't even have to move. You aimed.",
+            "You landed on it. It's a spike. That's its job.",
+            "Right on the pointy bit. Every time.",
+        };
+
+        // ------------------------------------------------------------------
         //  PER-TRAP lines — the trap that killed you gets its own voice
         // ------------------------------------------------------------------
         // Indexed by (int)TrapType. Every lethal trap has its own shelf so the
@@ -246,6 +303,78 @@ namespace TrustIssues
                 "Walls don't move. Bullets do.",
                 "There's a shoot button. Genuinely.",
             },
+
+            // ---- THE ROOM ITSELF (Betrayal.cs) ---------------------------------
+            //
+            // These were the whole roster's blind spot. Counting hazard placements
+            // across the forty castle floors: TiltFloor 20, SlideFloor 14,
+            // CeilingVolley 14, RiseFloor 9, DropFloor 9, SlamWall 7 — seventy-three
+            // of roughly a hundred and ten. They are what the campaign is MADE of,
+            // and every one of them died with a generic line because the shelves
+            // below simply didn't exist. The player heard the castle's own voice for
+            // the spike they meet twice, and boilerplate for the floor that kills
+            // them all day.
+            //
+            // Each shelf names the trap's actual TELL — it creaked, it leaned, they
+            // fire in order — so the roast teaches the counter on the way past.
+
+            [TrapType.TiltFloor] = new[]
+            {
+                "It leaned. You kept walking.",
+                "It groaned first. That was the entire warning.",
+                "You felt it go and committed anyway.",
+                "The floor tipped and you rode it all the way down.",
+                "Floors aren't supposed to lean. You noticed late.",
+                "It poured you off like it had somewhere to be.",
+            },
+            [TrapType.SlideFloor] = new[]
+            {
+                "It went that way. You went down.",
+                "The floor left. You stayed. Briefly.",
+                "You cannot walk across that one. Ever. Jump it.",
+                "It slid out from under you like it was paid to.",
+                "It turned red and shook. You strolled on.",
+                "That slab has never once held anybody.",
+            },
+            [TrapType.DropFloor] = new[]
+            {
+                "It took you with it. Rude.",
+                "You and the floor, going down together.",
+                "It didn't break. It just stopped being up here.",
+                "The trapdoor did the one thing trapdoors do.",
+                "It shuddered, then it left, and so did you.",
+            },
+            [TrapType.RiseFloor] = new[]
+            {
+                "The ground helped. Into the ceiling.",
+                "It lifted you somewhere with less headroom.",
+                "Pressed between the floor and the roof. Efficient.",
+                "Up was the wrong way and the floor chose for you.",
+                "Kind of it to carry you. Less kind where to.",
+            },
+            [TrapType.SlamWall] = new[]
+            {
+                "The wall came to you.",
+                "It waited off to the side the entire time.",
+                "Walls are supposed to stay put. Noted.",
+                "Flattened sideways. A fresh one for the book.",
+                "You watched the floor. It came from the wall.",
+            },
+            [TrapType.CeilingVolley] = new[]
+            {
+                "They fire in order. You can literally count them.",
+                "The ceiling has teeth and a rhythm. Learn the rhythm.",
+                "One at a time, down the row, straight at you.",
+                "You walked under every single one of them.",
+                "It telegraphed the whole sequence. You strolled in.",
+            },
+            [TrapType.ShyExit] = new[]
+            {
+                "It backed away. It always backs away.",
+                "Corner it. Don't chase it into something worse.",
+                "The exit doesn't want you either.",
+                "You lunged at a coffin that was already leaving.",
+            },
         };
 
         // ---- cause-flavoured lines (used when the exact trap isn't known) ----
@@ -397,6 +526,28 @@ namespace TrustIssues
         public static string Roast(string category, int deaths, int floor, bool nearMiss = false)
         {
             int trap = TakeTrap();   // consumed either way, so it can never go stale
+            var fall = TakeFall();   // ditto
+
+            // HOW IT HAPPENED BEATS WHAT HIT YOU.
+            //
+            // These four sit above everything below — including the milestones —
+            // because they are the only lines the player can verify. They saw
+            // themselves walk off that ledge. A generic "the void claims another"
+            // on top of that reads as the game not paying attention, and the
+            // castle's entire character is that it IS paying attention.
+            //
+            // Not every time, though: at 100% the specific line becomes the
+            // vending machine it was meant to replace.
+            if (fall != FallKind.None && Random.value < 0.8f)
+            {
+                switch (fall)
+                {
+                    case FallKind.Slipped:   return Pick(Slipped);
+                    case FallKind.Flapped:   return Pick(Flapped);
+                    case FallKind.SpikeTip:  return Pick(SpikeTip);
+                    case FallKind.Misjudged: return Pick(Misjudged);
+                }
+            }
 
             // Milestone humiliations. Still short — a milestone that takes four
             // seconds to read is a milestone nobody reads.

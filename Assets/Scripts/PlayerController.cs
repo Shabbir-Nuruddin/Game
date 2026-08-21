@@ -151,6 +151,14 @@ namespace TrustIssues
         // Read by GameRoot for section-checkpoints + reactive-trap tracking.
         public bool IsGrounded => _grounded;
 
+        // ---- read by the death narrator (see Juice.Roast) --------------------
+        /// <summary>We left the ground by walking off it, not by jumping.</summary>
+        public bool WalkedOffLedge { get; private set; }
+        /// <summary>Seconds since we last touched ground. Reset on landing.</summary>
+        public float AirTime { get; private set; }
+        /// <summary>Mashed FLY in mid-air with nothing left in the meter (or no wings at all).</summary>
+        public bool FlappedInVain { get; private set; }
+
         // Which way the character is visually facing (+1 right, -1 left). Read by
         // the netcode so a remote ghost mirrors the real player's facing.
         public float Facing => _facing;
@@ -360,6 +368,12 @@ namespace TrustIssues
             // technically touching the pad. (The ground test stays, so holding FLY
             // while standing never turns into a free hover.)
             _flying = flyHeld && flightMeter > 0f && (!_grounded || _launchGrace > 0f);
+            // Asking for wings you do not have, in mid-air, over a pit. Reads the
+            // RAW button rather than flyHeld, because flyHeld is already gated by
+            // canFly — and the Castle runs with canFly off entirely, so the player
+            // hammering FLY on the way down is exactly the case worth naming.
+            bool flyRaw = Input.GetKey(Controls.Fly) || TouchInput.FlyHeld;
+            if (!_grounded && flyRaw && (!canFly || flightMeter <= 0f)) FlappedInVain = true;
             // TATTERED WING charm drains the flight meter slower, so a glide simply
             // lasts longer — it buys reach, never new abilities.
             if (_flying) flightMeter = Mathf.Max(0f, flightMeter - flyDrain * Time.deltaTime);
@@ -457,6 +471,26 @@ namespace TrustIssues
             for (int i = 0; i < n; i++)
                 if (_groundHits[i].collider != null && _groundHits[i].normal.y * GravDir > 0.5f) { _grounded = true; break; }
             if (_grounded) _coyote = coyoteTime;
+
+            // ---- FALL CONTEXT, for the death narrator ------------------------
+            // A pit death is the most common death in the game and the least
+            // interesting thing to say about it is "you fell". These three facts
+            // are enough to tell the three stories a player actually recognises:
+            // they walked off an edge (slipped), they jumped and misjudged it, or
+            // they were in the air a long time flailing at the fly button.
+            if (_grounded)
+            {
+                WalkedOffLedge = false;
+                AirTime = 0f;
+                FlappedInVain = false;
+            }
+            else
+            {
+                // Left the ground without our own jump pushing us up = we walked
+                // off the end of something.
+                if (_wasGrounded && !_risingFromJump) WalkedOffLedge = true;
+                AirTime += Time.fixedDeltaTime;
+            }
 
             // Landing dust on a real impact (juice).
             if (_grounded && !_wasGrounded && _rb.linearVelocity.y * GravDir < -3f)

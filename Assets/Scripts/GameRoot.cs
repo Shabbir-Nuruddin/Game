@@ -49,6 +49,11 @@ namespace TrustIssues
         // a late-spike appears there. Accumulates with deaths; resets per floor.
         readonly System.Collections.Generic.Dictionary<int, float> _linger = new();
         readonly System.Collections.Generic.List<float> _ghostTrapX = new();
+        // How often a remembered spot actually arms, rolled fresh every life.
+        // Deliberately near a coin flip: high enough that the spot stays a threat
+        // worth respecting, low enough that the player can never treat it as
+        // permanent terrain. See BuildReactiveTraps.
+        const float ReactiveArmChance = 0.55f;
 
         // Ghost replay: race your PREVIOUS attempt on this floor.
         readonly System.Collections.Generic.List<float> _recT = new();
@@ -768,8 +773,17 @@ namespace TrustIssues
             if (Theme.MenuFont != null) _stageText.font = Theme.MenuFont;
             _stageText.raycastTarget = false;
 
-            _toast = Theme.Label(Theme.Canvas.transform, "", 60, Theme.Player,
-                new Vector2(0.5f, 0.5f), new Vector2(0, 150), new Vector2(1400, 100));
+            // THE TOAST — the castle's running commentary.
+            //
+            // Was 60pt across 1400 units, parked 150 above centre: a wall of type
+            // through the middle of the play area, sat on top of the player as
+            // often as not. Playtesters reported it as "words I can't read" — not
+            // because it was small, but because it was so big it read as screen
+            // furniture and got ignored, and because FlashToast wiped it after
+            // 0.9 seconds. Now it is small, set high out of the jumping lane, and
+            // it holds long enough to actually be read (see FlashToast).
+            _toast = Theme.Label(Theme.Canvas.transform, "", 34, Theme.Player,
+                new Vector2(0.5f, 0.5f), new Vector2(0, 246), new Vector2(1150, 52));
 
             // The blood bar under the portrait — the bat-flight meter, wearing the
             // artwork's ornate end-capped frame instead of a plain black box.
@@ -1129,12 +1143,18 @@ namespace TrustIssues
         // track) so a troll can make them blow a jump — real stakes — but can
         // never turn a beatable track un-winnable. Shared per-button cooldown
         // keeps it spicy, not a strobe. Works with mouse AND touch (Unity Button).
-        struct TrollDef { public string label; public Color col; public string sentMsg; public string hitMsg; }
+        // `what` is the two-word plain-English effect, printed UNDER the name on
+        // the button itself. "SNUFF", "CURSE" and "QUAKE" are flavour words that
+        // tell a first-time player nothing — testers pressed them at random and
+        // never worked out which was which, so the one genuinely social feature in
+        // the game was being used blind. The name still carries the tone; the line
+        // underneath carries the meaning.
+        struct TrollDef { public string label; public string what; public Color col; public string sentMsg; public string hitMsg; }
         static readonly TrollDef[] Trolls =
         {
-            new TrollDef { label = "SNUFF",  col = new Color(0.10f, 0.10f, 0.16f), sentMsg = "You snuffed their candles!",   hitMsg = "SNUFFED — the lights went out!" },
-            new TrollDef { label = "CURSE",  col = new Color(0.42f, 0.12f, 0.52f), sentMsg = "You cursed their hands!",       hitMsg = "CURSED — your hands are flipped!" },
-            new TrollDef { label = "QUAKE",  col = new Color(0.55f, 0.30f, 0.08f), sentMsg = "You shook their whole world!",  hitMsg = "QUAKE — the castle is shaking!" },
+            new TrollDef { label = "SNUFF",  what = "blind them",   col = new Color(0.10f, 0.10f, 0.16f), sentMsg = "You snuffed their candles!",   hitMsg = "SNUFFED — the lights went out!" },
+            new TrollDef { label = "CURSE",  what = "flip them",    col = new Color(0.42f, 0.12f, 0.52f), sentMsg = "You cursed their hands!",       hitMsg = "CURSED — your hands are flipped!" },
+            new TrollDef { label = "QUAKE",  what = "shake them",   col = new Color(0.55f, 0.30f, 0.08f), sentMsg = "You shook their whole world!",  hitMsg = "QUAKE — the castle is shaking!" },
         };
         const float TrollCooldown = 5f;   // seconds between uses of each button
         GameObject _trollPanel;
@@ -1162,10 +1182,18 @@ namespace TrustIssues
                 int idx = i;
                 var size = new Vector2(150, 108) * k;
                 var pos = new Vector2(95, 128 - i * 128) * k;   // left-centre column
-                var btn = Theme.Button(_trollPanel.transform, Trolls[i].label, Trolls[i].col, Color.white, 30,
+                var btn = Theme.Button(_trollPanel.transform, Trolls[i].label, Trolls[i].col, Color.white, 26,
                     new Vector2(0f, 0.5f), pos, size, () => FireTroll(idx));
                 _trollBtns[i] = btn;
                 _trollLabels[i] = btn.GetComponentInChildren<Text>();
+                // Nudge the name up and hang the plain-English effect beneath it,
+                // as its own label so the cooldown countdown can keep overwriting
+                // the name without ever eating the explanation.
+                if (_trollLabels[i] != null)
+                    _trollLabels[i].rectTransform.anchoredPosition += new Vector2(0f, 13f * k);
+                var what = Theme.Label(btn.transform, Trolls[i].what, 18, new Color(1f, 1f, 1f, 0.72f),
+                    new Vector2(0.5f, 0.5f), new Vector2(0f, -26f * k), new Vector2(146, 26) * k);
+                what.raycastTarget = false;
             }
             _trollPanel.SetActive(false);
         }
@@ -1680,7 +1708,7 @@ namespace TrustIssues
             Crimson.MetalBtnIn(Slot(root, "BloodMoon", .30f, .4356f, .70f, .5178f),
                 "BLOOD MOON", StartDaily, 30, $"TONIGHT  ·  {DailyLen} FLOORS  ·  SHARED SEED");
             Crimson.MetalBtnIn(Slot(root, "Castle", .30f, .5333f, .70f, .6156f),
-                "THE CASTLE", ShowLevelSelect, 30,
+                "THE CASTLE", OpenCastleMap, 30,
                 $"FLOOR {Mathf.Min(CastleUnlocked + 1, Levels.Count)} OF {Levels.Count}");
             Crimson.MetalBtnIn(Slot(root, "Endless", .30f, .6311f, .70f, .7244f),
                 "ENDLESS NIGHTS", StartEndless, 38, "ONE RUN  ·  NO BOTTOM");
@@ -2609,6 +2637,27 @@ namespace TrustIssues
             Crimson.Btn(body, "MUSIC CREDITS (CC-BY)", tl, new Vector2(410, -250), new Vector2(660, 92),
                 () => ShowLegalDocument("MUSIC CREDITS", "legal/music"), false, 26);
 
+            // ANONYMOUS STATS, and the switch that turns them off.
+            //
+            // Analytics.ServerLive is now true, so the game genuinely does send
+            // gameplay events (which floor, which trap, how long — never a name,
+            // never an address book). Google Play's Data safety form requires this
+            // to be disclosed, and a player-facing opt-out is the honest way to do
+            // it. Flipping this off stops every send at the source immediately.
+            bool statsOn = PlayerPrefs.GetInt("opt_analytics", 1) == 1;
+            Crimson.Btn(body, statsOn ? "ANONYMOUS STATS:  ON" : "ANONYMOUS STATS:  OFF",
+                tl, new Vector2(1120, -250), new Vector2(660, 92),
+                () =>
+                {
+                    PlayerPrefs.SetInt("opt_analytics", statsOn ? 0 : 1);
+                    PlayerPrefs.Save();
+                    ShowSettings();
+                }, statsOn, 26);
+            Crimson.Line(body,
+                "Anonymous stats tell us which floor is killing everyone. No name, no email, no ads.",
+                21, Crimson.Mute, new Vector2(410, -320), new Vector2(1370, 34),
+                TextAnchor.MiddleLeft, tl);
+
             // WIPE SAVE, behind a confirm. The castle forgetting you is the one
             // irreversible button on the screen, so it can't be a single tap.
             var warn = Crimson.Panel_(body, new Vector2(0.5f, 0f), new Vector2(0, 150),
@@ -2756,6 +2805,22 @@ namespace TrustIssues
         // THE ROAD DOWN — which floor's plate is showing. Kept between rebuilds so
         // tapping a floor doesn't lose your place.
         int _mapSel = -1;
+
+        /// <summary>
+        /// Open the Castle road WITH THE CURSOR ON THE FLOOR YOU ARE ACTUALLY ON.
+        ///
+        /// <see cref="ShowLevelSelect"/> re-renders the map and deliberately keeps
+        /// whatever the player last tapped — it is the same method the node taps
+        /// call, so it must not fight them. But every entrance that is NOT a node
+        /// tap (finishing the tutorial, the landing's CASTLE button, stepping out
+        /// of a run) wants the newest floor selected, so DESCEND is the only tap
+        /// left. Route those through here.
+        /// </summary>
+        void OpenCastleMap()
+        {
+            _mapSel = Mathf.Clamp(Mathf.Max(_levelIndex, CastleUnlocked), 0, Levels.Count - 1);
+            ShowLevelSelect();
+        }
 
         void ShowLevelSelect()
         {
@@ -3405,24 +3470,35 @@ namespace TrustIssues
 
         // `hold` = seconds before the fade starts. A brand-new player reading a
         // controls hint for the first time needs more than the veteran default.
-        public void ShowHint(string msg, float hold = 2.5f)
+        // `hold` = seconds before the fade starts. Smaller type, held far longer:
+        // a hint is instructions, and instructions the player cannot finish reading
+        // are worse than none, because they also stole the screen while they failed.
+        // Default scales with length for the same reason FlashToast does.
+        public void ShowHint(string msg, float hold = 0f)
         {
-            var t = Theme.Label(Theme.Canvas.transform, msg, 34, new Color(1, 1, 1, 0.7f),
-                new Vector2(0.5f, 0f), new Vector2(0, 80), new Vector2(1400, 60));
+            if (hold <= 0f)
+            {
+                int words = Mathf.Max(1, msg.Split(' ').Length);
+                hold = Mathf.Clamp(1.4f + words * 0.34f, 3.0f, 7.0f);
+            }
+            var t = Theme.Label(Theme.Canvas.transform, msg, 26, new Color(1, 1, 1, 0.82f),
+                new Vector2(0.5f, 0f), new Vector2(0, 76), new Vector2(1240, 54));
             StartCoroutine(FadeOutLabel(t, hold));
         }
 
-        // A larger one-shot banner near the top of the screen (gothic title + a small
-        // subtitle), auto-fading. Used for the Blood Moon "tonight's date" freshness cue.
+        // A one-shot banner near the top of the screen (gothic title + a small
+        // subtitle), auto-fading. Used for the Blood Moon "tonight's date" cue.
+        // Trimmed from 54/28pt to 40/22: it announces, it does not need to shout,
+        // and at the old size the subtitle ran the full width of a phone.
         void ShowBanner(string title, string sub)
         {
-            var t = Theme.Label(Theme.Canvas.transform, title, 54, Theme.Player,
-                new Vector2(0.5f, 1f), new Vector2(0, -120), new Vector2(1500, 80));
+            var t = Theme.Label(Theme.Canvas.transform, title, 40, Theme.Player,
+                new Vector2(0.5f, 1f), new Vector2(0, -112), new Vector2(1400, 60));
             if (Theme.TitleFont != null) t.font = Theme.TitleFont;
-            var s = Theme.Label(Theme.Canvas.transform, sub, 28, new Color(1, 1, 1, 0.72f),
-                new Vector2(0.5f, 1f), new Vector2(0, -184), new Vector2(1400, 50));
-            StartCoroutine(FadeOutLabel(t, 3.2f));
-            StartCoroutine(FadeOutLabel(s, 3.2f));
+            var s = Theme.Label(Theme.Canvas.transform, sub, 22, new Color(1, 1, 1, 0.75f),
+                new Vector2(0.5f, 1f), new Vector2(0, -160), new Vector2(1300, 42));
+            StartCoroutine(FadeOutLabel(t, 4.4f));
+            StartCoroutine(FadeOutLabel(s, 4.4f));
         }
 
         IEnumerator FadeOutLabel(Text t, float delay)
@@ -3507,7 +3583,7 @@ namespace TrustIssues
                 // The standing bargain, restated every time a Castle floor opens
                 // from the map (used to only show on an auto-chained floor, so
                 // tapping a floor from the map never mentioned it at all).
-                ShowHint("BONUS: under 5 deaths on this floor → +5 shards", 2f);
+                if (Currency.Visible) ShowHint("BONUS: under 5 deaths on this floor → +5 shards", 2f);
         }
 
         // ==================== TUTORIAL ====================
@@ -3566,7 +3642,7 @@ namespace TrustIssues
             if (_levelRoot != null) Destroy(_levelRoot.gameObject);
             _player = null;
             _mode = Mode.Curated;
-            ShowLevelSelect();
+            OpenCastleMap();
         }
 
         /// <summary>
@@ -3581,49 +3657,22 @@ namespace TrustIssues
             _mode = Mode.Curated;
             if (_levelRoot != null) Destroy(_levelRoot.gameObject);
             _player = null;
-            if (_menuPanel != null) Destroy(_menuPanel);
-            _menuPanel = Overlay(Crimson.Night, out var root);
-            _onBack = ShowMenu;
-            if (_hudChrome != null) _hudChrome.SetActive(false);
-            if (_touchPanel != null) { _touchPanel.SetActive(false); TouchInput.Clear(); }
 
-            Crimson.Backdrop(root, 460f, 240f, false, 0);
-            // Laid out on a fit-surface like every other stacked screen, and measured
-            // as a stack from the top rather than as four things hung off the centre —
-            // which is how the body copy ended up printed straight over the heading
-            // and the buttons.
-            var surface = FitSurface(root, 1280f, 760f);
-            var top = new Vector2(0.5f, 1f);
-            Crimson.Panel_(surface, top, new Vector2(0, -380), new Vector2(1180, 700),
-                           Theme.Hex("180A12"), Crimson.Rail);
-            Crimson.Line(surface, "YOU KNOW HOW TO RUN", 52, Crimson.GoldLit,
-                new Vector2(0, -104), new Vector2(1100, 64), TextAnchor.MiddleCenter, top)
-                .fontStyle = FontStyle.Bold;
-            // One paragraph per line, each in its own box at its own y. A single
-            // multi-line string was sized by guesswork and overflowed its rect the
-            // moment the font metrics differed by a hair.
-            string[] lines =
-            {
-                "That was the only floor in this castle that meant you no harm.",
-                "THE CASTLE is forty floors and every one of them lies to you:",
-                "a floor that isn't there, a spike that waits, a coffin that runs.",
-                "Start at floor one.",
-                "Blood Moon and Endless Nights are waiting on the landing.",
-                "You are not ready for them.",
-            };
-            float ly = 196f;
-            for (int i = 0; i < lines.Length; i++)
-            {
-                bool gap = i == 1 || i == 4;   // breathing room before each new thought
-                if (gap) ly += 22f;
-                Crimson.Line(surface, lines[i], 25, i >= 4 ? Crimson.Mute : Crimson.Body,
-                    new Vector2(0, -ly), new Vector2(1060, 36), TextAnchor.MiddleCenter, top);
-                ly += 40f;
-            }
-            Crimson.Btn(surface, "ENTER THE CASTLE", top, new Vector2(0, -560),
-                        new Vector2(520, 88), ShowLevelSelect, true, 30);
-            Crimson.Btn(surface, "THE LANDING", top, new Vector2(0, -664),
-                        new Vector2(360, 62), ShowMenu, false, 22);
+            // STRAIGHT TO THE ROAD. NO CONGRATULATIONS SCREEN.
+            //
+            // This used to build a full panel — a heading, a paragraph about what
+            // you had learned, and a button to continue — between finishing the
+            // teaching floor and seeing the Castle. It read as a wall of text at
+            // the precise moment a new player has finally got their hands on the
+            // controls and wants to use them, and everything it said was either
+            // obvious (you just did it) or unreadable (nobody reads a panel to
+            // get back to a game). The tutorial's payoff is the Castle, so the
+            // Castle is what it hands you.
+            //
+            // OpenCastleMap already selects the deepest floor you have reached, so
+            // the map opens on the floor you are about to play with DESCEND live.
+            if (_menuPanel != null) Destroy(_menuPanel);
+            OpenCastleMap();
         }
 
         void StartDaily()
@@ -3640,7 +3689,7 @@ namespace TrustIssues
             var left = now.Date.AddDays(1) - now;   // until tonight's run rotates
             ShowBanner($"TONIGHT'S BLOOD MOON — {now:MMM d}",
                        $"rumor: \"{Rumor.CrypticLine}\" • resets in {(int)left.TotalHours}h {left.Minutes}m");
-            ShowHint($"BLOOD MOON — {Diff.StartHearts + 2} lives, +1 per night. Fall too many times and the night just resets. Tap {Controls.Name(Controls.Fly)}/FLY to take off and glide as a bat — no jump needed.");
+            ShowHint($"{Diff.StartHearts + 2} lives. Tap {Controls.Name(Controls.Fly)} to fly.");
         }
 
         void StartEndless()
@@ -3651,7 +3700,7 @@ namespace TrustIssues
             _endlessSeed = new System.Random().Next(1, 1000000);
             BeginRun(0);
             ShowBanner("ENDLESS NIGHT", $"one road • no finish • {Diff.StartHearts} lives");
-            ShowHint($"You have {Diff.StartHearts} lives — each death rewinds you to safe ground, not to the menu. Risk paths hide more. Tap {Controls.Name(Controls.Fly)}/FLY to take off and glide.");
+            ShowHint($"{Diff.StartHearts} lives. Death rewinds you, it doesn't end you. Tap {Controls.Name(Controls.Fly)} to fly.");
         }
 
         // ==================== VERSUS (multiplayer) ====================
@@ -3873,6 +3922,40 @@ namespace TrustIssues
             _vsRivalName  = VsLabel("",  27, VsBone,        new Vector2(250, 16),  new Vector2(264, 40), TextAnchor.MiddleLeft);
             _vsRound      = VsLabel("",  20, new Color(0.85f, 0.70f, 0.35f, 0.85f),
                                     new Vector2(0, -32), new Vector2(780, 30), TextAnchor.MiddleCenter);
+
+            // THE ROOM CODE STAYS ON SCREEN WHILE YOU ARE ALONE.
+            //
+            // The code was announced once, by ShowBanner, which fades after a few
+            // seconds. The entire point of a code is that you read it out, type it
+            // into a chat, or hold the phone up — none of which you can do inside
+            // one banner. So an invite that fails to invite anybody was the normal
+            // outcome, which is most of why multiplayer looked dead.
+            //
+            // It now lives under the scoreboard for as long as nobody has joined,
+            // and clears itself the moment a rival shows up (at which point it is
+            // clutter — they are already here).
+            _vsCode = VsLabel("", 26, new Color(0.95f, 0.85f, 0.55f, 0.95f),
+                              new Vector2(0, -66), new Vector2(780, 36), TextAnchor.MiddleCenter);
+            _vsCode.fontStyle = FontStyle.Bold;
+        }
+
+        UnityEngine.UI.Text _vsCode;
+
+        /// <summary>
+        /// Show or hide the standing "waiting for a friend, here is the code" line.
+        /// Called on every scoreboard refresh and whenever a rival arrives/leaves.
+        /// </summary>
+        void UpdateVersusCode()
+        {
+            if (_vsCode == null) return;
+            bool alone = _ghosts.Count == 0;
+            _vsCode.text = alone && !string.IsNullOrEmpty(Net.RoomCode)
+                ? $"ROOM CODE  {Net.RoomCode}   ·   waiting for your friend to join"
+                : "";
+            // The plate grows to fit the extra line only while it is showing, so a
+            // two-player race gets its compact scoreboard back.
+            var rt = (RectTransform)_versusHud.transform;
+            rt.sizeDelta = new Vector2(820f, _vsCode.text.Length > 0 ? 150f : 112f);
         }
 
         // A scoreboard label in the menu serif (matches the skin artwork's type).
@@ -3896,6 +3979,7 @@ namespace TrustIssues
             _vsYouScore.text   = _versusWins.ToString();
             _vsRivalScore.text = _versusLosses.ToString();
             _vsRound.text      = $"ROUND {_versusRound + 1}   ·   {ThemeNames[VersusThemes[_versusRound % VersusThemes.Length]]}   ·   FIRST TO {VersusMatchPoints}";
+            UpdateVersusCode();
         }
 
         // Start the next race in the SAME room: a new deterministic track (seed +
@@ -3928,7 +4012,10 @@ namespace TrustIssues
         {
             if (_mode != Mode.Versus) return;
             if (!_ghosts.TryGetValue(actor, out var g) || g == null)
-            { g = CreateGhost(actor); _ghosts[actor] = g; }
+            {
+                g = CreateGhost(actor); _ghosts[actor] = g;
+                UpdateVersusCode();          // they're here — retire the invite line
+            }
             g.SetTarget(pos, faceLeft);
         }
 
@@ -3936,6 +4023,7 @@ namespace TrustIssues
         {
             if (_ghosts.TryGetValue(actor, out var g) && g != null) Destroy(g.gameObject);
             _ghosts.Remove(actor);
+            UpdateVersusCode();              // alone again — put the code back up
         }
 
         void OnRemoteWin(int actor)
@@ -4296,7 +4384,9 @@ namespace TrustIssues
             if (_hudChrome != null) _hudChrome.SetActive(true);
             if (_shardHud != null)
             {
-                _shardHud.SetActive(true);
+                // Currency.Visible is off while the Crypt Shop has no way in — a
+                // counter you cannot spend is clutter over a precision platformer.
+                _shardHud.SetActive(Currency.Visible);
                 if (_shardText != null) _shardText.text = Currency.Balance.ToString();
             }
             if (_touchPanel != null) _touchPanel.SetActive(TouchControlsOn); // refined per-level by UpdateTouchLayout
@@ -4626,11 +4716,26 @@ namespace TrustIssues
             { Audio.Play("troll", 0.5f); _reactiveAdded = false; }
             foreach (float gx in _ghostTrapX)
             {
+                // NOT EVERY LIFE.
+                //
+                // A learned spike that armed on every single retry stopped being
+                // the castle watching you and became a fixture — one more static
+                // hazard to memorise, except an ugly one that appeared out of
+                // nowhere on attempt three. Worse, it made the floor strictly
+                // harder every death, which is the opposite of what a retry should
+                // feel like.
+                //
+                // Rolling per life is what sells the idea. The spot is remembered
+                // forever, but it only bites sometimes, so the player can never
+                // settle into "there's a spike there now" — they get the much
+                // better feeling of not being sure whether this run is the one.
+                if (Random.value > ReactiveArmChance) continue;
+
+                // Small, and with no crack under it. See Trap.visualScale/subtle:
+                // at full size on a red mark this read as a bug rather than a joke.
+                _nextTrapVisualScale = 0.62f;
+                _nextTrapSubtle = true;
                 BuildTrap(new TrapSpec(TrapType.LateSpike, gx, -2.4f, 1.0f, 1.2f));
-                var mk = Theme.Box("LearnedMark", _levelRoot, new Vector2(gx, -2.62f),
-                    new Vector2(0.7f, 0.12f), Theme.Danger, 4);
-                var c = mk.GetComponent<SpriteRenderer>().color; c.a = 0.32f;
-                mk.GetComponent<SpriteRenderer>().color = c;
             }
         }
 
@@ -4707,6 +4812,48 @@ namespace TrustIssues
             Currency.ResetFloorPayouts();   // a new floor re-opens the death-shard window
         }
         int _floorDeaths;
+
+        // ==================== THE MERCY OFFER ====================
+        //
+        // Analytics from real testers: players are not reaching floor 17. They are
+        // quitting well before it. A rage game is supposed to kill you constantly,
+        // so deaths alone are not the signal — the signal is deaths on ONE floor
+        // with no progress, which is the exact shape of someone about to close the
+        // app and not come back.
+        //
+        // The game already ships a difficulty that would rescue them. Nothing ever
+        // tells them it exists. Casual is a Settings screen away and a player who
+        // is losing is the least likely person in the world to go browsing menus.
+        //
+        // So the castle offers, once, in its own voice, at the moment it is clearly
+        // winning. Deliberately quiet about it:
+        //   • only on Normal or Nightmare — Casual has nowhere gentler to go;
+        //   • once per session, ever, so it can never nag;
+        //   • at 12 deaths on a single floor, which real play says is well past
+        //     "this is fun" and into "this is a wall";
+        //   • phrased as the castle gloating, not as the game apologising, because
+        //     "you seem to be struggling" is how you make someone quit out of pride.
+        bool _mercyOffered;
+        const int MercyAtFloorDeaths = 12;
+
+        void OfferMercy()
+        {
+            if (_mercyOffered) return;
+            if (_floorDeaths < MercyAtFloorDeaths) return;
+            if (Diff.Current == Difficulty.Casual) return;
+            // Only in the modes you can actually be walled by. Versus is a race and
+            // Endless is scored by distance, so neither has a floor to be stuck on.
+            if (_mode != Mode.Curated && _mode != Mode.Daily) return;
+
+            _mercyOffered = true;
+            ShowHint("This floor has taken you " + _floorDeaths +
+                     " times. There is a CASUAL difficulty in Settings. No judgement. Much.");
+            Analytics.Track("mercy_offered", new System.Collections.Generic.Dictionary<string, object>
+            {
+                { "mode", ModeName }, { "level_index", _levelIndex },
+                { "floor_deaths", _floorDeaths }, { "difficulty", Diff.Name },
+            });
+        }
 
         // ==================== stages ====================
         // The Level Devil structure: a roomed floor is 5 discrete SUB-LEVELS.
@@ -5190,6 +5337,14 @@ namespace TrustIssues
             return col;
         }
 
+        // Set for the next BuildTrap call only, and cleared as it is consumed.
+        // BuildTrap is a 300-line switch with a dozen construction paths and no
+        // single place that owns the finished Trap component, so threading two
+        // cosmetic options through as parameters would mean touching every one of
+        // them. The learned spikes are the only caller that needs this.
+        float _nextTrapVisualScale = 1f;
+        bool _nextTrapSubtle;
+
         void BuildTrap(TrapSpec t)
         {
             // Nemesis crowning: the trap type that's killed you most wears a small
@@ -5534,11 +5689,16 @@ namespace TrustIssues
                     var go = Theme.Box(t.type.ToString(), _levelRoot, t.pos, t.size,
                         new Color(0, 0, 0, 0f), 0);
                     Theme.AddTrigger(go, Vector2.one);
-                    go.AddComponent<Trap>().Init(t.type);
+                    var tr = go.AddComponent<Trap>();
+                    tr.visualScale = _nextTrapVisualScale;
+                    tr.subtle = _nextTrapSubtle;
+                    tr.Init(t.type);
                     AddSensorTell(t);   // only Surprise gets a tell (faint sunbeam)
                     break;
                 }
             }
+            _nextTrapVisualScale = 1f;   // one-shot: never leaks into the next trap
+            _nextTrapSubtle = false;
         }
 
         // The ONLY truly invisible, kill-on-touch trap is Surprise — safe-looking
@@ -6262,8 +6422,22 @@ namespace TrustIssues
                         { "ms_since_boot", (int)(Time.realtimeSinceStartup * 1000f) },
                     });
                 }
+                // HEARTBEAT CADENCE IS A STORAGE DECISION.
+                //
+                // At the old 15s this fired four times a minute and was comfortably
+                // the largest single source of rows in the database — around forty
+                // events from a ten-minute session, more than a third of everything
+                // that session produced. It is only used to measure how long people
+                // play and to stamp "last seen", and neither of those needs
+                // fifteen-second resolution.
+                //
+                // At 60s a session costs a quarter as many heartbeat rows, session
+                // length is still accurate to within a minute, and a free-tier
+                // Postgres lasts roughly 45% longer before it needs pruning.
+                // Memory.Touch stays on the same tick — it only feeds the "you've
+                // been away" greeting, which is measured in days.
                 _heartbeatTimer += Time.unscaledDeltaTime;
-                if (_heartbeatTimer >= 15f)
+                if (_heartbeatTimer >= 60f)
                 {
                     _heartbeatTimer = 0f;
                     Memory.Touch();   // "last seen" for the absence-aware greeting
@@ -6362,13 +6536,19 @@ namespace TrustIssues
 
         // The lullaby's voice. Scold lines rotate and are throttled so a
         // button-masher gets a steady drip of mockery, not a strobe.
+        // The sleep rune's job is to make you mash buttons and then be smug about
+        // it. Short, patronising, and escalating — "calm down" is funnier than any
+        // threat, because the player IS frantically pressing things and being told
+        // to relax is the most annoying possible response to that.
         static readonly string[] SleepScolds =
         {
-            "You are asleep right now.",
-            "Struggling only deepens the slumber.",
-            "Shhh. The castle is rocking you.",
-            "Stop. Mashing. Sleep.",
+            "Calm down.",
+            "You are asleep. Pressing things won't help.",
+            "Shhh.",
+            "Relax. It's just a nap.",
             "Every button you press is another sheep.",
+            "Deep breaths. Nearly over.",
+            "Stop. Mashing. Sleep.",
         };
         float _scoldNext; int _scoldIx;
         public void SleepStart() => RoomToast("The castle sings you to sleep… (be still)");
@@ -6494,12 +6674,41 @@ namespace TrustIssues
             label.color = Theme.Coin;
         }
 
+        // 0.9 SECONDS WAS NOT A MESSAGE, IT WAS A FLICKER.
+        //
+        // Average adult silent reading is ~4 words a second, and that assumes you
+        // are looking at the words. A player mid-floor is looking at their thumb
+        // and the spike, so the first ~0.4s of any toast is spent not having
+        // noticed it yet. A six-word line therefore needs somewhere north of two
+        // seconds to land, and it was getting 0.9 — which is why every tester
+        // reported the same thing: "text comes up but I can't read it."
+        //
+        // Scales with length so a two-word taunt doesn't overstay and a longer
+        // line still gets its time, and fades rather than snapping to empty.
         IEnumerator FlashToast(string msg)
         {
             if (_toast == null) yield break;
             _toast.text = msg;
-            yield return new WaitForSecondsRealtime(0.9f);
-            if (_toast != null && _toast.text == msg) _toast.text = "";
+            var full = _toast.color; full.a = 1f; _toast.color = full;
+
+            int words = Mathf.Max(1, msg.Split(' ').Length);
+            float hold = Mathf.Clamp(0.9f + words * 0.30f, 1.9f, 4.2f);
+            yield return new WaitForSecondsRealtime(hold);
+
+            // Another toast landed on top of ours — it owns the label now.
+            if (_toast == null || _toast.text != msg) yield break;
+            float e = 0f;
+            while (e < 0.45f && _toast != null && _toast.text == msg)
+            {
+                e += Time.unscaledDeltaTime;
+                var c = _toast.color; c.a = 1f - (e / 0.45f); _toast.color = c;
+                yield return null;
+            }
+            if (_toast != null && _toast.text == msg)
+            {
+                _toast.text = "";
+                var c = _toast.color; c.a = 1f; _toast.color = c;
+            }
         }
 
         // ==================== "CALLED IT" — the prediction economy ====================
@@ -6537,9 +6746,12 @@ namespace TrustIssues
                 _pendingCalls.RemoveAt(i);
                 _calledPaid.Add(call.key);
                 Currency.Earn(1, "called_it");
-                ShardFloater.SpawnText(call.pos + Vector3.up * 0.6f, "CALLED IT!", Theme.Coin);
-                ShardFloater.Spawn(call.pos, 1);
-                Audio.PlayOr("called", "levelup", 0.4f);
+                if (Currency.Visible)
+                {
+                    ShardFloater.SpawnText(call.pos + Vector3.up * 0.6f, "CALLED IT!", Theme.Coin);
+                    ShardFloater.Spawn(call.pos, 1);
+                    Audio.PlayOr("called", "levelup", 0.4f);
+                }
             }
         }
 
@@ -6560,6 +6772,89 @@ namespace TrustIssues
             if (_toast != null) StartCoroutine(FlashToast("The rune drags you back…"));
         }
 
+        /// <summary>
+        /// Work out WHICH KIND of death this was, so the narrator can name the
+        /// thing the player already knows they just did.
+        ///
+        /// Everything here is read off flags PlayerController keeps for free
+        /// during its normal ground check — no extra raycasts, no per-frame cost,
+        /// and nothing to keep in sync. If none of the shapes match we report
+        /// nothing and Juice falls through to its ordinary flavour, which is the
+        /// correct outcome: a wrong specific line is much worse than a generic one.
+        /// </summary>
+        void ReportFallContext(string cause, Vector2 deathPos)
+        {
+            if (_player == null) { Juice.ReportFall(Juice.FallKind.None); return; }
+
+            if (cause == Juice.Fall)
+            {
+                // DID A SLAB PUT YOU HERE?
+                //
+                // Only asked on a fall, and only when nothing else has claimed the
+                // kill — a KillZone death already stamped its own trap type, and
+                // that is always the better answer. But a fall that started with a
+                // floor tipping, sliding, dropping or a wall shoving is NOT "gravity
+                // wins again": it is the slab's kill, and both the roast and the
+                // Bestiary should say so. Consumed on read, so one slab can't be
+                // blamed twice.
+                if (Betray.TakeBlame(out var blamed))
+                {
+                    Codex.Unlock(blamed);              // the page these traps could never unlock
+                    Memory.RecordKill((int)blamed);    // …and the nemesis tally they never fed
+                    Juice.ReportTrap((int)blamed);
+                    Juice.ReportFall(Juice.FallKind.None);
+                    return;
+                }
+
+                // Order matters. Flapping is the loudest signal (they were still
+                // pressing buttons), then walking off an edge, then "the jump was
+                // just short". A long airtime with no flapping and no ledge-walk
+                // is a plain plummet and gets the generic void line.
+                if (_player.FlappedInVain)        Juice.ReportFall(Juice.FallKind.Flapped);
+                else if (_player.WalkedOffLedge)  Juice.ReportFall(Juice.FallKind.Slipped);
+                else if (_player.AirTime > 0.2f)  Juice.ReportFall(Juice.FallKind.Misjudged);
+                else                              Juice.ReportFall(Juice.FallKind.None);
+                return;
+            }
+
+            // THE TIP OF THE SPIKE. Landing on a spike from above and walking into
+            // its side are the same death to the engine and completely different
+            // deaths to the player. Airtime separates them: if we were off the
+            // ground on the way in, we came down onto it.
+            if (cause == Juice.Spike && _player.AirTime > 0.22f && NearestSpikeTop(deathPos, out float topY)
+                && deathPos.y > topY - 0.25f)
+            {
+                Juice.ReportFall(Juice.FallKind.SpikeTip);
+                return;
+            }
+
+            Juice.ReportFall(Juice.FallKind.None);
+        }
+
+        /// <summary>
+        /// The top edge of the closest floor spike to a point, if there is one
+        /// within a body's width. Reads the level TABLE rather than the scene, so
+        /// it costs a short list walk and never touches physics.
+        /// </summary>
+        bool NearestSpikeTop(Vector2 at, out float topY)
+        {
+            topY = 0f;
+            if (_level == null) return false;
+            float bestDx = 1.1f;
+            bool found = false;
+            foreach (var t in _level.Traps)
+            {
+                if (t.type != TrapType.SpikeStatic && t.type != TrapType.GrowSpike &&
+                    t.type != TrapType.LateSpike) continue;
+                float dx = Mathf.Abs(t.pos.x - at.x);
+                if (dx > bestDx) continue;
+                bestDx = dx;
+                topY = t.pos.y + t.size.y * 0.5f;
+                found = true;
+            }
+            return found;
+        }
+
         public void Die(string msg = null)
         {
             if (_state != State.Play || _dying) return;
@@ -6575,6 +6870,7 @@ namespace TrustIssues
                 Handheld.Vibrate();
 #endif
             _floorDeaths++;
+            OfferMercy();
             // Persist the tally PER FLOOR so the castle map can show what each
             // one cost you. Level Devil's map does this and it's most of why
             // scrolling back through it is fun: the number is a scar, and a
@@ -6620,16 +6916,31 @@ namespace TrustIssues
                 if (shardPay > 0)
                 {
                     Currency.Earn(shardPay, "death");
-                    ShardFloater.Spawn(deathPos, shardPay);
+                    if (Currency.Visible) ShardFloater.Spawn(deathPos, shardPay);
                 }
             }
             if (_hearts > 0) _hearts--;     // lose a heart (Endless/Daily); Curated = -1 (infinite)
 
-            // Death keeps concise physical feedback from the hazard itself. There
-            // is deliberately no narrator, insult, spoken roast, or death caption:
-            // the castle only speaks during rare story milestones now.
+            // ---- THE NARRATOR IS BACK, AND IT IS SPECIFIC ----------------------
+            //
+            // The roast library in Juice.cs was fully written and had ZERO callers,
+            // so every death in the shipped game was silent. Silence is the wrong
+            // answer for a troll platformer: the death IS the content, and a death
+            // that says nothing is just a reload.
+            //
+            // The rule this follows is the one that separates rage-bait from
+            // nagging: the line has to be about THIS death. Classify how the
+            // player actually died first — slipped off an edge, misjudged a jump,
+            // mashed FLY on the way down, landed on the point of a spike — and let
+            // Juice pick from that shelf. Generic flavour is the fallback, not the
+            // default. Short lines only; FlashToast holds them long enough to read.
             string cause = Juice.Categorize(msg);
+            ReportFallContext(cause, deathPos);
             Audio.PlayOr(Juice.DeathSfx(cause), "death", 1f);
+            // Versus is a live race against a person — the castle keeps quiet and
+            // lets the two players talk instead.
+            if (_mode != Mode.Versus)
+                RoomToast(Juice.Roast(cause, _deaths, _levelIndex + 1, nearMiss));
             FlashRed();
             StartCoroutine(HitStop(0.08f));        // a punchy freeze-frame on impact
             UpdateHud();
@@ -6726,14 +7037,28 @@ namespace TrustIssues
                 foreach (var kv in _linger)
                 {
                     float x = kv.Key;
-                    if (x <= _level.Spawn.x + 2f || x >= _levelEndX - 2f) continue;
+                    // KEEP CLEAR OF BOTH ENDS.
+                    //
+                    // The old 2-unit margin at the exit was not enough. The coffin
+                    // sits on the final pad and players naturally slow down as they
+                    // reach for it — which is exactly the "lingered here" signal
+                    // this system looks for, so the castle kept learning the spot
+                    // directly in front of the exit and growing a spike across the
+                    // last approach. That is not a joke, it is a floor that got
+                    // harder to finish the closer you came to finishing it.
+                    //
+                    // 5 units clears the whole exit pad and its run-up; 3 at the
+                    // start keeps a fresh spawn from opening onto a hazard.
+                    if (x <= _level.Spawn.x + 3f || x >= _levelEndX - 5f) continue;
                     if (kv.Value > bestT) { bestT = kv.Value; bestX = x; found = true; }
                 }
                 // Place the spike JUST AHEAD of the comfort spot — never on the
                 // respawn point itself (no instant-death loop), and it betrays the
                 // path you were about to take. Fall back to the comfort spot if the
                 // spot ahead isn't safely jumpable.
-                float trapX = Mathf.Min(bestX + 1.2f, _levelEndX - 2f);
+                // Same 5-unit exit margin as the scan above — nudging the spike
+                // 1.2 forward must not push it back into the coffin's approach.
+                float trapX = Mathf.Min(bestX + 1.2f, _levelEndX - 5f);
                 if (!SafeSpikeSpot(trapX)) trapX = bestX;
                 // ONLY commit it where you can actually run up and jump it. If neither
                 // spot is safely jumpable, learn nothing this floor — better no trap
@@ -7005,7 +7330,7 @@ namespace TrustIssues
                 int shardPay = 15 + (firstClear ? 25 : 0) + (_floorDeaths < 5 ? 10 : 0);
                 if (firstClear && (_levelIndex + 1) % 5 == 0) shardPay += 50;   // milestone floor
                 Currency.Earn(shardPay, firstClear ? "first_clear" : "floor_clear");
-                if (_player != null) ShardFloater.Spawn(_player.transform.position, shardPay);
+                if (Currency.Visible && _player != null) ShardFloater.Spawn(_player.transform.position, shardPay);
             }
 
             if (_mode == Mode.Endless)
@@ -7056,6 +7381,13 @@ namespace TrustIssues
                 _levelIndex++;
                 PlayerPrefs.SetInt("ti_level", _levelIndex);
                 UnlockCastle(_levelIndex);     // beating a floor unlocks the next
+                // …and the map's cursor moves with you. Whichever way the player
+                // reaches the road next — pause > map, a story interlude, or the
+                // landing's CASTLE button — the floor already selected is the one
+                // they just unlocked, so the only tap left is DESCEND. It used to
+                // keep pointing at whatever they last tapped, which on the common
+                // path was the floor they had already beaten.
+                _mapSel = _levelIndex;
                 PlayerPrefs.Save();
                 if (IsStoryMilestone(clearedFloor) &&
                     PlayerPrefs.GetInt($"ti_story_seen_{clearedFloor}", 0) == 0)

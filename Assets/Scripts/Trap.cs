@@ -50,6 +50,20 @@ namespace TrustIssues
     {
         public TrapType type;
         public Sprite[] frames;   // optional spin/animation frames (e.g. the saw)
+
+        // ---- THE QUIET VARIANT -----------------------------------------------
+        // A hand-placed LateSpike is a designed beat: it wants to be big, and it
+        // wants its warning crack, because the floor it sits on was authored
+        // around it. A spike the castle LEARNED from watching you is a different
+        // animal — it appears mid-floor, unannounced, in a spot that was safe last
+        // life. At full size with a red crack under it, it stopped reading as the
+        // castle being sly and started reading as a bug: a huge spike sitting on a
+        // red rectangle nobody drew on purpose.
+        //
+        // So the learned ones come through small and unmarked. Same trap, same
+        // hitbox rules, just sized and lit like a detail rather than a set piece.
+        public float visualScale = 1f;   // shrinks the emerged spike
+        public bool subtle;              // skip the warning crack entirely
         // True when this trap is drawn with its Bestiary illustration. Those are
         // fully painted, so the "tint it red while lethal" telegraphs have to become
         // brightness changes instead — tinting a painted sprite red erases the art.
@@ -499,21 +513,63 @@ namespace TrustIssues
         IEnumerator DropReactive()
         {
             _armed = false;
-            // A longer shake so the drop is clearly readable — you have time to
-            // sprint out from under it instead of being flattened on arrival.
+
+            // ---- IT AIMS WHERE YOU'RE GOING, NOT WHERE YOU ARE -----------------
+            //
+            // The old version shook for half a second directly above its authored
+            // spot and then dropped there. At 7.5 u/s a player covers 3.75 units
+            // during that shake, which is wider than the block — so anyone simply
+            // holding right walked out from under it every time and the trap did
+            // nothing. That is the "you can just walk fast and nothing happens"
+            // note, and it was true of every Faller and Chandelier in the game.
+            //
+            // Now the block STALKS during the first part of the shake: it tracks a
+            // point out ahead of the player, scaled by how fast they are actually
+            // moving, so running is what puts you under it. Sprinting is no longer
+            // a free answer — it is the thing being punished.
+            //
+            // Then it COMMITS. Tracking stops at LockAt and the remaining shake
+            // happens over the spot it has chosen, so the prediction is shown to
+            // the player before it becomes lethal. That is the whole difference
+            // between "the game read me" and "the game cheated": it guesses out
+            // loud, and you still get a window to prove it wrong.
+            const float ShakeTime = 0.55f, LockAt = 0.32f;
+            const float Lead = 0.42f;    // seconds of the player's velocity to lead by
+            const float Reach = 3.6f;    // …but never further than this from home
+
+            var playerT = GameRoot.I != null ? GameRoot.I.PlayerTransform : null;
+            var playerRb = playerT != null ? playerT.GetComponent<Rigidbody2D>() : null;
+            float aimX = _fallerHome.x;
+
             float e = 0f;
-            while (e < 0.5f)
+            while (e < ShakeTime)
             {
                 e += Time.deltaTime;
-                if (_faller != null) _faller.position = _fallerHome + (Vector3)(Random.insideUnitCircle * 0.08f);
+                if (e < LockAt && playerT != null)
+                {
+                    float vx = playerRb != null ? playerRb.linearVelocity.x : 0f;
+                    float want = playerT.position.x + vx * Lead;
+                    // Clamped to a leash around the authored spot. Without this the
+                    // block chases across the whole floor, which stops reading as a
+                    // trap in a room and starts reading as a bug following you.
+                    want = Mathf.Clamp(want, _fallerHome.x - Reach, _fallerHome.x + Reach);
+                    aimX = Mathf.Lerp(aimX, want, 10f * Time.deltaTime);
+                }
+                if (_faller != null)
+                    _faller.position = new Vector3(aimX, _fallerHome.y, _fallerHome.z)
+                                     + (Vector3)(Random.insideUnitCircle * 0.08f);
                 yield return null;
             }
-            Vector3 to = new Vector3(_fallerHome.x, transform.position.y, 0f);
+            // Fall from where it COMMITTED, not from its authored perch — the block
+            // has stalked sideways by now, and lerping from _fallerHome would snap
+            // it back across the room for one frame and then drop it diagonally.
+            Vector3 from = new Vector3(aimX, _fallerHome.y, _fallerHome.z);
+            Vector3 to = new Vector3(aimX, transform.position.y, 0f);
             e = 0f;
             while (e < 0.1f)
             {
                 e += Time.deltaTime;
-                if (_faller != null) _faller.position = Vector3.Lerp(_fallerHome, to, e / 0.1f);
+                if (_faller != null) _faller.position = Vector3.Lerp(from, to, e / 0.1f);
                 yield return null;
             }
             // SLAM — dust + shake even if it misses (weight).
@@ -556,9 +612,10 @@ namespace TrustIssues
             var painted = Assets.TrapArt("latespike");
             var sp = painted ?? Assets.Sprite("spike");
             var pos = transform.position + Vector3.down * 0.9f;
+            float vs = Mathf.Max(0.2f, visualScale);
             GameObject go = sp != null
-                ? Theme.SpriteBox("Spikes", transform.parent, pos, painted != null ? new Vector2(1.4f, 0.9f) : new Vector2(1f, 1f), sp, 3)
-                : Theme.Box("Spikes", transform.parent, pos, new Vector2(0.7f, 0.9f), Theme.Danger, 3);
+                ? Theme.SpriteBox("Spikes", transform.parent, pos, (painted != null ? new Vector2(1.4f, 0.9f) : new Vector2(1f, 1f)) * vs, sp, 3)
+                : Theme.Box("Spikes", transform.parent, pos, new Vector2(0.7f, 0.9f) * vs, Theme.Danger, 3);
             // Black iron with a blood rim, so an ambush spike is unmistakable the
             // instant it clears the floor (see PaintSpike).
             if (sp != null) PaintSpike(go, painted != null);
@@ -573,19 +630,26 @@ namespace TrustIssues
 
             // A hairline crack appears before the spike moves. It is deliberately
             // brief: a surprise on attempt one, actionable information thereafter.
-            var crack = Theme.Box("SpikeCrack", transform.parent,
-                new Vector2(transform.position.x, -2.66f), new Vector2(1.05f, 0.08f),
-                new Color(0.9f, 0.16f, 0.2f, 0.9f), 4);
-            Vector3 crackScale = crack.transform.localScale;
-            float warning = 0f;
-            while (warning < 0.12f)
+            // The learned spikes skip it — see `subtle`. On those it was the thing
+            // reading as a stray red rectangle under the trap, and a spike the
+            // castle grew specifically because you felt safe there is not supposed
+            // to announce itself anyway.
+            if (!subtle)
             {
-                warning += Time.deltaTime;
-                crack.transform.localScale = new Vector3(
-                    crackScale.x * (0.55f + warning * 3.75f), crackScale.y, crackScale.z);
-                yield return null;
+                var crack = Theme.Box("SpikeCrack", transform.parent,
+                    new Vector2(transform.position.x, -2.66f), new Vector2(1.05f, 0.08f),
+                    new Color(0.9f, 0.16f, 0.2f, 0.9f), 4);
+                Vector3 crackScale = crack.transform.localScale;
+                float warning = 0f;
+                while (warning < 0.12f)
+                {
+                    warning += Time.deltaTime;
+                    crack.transform.localScale = new Vector3(
+                        crackScale.x * (0.55f + warning * 3.75f), crackScale.y, crackScale.z);
+                    yield return null;
+                }
+                if (crack != null) Destroy(crack);
             }
-            if (crack != null) Destroy(crack);
 
             // Ease-out with a small overshoot-and-settle: the spike PUNCHES up,
             // pokes a hair past its mark, and sits back. A linear slide read as

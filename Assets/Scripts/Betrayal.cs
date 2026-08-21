@@ -36,6 +36,41 @@ namespace TrustIssues
         /// <summary>How close the player has to be before a betrayal wakes up.</summary>
         public const float Sense = 0.9f;
 
+        // ---- WHO ACTUALLY KILLED YOU -----------------------------------------
+        //
+        // The floor betrayals kill INDIRECTLY. A tilting slab does not touch you
+        // with a lethal collider; it pours you into a pit and the pit's y-check
+        // kills you a second later. Same for the slab that slides away, the one
+        // that drops, and the wall that shoves you off a ledge.
+        //
+        // Two things were quietly broken by that. Their Bestiary pages could never
+        // unlock — Codex.Unlock is called from KillZone, and these have no KillZone
+        // — so seven of the book's entries were unreachable, including the four
+        // mechanics the campaign is mostly built from. And the death narrator had
+        // nothing to go on either, so the game's most common deaths got its most
+        // generic lines.
+        //
+        // So a betrayal now signs its work on the way past. GameRoot reads this
+        // when a fall death lands and, if the signature is fresh, credits the kill
+        // to the slab rather than to gravity.
+        static TrapType _blame;
+        static float _blameAt = -99f;
+
+        /// <summary>A betrayal fired with the player on/against it. Sign the kill.</summary>
+        public static void Blame(TrapType t) { _blame = t; _blameAt = Time.time; }
+
+        /// <summary>
+        /// Did a betrayal put the player in the air within the last <paramref name="within"/>
+        /// seconds? Consumed on read, so one slab can never be blamed for two deaths.
+        /// </summary>
+        public static bool TakeBlame(out TrapType t, float within = 2.2f)
+        {
+            t = _blame;
+            bool fresh = Time.time - _blameAt <= within;
+            _blameAt = -99f;
+            return fresh;
+        }
+
         /// <summary>The tell. Everything here shudders before it does anything.</summary>
         public static IEnumerator Shudder(Transform t, float time, float amp = 0.05f)
         {
@@ -107,6 +142,31 @@ namespace TrustIssues
         /// </summary>
         /// <summary>The colour a slab flushes to while it is about to betray you.</summary>
         public static readonly Color WarnTint = new Color(0.72f, 0.26f, 0.21f);
+
+        /// <summary>
+        /// The tell WITHOUT the shudder — colour only.
+        ///
+        /// Creak below jitters transform.position to sell the warning. That is fine
+        /// for a slab that then rotates, but any betrayal whose approach phase
+        /// MOVES the body (the lean, the creep) has two things writing to the same
+        /// transform, and the shudder wins on alternate frames — the slab judders
+        /// instead of gliding. Those use this: same red throb, no fight.
+        /// </summary>
+        public static IEnumerator Flush(Transform t, System.Func<bool> stop, float time = 0.8f)
+        {
+            var sr = t.GetComponent<SpriteRenderer>();
+            if (sr == null) yield break;
+            Color home = sr.color;
+            float e = 0f;
+            while (e < time && !stop())
+            {
+                e += Time.deltaTime;
+                float pulse = 0.4f + 0.6f * Mathf.Abs(Mathf.Sin(e * 9f));
+                sr.color = Color.Lerp(home, WarnTint, pulse * Mathf.Clamp01(e / 0.15f));
+                yield return null;
+            }
+            if (sr != null) sr.color = home;
+        }
 
         public static IEnumerator Creak(Transform t, System.Func<bool> stop, float time = 0.6f)
         {
@@ -186,8 +246,28 @@ namespace TrustIssues
         // before the player was already gone.
         public float tipAngle = -78f, delay = 0.05f, tipTime = 0.22f;
 
+        // ---- THE LEAN: the warning is the movement -----------------------------
+        //
+        // The old shape was a 0.60s colour pulse and then a 0.22s collapse. All the
+        // information lived in the pulse, because 0.22s is faster than a person can
+        // read — the slab effectively teleported to its final angle. That is the
+        // "it doesn't move smoothly" note: there was no motion to watch, only a
+        // flash and then an outcome.
+        //
+        // Now the slab starts leaning the moment you are close enough to see it,
+        // slowly, and only part of the way. By the time you arrive it is visibly
+        // compromised but still crossable — so the decision is real and it is
+        // yours: commit now and you make it, hesitate and the angle beats you.
+        // Stepping on it still triggers the fast, final collapse.
+        //
+        // This is what a rage platformer's traps are actually for. The old version
+        // punished you for not having memorised the floor. This one punishes you
+        // for flinching, which is a thing you can feel yourself doing.
+        public float leanAngle = -14f, leanTime = 0.8f;
+
         Rigidbody2D _rb;
         bool _going, _armed;
+        float _angle;   // where the lean got to, so the collapse continues from it
 
         void Awake()
         {
@@ -201,11 +281,28 @@ namespace TrustIssues
             if (!_armed && Betray.Approaching(transform, size))
             {
                 _armed = true;
-                StartCoroutine(Betray.Creak(transform, () => _going));
+                StartCoroutine(Betray.Flush(transform, () => _going));
+                StartCoroutine(Lean());
             }
             if (_going || !Betray.Riding(transform, size)) return;
             _going = true;
+            Betray.Blame(TrapType.TiltFloor);
             StartCoroutine(Tip());
+        }
+
+        /// <summary>The slow, partial, watchable give. Stops dead once you stand on it.</summary>
+        IEnumerator Lean()
+        {
+            Audio.Play("click", 0.3f);
+            float e = 0f;
+            while (e < leanTime && !_going)
+            {
+                e += Time.fixedDeltaTime;
+                _angle = Mathf.Lerp(0f, leanAngle, Mathf.SmoothStep(0f, 1f, e / leanTime));
+                _rb.MoveRotation(_angle);
+                if (Random.value < 0.04f) Betray.Dust(transform.position, 1);
+                yield return new WaitForFixedUpdate();
+            }
         }
 
         IEnumerator Tip()
@@ -213,12 +310,12 @@ namespace TrustIssues
             Audio.Play("dash", 0.4f);
             Betray.Dust(transform.position, 6);
             yield return new WaitForSeconds(delay);
-            float e = 0f;
+            float e = 0f, from = _angle;
             while (e < tipTime)
             {
                 e += Time.fixedDeltaTime;
                 float k = e / tipTime;
-                _rb.MoveRotation(Mathf.Lerp(0f, tipAngle, k * k));   // accelerating, like a hinge giving way
+                _rb.MoveRotation(Mathf.Lerp(from, tipAngle, k * k));   // accelerating, like a hinge giving way
                 yield return new WaitForFixedUpdate();
             }
             _rb.MoveRotation(tipAngle);
@@ -242,14 +339,26 @@ namespace TrustIssues
         // visibly moving, never actually a threat.
         public float travel = 3.4f, delay = 0.05f, slideTime = 0.19f;
 
+        // THE CREEP — see TiltSlab.leanAngle for the full reasoning.
+        //
+        // The slab starts easing out of its socket as you come into range, opening
+        // a slot you can watch widen. It only gives up a fifth of its width, so the
+        // crossing stays makeable for anyone who commits; the rest goes the instant
+        // you are standing on it. A player who sprints across is rewarded, a player
+        // who stops at the edge to think watches the gap grow.
+        public float creepFrac = 0.2f, creepTime = 0.85f;
+
         Rigidbody2D _rb;
         bool _going, _armed;
+        Vector2 _home;      // authored position, captured before anything moves
+        float _crept;       // how far the creep got, so the slide continues from it
 
         void Awake()
         {
             _rb = GetComponent<Rigidbody2D>();
             if (_rb == null) _rb = gameObject.AddComponent<Rigidbody2D>();
             _rb.bodyType = RigidbodyType2D.Kinematic;
+            _home = transform.position;
         }
 
         void Update()
@@ -257,26 +366,46 @@ namespace TrustIssues
             if (!_armed && Betray.Approaching(transform, size))
             {
                 _armed = true;
-                StartCoroutine(Betray.Creak(transform, () => _going));
+                StartCoroutine(Betray.Flush(transform, () => _going));
+                StartCoroutine(Creep());
             }
             if (_going || !Betray.Riding(transform, size)) return;
             _going = true;
+            Betray.Blame(TrapType.SlideFloor);
             StartCoroutine(Slide());
+        }
+
+        /// <summary>The slot opening. Slow, partial, and it stops when you board.</summary>
+        IEnumerator Creep()
+        {
+            Audio.Play("click", 0.3f);
+            float e = 0f, target = travel * creepFrac;
+            while (e < creepTime && !_going)
+            {
+                e += Time.fixedDeltaTime;
+                _crept = Mathf.Lerp(0f, target, Mathf.SmoothStep(0f, 1f, e / creepTime));
+                _rb.MovePosition(_home + new Vector2(-_crept, 0f));
+                if (Random.value < 0.04f) Betray.Dust(transform.position, 1);
+                yield return new WaitForFixedUpdate();
+            }
         }
 
         IEnumerator Slide()
         {
-            Vector2 home = transform.position;
+            Vector2 home = _home;
             Audio.Play("dash", 0.45f);
             Betray.Dust(transform.position, 6);
             GameRoot.I?.ShakeCam(0.2f, 0.1f);
             yield return new WaitForSeconds(delay);
-            float e = 0f;
+            // Continue from where the creep got to, never from zero — lerping from
+            // `home` would snap the slab back into its socket for one frame before
+            // throwing it out again, which reads as a glitch at this speed.
+            float e = 0f, from = _crept;
             while (e < slideTime)
             {
                 e += Time.fixedDeltaTime;
                 float k = Mathf.SmoothStep(0f, 1f, e / slideTime);
-                _rb.MovePosition(home + new Vector2(-travel * k, 0f));
+                _rb.MovePosition(home + new Vector2(-Mathf.Lerp(from, travel, k), 0f));
                 yield return new WaitForFixedUpdate();
             }
             _rb.MovePosition(home + new Vector2(-travel, 0f));
@@ -327,6 +456,7 @@ namespace TrustIssues
             }
             if (_going || !Betray.Riding(transform, size)) return;
             _going = true;
+            Betray.Blame(TrapType.DropFloor);
             StartCoroutine(Fall());
         }
 
@@ -460,6 +590,7 @@ namespace TrustIssues
         {
             if (_going || Betray.Near(transform.position) > 5.2f) return;
             _going = true;
+            Betray.Blame(TrapType.SlamWall);
             StartCoroutine(Slam());
         }
 

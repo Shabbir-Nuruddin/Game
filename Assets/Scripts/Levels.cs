@@ -382,6 +382,68 @@ namespace TrustIssues
             L.CamMaxX = Mathf.Max(-1.5f, cur - 10f);
             return L;
         }
+
+        // ====================================================================
+        // ENDINGS THAT LIE
+        //
+        // Thirty-eight of forty floors closed with Finish() — an honest, working
+        // coffin — so the castle betrayed the ROAD constantly and the DESTINATION
+        // almost never. That is backwards for this genre. The whole engine of a
+        // troll platformer is certainty: a trap only lands if the player was sure,
+        // and nothing makes a player sure like seeing the goal. Betraying the
+        // journey makes people careful. Betraying the goal is what makes them
+        // shout, and shouting is what gets a game shared.
+        //
+        // Both of these were buildable from day one — FakeCoffin and FakeDoor have
+        // always been here, fully working, and were placed a combined two times.
+        // These just make the two good shapes into one-line endings so a floor can
+        // pick its lie the same way it picks its hazards.
+        // ====================================================================
+
+        /// <summary>
+        /// THE ONE YOU RUN AT ISN'T IT. A decoy coffin sits exactly where the floor
+        /// looks like it ends — same silhouette, dull brass cross instead of glowing
+        /// gold, and an invisible kill zone inside. The real one is further on, past
+        /// one more gap you had no reason to think was there.
+        ///
+        /// The tell is honest and it is on screen, so the second time through this
+        /// is free. The first time it is the best joke the floor has.
+        /// </summary>
+        public Level FinishDecoy()
+        {
+            Gap(2.5f);
+            float decoy = Plat(4f);
+            FakeCoffin(decoy);
+            Gap(2.6f);
+            float endc = Plat(4f);
+            CloseRoom();
+            T(TrapType.RealExit, endc, -2f, 1.4f, 1.8f);
+            L.CamMinX = -1.5f;
+            L.CamMaxX = Mathf.Max(-1.5f, cur - 10f);
+            return L;
+        }
+
+        /// <summary>
+        /// THE LAST STEP LIES. The coffin is real, lit, reachable, and everything it
+        /// appears to be. The slab you have to cross to touch it is not — it drops
+        /// the moment you commit.
+        ///
+        /// Deliberately the gentler of the two: nothing about the goal is fake, so a
+        /// player who has learned to read a betraying floor already owns the answer.
+        /// It punishes the sprint-for-the-door reflex specifically, which is the one
+        /// reflex every player has by floor ten.
+        /// </summary>
+        public Level FinishTrapdoor()
+        {
+            Gap(2.5f);
+            DropFloor(3.2f);
+            float endc = Plat(4f);
+            CloseRoom();
+            T(TrapType.RealExit, endc, -2f, 1.4f, 1.8f);
+            L.CamMinX = -1.5f;
+            L.CamMaxX = Mathf.Max(-1.5f, cur - 10f);
+            return L;
+        }
     }
 
     public static class Levels
@@ -555,8 +617,20 @@ namespace TrustIssues
                 // drops (Betrayal.cs) — never straight after a blind beat, never on
                 // a glide landing (you need somewhere solid to refill the meter),
                 // and never carrying a hazard as well.
-                bool betray = difficulty >= 1 && !longGap && !blindHere && !lastWasBlind
-                              && rng.Next(100) < 14 + difficulty * 3;
+                // GROUND THAT BETRAYS, FROM THE FIRST CHUNK.
+                //
+                // This was gated at difficulty >= 1 and started at a 17% roll, so
+                // the opening of a run was all honest stone and the mode's best
+                // idea — the floor itself turning on you — barely showed up until
+                // a player was already several chunks deep. The whole reason these
+                // exist is that they are the ONLY hazard here not answered by
+                // jumping, which makes them exactly what the opening was missing.
+                //
+                // Ungated and opened at 22%, so roughly one landing in four early
+                // on. They telegraph on approach (Betrayal.cs), so this raises the
+                // variety of the opening without raising its unfairness.
+                bool betray = !longGap && !blindHere && !lastWasBlind
+                              && rng.Next(100) < 22 + difficulty * 3;
                 if (betray)
                 {
                     switch (rng.Next(3))
@@ -863,13 +937,29 @@ namespace TrustIssues
                     TrapType.Saw, TrapType.BatSwoop,
                 };
 
-            var l = new List<TrapType> { TrapType.SpikeStatic, TrapType.SpikeStatic };
-            if (d >= 1) l.Add(TrapType.LateSpike);
-            if (d >= 2) { l.Add(TrapType.Dart); l.Add(TrapType.Crusher); l.Add(TrapType.GrowSpike); }
+            // THE OPENING USED TO BE A SPIKE GALLERY.
+            //
+            // Endless difficulty is min(7, 1 + chunk/2), so the first two chunks of
+            // EVERY run — the only part most players ever see — drew from exactly
+            // three entries, two of which were the same plain spike. The third,
+            // LateSpike, is answered by the same input. So the mode opened with
+            // roughly a hundred metres of "jump the thing", which is why it reads as
+            // nothing but jumping: for the stretch that decides whether anyone keeps
+            // playing, that is literally all it was.
+            //
+            // The set below opens WIDER but no harder. Every early addition is a
+            // hazard the player can see coming and answers with a DIFFERENT verb:
+            // GrowSpike is wait-then-go, Saw and Pendulum are time-the-swing. None
+            // of them is blind, so the early game gets more interesting without
+            // getting less fair — the blind-trap budget above is untouched.
+            var l = new List<TrapType> { TrapType.SpikeStatic, TrapType.GrowSpike };
+            if (d >= 1) { l.Add(TrapType.LateSpike); l.Add(TrapType.Saw); }
+            if (d >= 2) { l.Add(TrapType.Dart); l.Add(TrapType.Crusher); l.Add(TrapType.Pendulum);
+                          l.Add(TrapType.SlamWall); }                                      // the sides join in
             if (d >= 3) { l.Add(TrapType.Faller);
-                          l.Add(TrapType.Pendulum); l.Add(TrapType.Chandelier); }        // vampire traps
-            if (d >= 4) { l.Add(TrapType.Saw); l.Add(TrapType.Surprise); l.Add(TrapType.WarpBack);
-                          l.Add(TrapType.FlameJet); l.Add(TrapType.HolyWater);
+                          l.Add(TrapType.FlameJet); l.Add(TrapType.Chandelier); }        // vampire traps
+            if (d >= 4) { l.Add(TrapType.Surprise); l.Add(TrapType.WarpBack);
+                          l.Add(TrapType.HolyWater);
                           l.Add(TrapType.Reverse); }                                       // inverted controls (rare)
             if (d >= 5) { l.Add(TrapType.ArrowRain); l.Add(TrapType.BatSwoop); }
             return l;
@@ -906,7 +996,12 @@ namespace TrustIssues
         // right under it, which is what made the night-3 "falling box" unfair.
         internal static bool Soloist(TrapType t) =>
             t == TrapType.Crusher || t == TrapType.WarpBack ||
-            t == TrapType.Faller || t == TrapType.Chandelier;
+            t == TrapType.Faller || t == TrapType.Chandelier ||
+            // A slam wall owns the whole lane while it is out. Anything sharing the
+            // platform has to be cleared in whatever sliver of time the wall leaves,
+            // and the pairing logic cannot reason about that — so it goes alone, for
+            // the same reason the crusher does.
+            t == TrapType.SlamWall;
 
         internal static void PlaceHazard(B b, TrapType t, float p)
         {
@@ -927,6 +1022,21 @@ namespace TrustIssues
                 case TrapType.Chandelier: b.Chandelier(p); break;
                 case TrapType.HolyWater: b.HolyWater(p); break;
                 case TrapType.BatSwoop: b.Bat(p); break;
+                // THE WALLS JOIN IN.
+                //
+                // This switch had no case for SlamWall, so the generator could not
+                // place one even if the pool offered it — every procedural hazard
+                // in the game came at the player from the floor or the ceiling, and
+                // "jump it" or "don't be under it" covered the entire mode. A wall
+                // that drives in from off-lane is the only threat here answered by
+                // a horizontal decision: you go through the gap early or you wait
+                // and go behind it. That is a different verb, which is the whole
+                // point of adding it.
+                //
+                // It shoves rather than kills (see GameRoot's SlamWall case) and is
+                // held at 2.2 tall so it can always be vaulted, so it can never
+                // seal a corridor on a player who arrived a beat late.
+                case TrapType.SlamWall: b.SlamWall(p, 3.4f, (p * 7f) % 2f < 1f); break;
                 default: b.Spike(p); break;
             }
         }
@@ -1078,32 +1188,48 @@ namespace TrustIssues
         }
 
         // 5 — SHOW: THE FLOOR LEAVES. The opposite answer to floor 3. This slab
-        // is still there — it just isn't under you any more. Alone again.
+        // is still there — it just isn't under you any more.
+        //
+        // ONE slab, and nothing else in the room. Playtesting put this floor at
+        // ~37 deaths against 6-7 on its neighbours — a five-fold spike on the
+        // floor that is supposed to be a gentle SHOW beat. The cause is in the
+        // slab, not the layout: SlideSlab travels 3.4 units in 0.19s AWAY from
+        // the way you are running, while a 4.2-wide slab takes 0.56s to walk. It
+        // is not crossable on foot at all — the only answer is to jump the whole
+        // thing — and floor 5 asked a player who had never seen one to solve it
+        // twice back to back, with a saw waiting on floor 6.
+        //
+        // The pair now lives on floor 21 (in the dark, where that difficulty
+        // belongs) and floor 5 does what a SHOW floor is for: meet the slab once,
+        // on wide honest ground, with a fat clean landing on the far side.
         static Level L5()
         {
             var b = new B();
             b.Room(RoomRule.None);
-            b.Plat(6f);
-            b.SlideFloor();                     // NEW — slides out sideways
-            b.Plat(5f);
-            b.SlideFloor();
+            b.Plat(7f);                         // a long honest run-up to read the creak
+            b.SlideFloor();                     // NEW — and the ONLY thing in this room
+            b.Plat(7f);                         // fat landing, nothing standing on it
+            b.Gap(2.2f);
             b.Plat(6f);
             return b.Finish();
         }
 
-        // 6 — USE: TIP OR SLIDE. The two floor betrayals in one room, back to
-        // back, because telling them apart at a glance is the actual skill.
+        // 6 — USE: TIP OR SLIDE. The two floor betrayals in one room, because
+        // telling them apart at a glance is the actual skill.
+        //
+        // The saw that used to close this floor is gone to floor 22. A player who
+        // has seen exactly one slide slab does not also need a moving blade in
+        // the same breath — that pairing was the second half of the floor-5/6
+        // wall, and this floor's whole job is "tell the two floors apart".
         static Level L6()
         {
             var b = new B();
             b.Room(RoomRule.None);
+            b.Plat(6f);
+            b.TiltFloor();                      // taught on 3 and 4
             b.Plat(5f);
-            b.TiltFloor();
-            b.Plat(4f);
-            b.SlideFloor();
-            b.Plat(4f);
-            float a = b.Plat(5f); b.Saw(a + 1f);
-            b.Plat(4f);
+            b.SlideFloor();                     // taught on 5
+            b.Plat(6f);
             return b.Finish();
         }
 
@@ -1119,7 +1245,7 @@ namespace TrustIssues
             b.Plat(5f);
             float c = b.Plat(6f); b.CeilingVolley(c, 4);
             b.Plat(5f);
-            return b.Finish();
+            return b.FinishDecoy();
         }
 
         // 8 — USE: TEETH AND STEEL. Volleys from above with saws on the floor,
@@ -1134,6 +1260,11 @@ namespace TrustIssues
             float c = b.Plat(6f); b.Saw(c + 1f);
             b.Gap(2.2f);
             float d = b.Plat(6f); b.CeilingVolley(d, 5);
+            // The first time the castle punishes the jump instead of demanding it.
+            // Deliberately this early: the lesson "going up is sometimes the wrong
+            // answer" has to be planted while the player is still forming the
+            // habit, or by floor 20 it is not a subversion, it is a rule change.
+            float k = b.Plat(5f); b.Crusher(k + 1f);
             b.Plat(4f);
             return b.Finish();
         }
@@ -1150,7 +1281,21 @@ namespace TrustIssues
             b.DropFloor();                      // NEW — and it does not stop
             b.Plat(6f);
             b.DropFloor();
-            b.Plat(6f);
+            // AND THE SIDES OF THE ROOM, WHILE THERE IS STILL ANYONE HERE.
+            //
+            // The wall used to debut on floor 16. Testers are quitting well before
+            // that, which meant the entire "a threat can come from beside you" verb
+            // was, in practice, not in the game — everyone who played it met floors
+            // that betray and ceilings that bite and nothing else. Three verbs by
+            // floor 9 instead of two is the single cheapest thing that makes the
+            // early game stop feeling like one input.
+            //
+            // Shown the way every other mechanic is shown here: alone, over solid
+            // ground, with room to watch it arrive. Floor 16 still owns the hard
+            // version where they come from both sides.
+            float w = b.Plat(6f);
+            b.SlamWall(w + 2f, 3.4f);
+            b.Plat(5f);
             return b.Finish();
         }
 
@@ -1192,7 +1337,7 @@ namespace TrustIssues
             b.Plat(4.5f);
             b.CeilSlab(g - 3f, g + 2.5f);
             b.CeilSlab(g + 4f, g + 10f);
-            return b.Finish();
+            return b.FinishTrapdoor();
         }
 
         // 12 — THE DARK RETURNS. One room, candles out, and a floor that leaves
@@ -1224,7 +1369,7 @@ namespace TrustIssues
             b.Gap(2.3f);
             b.TiltFloor(3f);
             b.Plat(4.5f);
-            return b.Finish();
+            return b.FinishDecoy();
         }
 
         // 14 — THE SUN LIES. Invisible daylight on ground that looks like relief,
@@ -1255,6 +1400,11 @@ namespace TrustIssues
             float c = b.Plat(5f); b.Crusher(c);
             b.Gap(2.2f);
             float d = b.Plat(6f); b.ArrowRain(d + 1.5f);
+            // The wall again, six floors after it was shown — otherwise it is taught
+            // once on floor 9 and then absent until 16, which is long enough that
+            // its return reads as a new mechanic rather than a remembered one.
+            float w = b.Plat(5.5f);
+            b.SlamWall(w + 1.8f, 3.2f);
             b.Plat(4f);
             return b.Finish();
         }
@@ -1272,10 +1422,13 @@ namespace TrustIssues
             b.Plat(5f);
             b.MoverGap(6.8f);                   // now the ferry
             float a = b.Plat(6f); b.Saw(a + 1.5f);
+            // Same reasoning as floor 24: the walls have owned this room from the
+            // start, so the ground reads as the one honest surface here. It isn't.
+            b.FakeFloor(2.2f);
             float q = b.Plat(5f);
             b.SlamWall(q, 3.2f, true);          // and from the other side
             b.Plat(4f);
-            return b.Finish();
+            return b.FinishTrapdoor();
         }
 
         // 17 — THE FLOOR FALLS TWICE. Two drop slabs in a row, so the room you
@@ -1289,6 +1442,18 @@ namespace TrustIssues
             float a = b.Plat(5f); b.FlameJet(a + 1.2f);
             b.DropFloor(3.2f);
             float c = b.Plat(6f); b.Saw(c); b.Spike(c + 2.5f);
+            // AND NOW JUMPING IS WRONG.
+            //
+            // Everything above this line — the two trapdoors, the flame jet, the
+            // saw, the spike — is answered by the same input, and by here the
+            // player is not deciding any more, they are jumping on sight. The
+            // crusher is the only trap in the game that punishes exactly that, and
+            // it was placed on two floors out of forty, so the reflex the castle
+            // spends the whole campaign training was never once turned against the
+            // player. It gets its own platform: a crusher demands you stay LOW and
+            // almost everything else demands you go over, so pairing them makes a
+            // platform with no solution.
+            float k = b.Plat(5f); b.Crusher(k + 1f);
             b.Plat(4.5f);
             return b.Finish();
         }
@@ -1308,7 +1473,7 @@ namespace TrustIssues
             b.RiseFloor(3f);
             b.Gap(2.4f);
             b.Plat(5f);
-            return b.Finish();
+            return b.FinishDecoy();
         }
 
         // 19 — ★ THE SECOND WALL. The exam before the Countess: dark, reversed,
@@ -1335,23 +1500,31 @@ namespace TrustIssues
         // the exit starts lying as often as the floor does.
         // ====================================================================
 
-        // 21 — TIP INTO THE DARK. The lean you learned on floor 2, unlit.
+        // 21 — SLIDE INTO THE DARK. This is floor 5's old double-slide, moved up
+        // to where it belongs: two slabs that leave, back to back, unlit. By now
+        // the player has met the slide alone (5), paired with the tilt (6), in
+        // the exam (10) and unlit once already (12) — so asking them to jump two
+        // in the dark is a test, where on floor 5 it was a wall.
         static Level L21()
         {
             var b = new B();
             b.Room(RoomRule.Dark, 0.12f);
             b.Plat(5f);
-            b.TiltFloor(3f);
+            b.SlideFloor(3f);
             b.Plat(3.5f);
             float a = b.Plat(5f); b.ShiftSpike(a + 1.5f, a - 1.5f);
             b.Gap(2.2f);
-            b.TiltFloor(2.8f);
+            b.SlideFloor(2.8f);
             b.Plat(4.5f);
             return b.Finish();
         }
 
         // 22 — THE GHOST BRIDGE. A gap you cannot jump, crossed only by trusting
-        // the dark — with a slab that leaves on the far side.
+        // the dark — with the floor lying on the far side.
+        //
+        // Carries floor 6's old closing beat: tilt, then slide, then a saw. That
+        // three-in-a-row is a fine ask of a floor-22 player and was far too much
+        // of a floor-6 one.
         static Level L22()
         {
             var b = new B();
@@ -1359,10 +1532,12 @@ namespace TrustIssues
             b.Plat(4.5f);
             b.GhostFloor(7.2f);                 // only solid once the candles die
             b.Plat(3.5f);
+            b.TiltFloor(3f);
+            b.Plat(3.5f);
             b.SlideFloor(3f);
             float a = b.Plat(5f); b.Saw(a + 1f);
             b.Plat(4f);
-            return b.Finish();
+            return b.FinishTrapdoor();
         }
 
         // 23 — PRESSED FROM BOTH SIDES. A rising floor under a slamming wall.
@@ -1390,10 +1565,18 @@ namespace TrustIssues
             float a = b.Plat(6f); b.CeilingVolley(a, 5);
             b.Gap(2.2f);
             float c = b.Plat(5f); b.Chandelier(c);
+            // WHILE YOU WERE WATCHING THE CEILING.
+            //
+            // Every threat on this floor comes from above, which quietly teaches
+            // the player that the ground is the safe part — they spend the whole
+            // room with their eyes up. That is the one and only condition under
+            // which a collapsing floor is a joke rather than a cheap shot: it is
+            // blind, so it has to be earned by the floor establishing trust first.
+            b.FakeFloor(2.2f);
             b.Gap(2.2f);
             float d = b.Plat(6f); b.CeilingVolley(d + 1f, 5);
             b.Plat(4f);
-            return b.Finish();
+            return b.FinishDecoy();
         }
 
         // 25 — THE SHY COFFIN, GUARDED. It runs, and the ground it runs across
@@ -1440,7 +1623,7 @@ namespace TrustIssues
             b.FakeFloor(2f);
             float a = b.Plat(5f); b.Dart(a);
             b.Plat(4.5f);
-            return b.Finish();
+            return b.FinishTrapdoor();
         }
 
         // 28 — REVERSED OVER MOVING GROUND. Floor 9's idea, tightened.
@@ -1455,7 +1638,7 @@ namespace TrustIssues
             float a = b.Plat(5f); b.Saw(a + 1f);
             b.Gap(2.3f);
             b.Plat(5f);
-            return b.Finish();
+            return b.FinishDecoy();
         }
 
         // 29 — THE GAUNTLET BEFORE THE WARLOCK. Four betrayals, no honest ground
@@ -1509,6 +1692,9 @@ namespace TrustIssues
             b.DropFloor(3f);
             float a = b.Plat(5f); b.Saw(a + 1f);
             b.RiseFloor(2.8f);
+            // Four betrayals deep, every one of them survived by leaving the
+            // ground. Its own platform — see floor 17.
+            float k = b.Plat(5f); b.Crusher(k + 1f);
             b.Plat(4.5f);
             return b.Finish();
         }
@@ -1525,7 +1711,7 @@ namespace TrustIssues
             b.TiltFloor(2.8f);
             float d = b.Plat(5f); b.Spike(d + 1.2f);
             b.Plat(4f);
-            return b.Finish();
+            return b.FinishDecoy();
         }
 
         // 34 — THE DARK PRESS. Rising ground, unlit.
@@ -1555,7 +1741,7 @@ namespace TrustIssues
             float r = b.Plat(6f); b.Saw(r);
             b.SlamWall(r + 3.2f, 3.4f);
             b.Plat(5f);
-            return b.Finish();
+            return b.FinishTrapdoor();
         }
 
         // 36 — THE FERRY IN THE DARK. The slab ride, unlit, over a real pit.
@@ -1585,7 +1771,7 @@ namespace TrustIssues
             b.SlideFloor(2.8f);
             float d = b.Plat(5f); b.Saw(d);
             b.Plat(4.5f);
-            return b.Finish();
+            return b.FinishDecoy();
         }
 
         // 38 — THE FALSE DOORS. Coffins everywhere; one is real, and it runs.

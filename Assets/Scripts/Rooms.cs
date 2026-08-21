@@ -152,11 +152,18 @@ namespace TrustIssues
             if (_released) return;             // walk on through — the hall is done with you
             _loops++;
 
-            // The THIRD crossing is the one it relents on: message, disarm, and
-            // crucially let this crossing PASS instead of yanking you back (the
-            // old code both said "…fine. Go." AND teleported you — an off-by-one
-            // that read as a broken promise).
-            if (_loops >= 3)
+            // ONE yank, then it gives up.
+            //
+            // This used to hold you for two crossings before relenting on the
+            // third, i.e. you walked the same room three times. That is the exact
+            // failure mode this whole game is supposed to avoid: a troll gag is
+            // funny once because it is a SURPRISE, and the second and third
+            // repetitions convert the surprise into a chore. Level Devil's jokes
+            // land once and move on, and the difference between rage-bait and
+            // tedium is entirely how many times you make someone redo the walk.
+            //
+            // Once is the joke. Twice is homework.
+            if (_loops >= 2)
             {
                 _released = true;
                 GameRoot.I?.RoomToast("…fine. Go.");
@@ -168,7 +175,7 @@ namespace TrustIssues
 
             var p = pc.transform.position;
             pc.transform.position = new Vector3(returnX, p.y, p.z);
-            if (_loops == 2) GameRoot.I?.RoomToast("Déjà vu…");
+            GameRoot.I?.RoomToast("Déjà vu…");
         }
     }
 

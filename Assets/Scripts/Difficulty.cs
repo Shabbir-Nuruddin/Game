@@ -55,8 +55,16 @@ namespace TrustIssues
         // The creeping sunrise wall — off entirely on Casual.
         public static bool SunRise => Current != Difficulty.Casual;
         // Max "Trust Issues" reactive traps learned from your deaths (0 = off).
+        //
+        // Casual used to be 0, which meant the single most distinctive system in
+        // the game — the castle watching where you felt safe and quietly wiring it
+        // — was switched off for the widest audience the game has. The reason it
+        // was off no longer holds: the learned spike is now small, carries no mark
+        // under it, and only arms about half the time (see GameRoot's
+        // ReactiveArmChance), so it reads as the castle being sly rather than as
+        // the floor getting strictly harder every time you die on it.
         public static int ReactiveTrapCap =>
-            Current == Difficulty.Casual ? 0 : Current == Difficulty.Normal ? 2 : 3;
+            Current == Difficulty.Casual ? 1 : Current == Difficulty.Normal ? 3 : 4;
 
     }
 }
