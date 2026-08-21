@@ -20,25 +20,30 @@ namespace TrustIssues
     {
         /// <summary>
         /// THE ONE SWITCH FOR EVERYTHING THAT LEAVES THE DEVICE (except Photon,
-        /// which is a separate live service). Currently FALSE.
+        /// which is a separate live service). Now TRUE.
         ///
-        /// Analytics, leaderboards and death echoes all talk to the same server,
-        /// and that server is not running. With this false the game makes no
-        /// request at all, which is what the shipped privacy policy now says and
-        /// what keeps the Play "Data safety" form a clean "no data collected".
-        /// Left true against a dead host, the app would just burn battery
-        /// retrying while the policy described collection that wasn't happening.
+        /// Analytics, leaderboards and death echoes all talk to the same host.
+        /// While it was false the game shipped completely blind — the drop-off
+        /// funnel, deaths-per-floor and time-per-floor that this client already
+        /// gathers were all being thrown away, which is exactly the data needed
+        /// to tune a rage platformer.
         ///
-        /// TO GO LIVE LATER: stand the server up, point Endpoint at it, flip this
-        /// to true, put the player-facing analytics opt-out back on the Settings
-        /// screen, and update the privacy policy + Data safety form to match.
+        /// Sends are fire-and-forget with an 8-15s timeout and a capped queue, so
+        /// a host that is briefly down costs a few dropped events and nothing
+        /// else — it can never stall or crash the game.
+        ///
+        /// IF YOU EVER NEED TO GO DARK AGAIN: set this back to false and every
+        /// request in the game stops at the source.
         /// </summary>
-        public static readonly bool ServerLive = false;
+        public static readonly bool ServerLive = true;
 
         // ====== EDIT THIS ONE LINE when you deploy ======
         // Local testing (Unity Editor):  "http://localhost:3000/collect"
-        // Live (after deploying to Render): "https://<your-app>.onrender.com/collect"
-        public const string Endpoint = "https://trust-issues-analytics.onrender.com/collect";
+        // Live: the deployment's own origin + "/collect".
+        //
+        // NOTE: Leaderboard.Host must point at the SAME origin (it just uses
+        // different paths), so change both together when the host moves.
+        public const string Endpoint = "https://game-mocha-alpha.vercel.app/collect";
 
         const float FlushInterval = 5f;   // seconds between sends
         const int MaxQueue = 400;          // hard cap so a long offline run can't grow forever

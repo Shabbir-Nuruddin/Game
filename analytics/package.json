@@ -1,0 +1,19 @@
+{
+  "name": "trust-issues-analytics",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Live telemetry collector + dashboard for Trust Issues. Deploys to Vercel; also runs as a plain Node server locally.",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node server/index.js",
+    "schema": "node server/schema.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "pg": "^8.11.5"
+  }
+}

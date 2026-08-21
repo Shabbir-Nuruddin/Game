@@ -9,10 +9,27 @@ require('dotenv').config(); // load .env locally (Render injects env vars direct
 const path = require('path');
 const express = require('express');
 const cors = require('cors');
-const { pool, init } = require('./db');
+const { pool, ready } = require('./db');
 
 const app = express();
 app.set('trust proxy', true); // Render/Neon sit behind a proxy
+
+// EVERY DATABASE ROUTE WAITS FOR THE TABLES TO EXIST.
+//
+// On a long-lived server ready() has already run at boot and resolves
+// instantly. On serverless there is no boot, so the first request into a cold
+// container creates the schema and everything after it is a resolved promise.
+// One guard here beats remembering to await it in nine separate handlers, and
+// it means a fresh deployment against an empty database just works instead of
+// failing with "relation events does not exist".
+//
+// /healthz is excluded by path so it can still answer when the database is
+// unreachable — being able to say "server up, database down" is the entire
+// point of a health check.
+app.use((req, res, next) => {
+  if (req.path === '/healthz') return next();
+  ready().then(() => next()).catch(next);
+});
 
 // ---- Ingest -------------------------------------------------------------
 // The game posts as text/plain (a "simple" CORS request -> no preflight),
@@ -63,7 +80,32 @@ app.post('/collect', async (req, res) => {
   }
 });
 
-app.get('/healthz', (_req, res) => res.json({ ok: true }));
+// A health check that only proves the process is running tells you nothing you
+// could not learn from the page loading. This one reports the two things that
+// actually go wrong on a fresh deploy — whether DATABASE_URL was set at all, and
+// whether the database answers — so a failure names its own cause instead of
+// sending someone digging through deploy logs.
+app.get('/healthz', async (_req, res) => {
+  const out = {
+    ok: true,
+    database_url_set: Boolean(process.env.DATABASE_URL),
+    pooled: /-pooler\./.test(process.env.DATABASE_URL || ''),
+  };
+  try {
+    await ready();
+    const r = await pool.query(
+      `SELECT count(*)::int AS n FROM information_schema.tables
+        WHERE table_schema='public' AND table_name IN ('events','scores','echoes')`,
+    );
+    out.database = 'connected';
+    out.tables = r.rows[0].n;
+  } catch (err) {
+    out.ok = false;
+    out.database = 'unreachable';
+    out.error = err.message;
+  }
+  res.status(out.ok ? 200 : 503).json(out);
+});
 
 // ---- Leaderboard (open, like /collect) ----------------------------------
 // The game posts JSON scores and reads back the top 20. Kept BEFORE the auth
@@ -366,7 +408,25 @@ app.use((err, _req, res, _next) => {
   res.status(500).json({ error: 'server error' });
 });
 
-const PORT = process.env.PORT || 3000;
-init()
-  .then(() => app.listen(PORT, () => console.log(`Analytics server on :${PORT}`)))
-  .catch((e) => { console.error('startup failed:', e); process.exit(1); });
+// ---- Startup ------------------------------------------------------------
+//
+// Two hosts, two lifecycles.
+//
+// A long-lived server (local, Render, a VPS) boots once: create the schema,
+// then listen. A serverless host (Vercel) has no boot at all — it imports this
+// file and calls the exported handler — so `app.listen` must NOT run there, or
+// the function hangs holding a port nobody is connected to.
+//
+// Schema creation needs no manual step on either host. ready() (db.js) creates
+// the tables once and caches the promise, so calling it at boot here and from
+// the guard middleware above is the same single run — the long-lived server
+// still fails fast at startup if the database is unreachable, and serverless
+// gets the schema on its first cold request.
+module.exports = app;
+
+if (!process.env.VERCEL) {
+  const PORT = process.env.PORT || 3000;
+  ready()
+    .then(() => app.listen(PORT, () => console.log(`Analytics server on :${PORT}`)))
+    .catch((e) => { console.error('startup failed:', e); process.exit(1); });
+}

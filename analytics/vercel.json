@@ -1,0 +1,37 @@
+{
+  "version": 2,
+
+  "//": [
+    "WHY THIS USES builds/routes INSTEAD OF THE MODERN rewrites KEY.",
+    "",
+    "Vercel's zero-config detection sees a `public/` directory and concludes the",
+    "project is a static site: it publishes public/ to the CDN and never builds",
+    "the function. Every server route then returns Vercel's own 404 because the",
+    "request never reaches Express, and the dashboard loads WITHOUT its password",
+    "prompt because express's auth middleware is never in the path either.",
+    "",
+    "Declaring `builds` switches zero-config off entirely, which is exactly what",
+    "this project wants: server/index.js already serves public/ itself (behind",
+    "auth), so Vercel must not serve it separately. One route sends everything",
+    "to the Express app and it does its own routing, identically to running it",
+    "locally with `npm start`.",
+    "",
+    "includeFiles is required for public/: @vercel/node traces require() calls",
+    "to decide what to bundle, and express.static reads that folder at runtime",
+    "rather than requiring it, so it would otherwise be missing from the deploy."
+  ],
+
+  "builds": [
+    {
+      "src": "api/index.js",
+      "use": "@vercel/node",
+      "config": {
+        "includeFiles": ["public/**", "server/**"]
+      }
+    }
+  ],
+
+  "routes": [
+    { "src": "/(.*)", "dest": "/api/index.js" }
+  ]
+}

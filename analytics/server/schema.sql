@@ -56,3 +56,21 @@ CREATE TABLE IF NOT EXISTS echoes (
   cause       text                  -- what killed them (shown as the whisper line)
 );
 CREATE INDEX IF NOT EXISTS idx_echoes_lookup ON echoes (mode, level_index, day, id DESC);
+
+-- ---------------------------------------------------------------------------
+-- RETENTION
+--
+-- The free Postgres tier is 0.5 GB. An events row plus its four indexes costs
+-- roughly 450 bytes, so the ceiling is about 1.2 million events — and a rage
+-- game is an event firehose, because every death is a row.
+--
+-- Nothing in the dashboard looks further back than a few weeks, and the privacy
+-- policy promises deletion or aggregation within 24 months, so raw events have
+-- no reason to live forever. Run this occasionally (Neon's SQL Editor is fine,
+-- or wire it to a scheduled job) to keep the table bounded:
+--
+--   DELETE FROM events WHERE received_at < now() - interval '90 days';
+--   VACUUM FULL events;   -- actually returns the disk space to the free tier
+--
+-- Scores are one row per (mode, device, day) and are tiny — leave them alone.
+-- ---------------------------------------------------------------------------

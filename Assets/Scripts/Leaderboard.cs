@@ -25,7 +25,7 @@ namespace TrustIssues
     public static class Leaderboard
     {
         // Same host as Analytics.Endpoint (just different paths).
-        public const string Host = "https://trust-issues-analytics.onrender.com";
+        public const string Host = "https://game-mocha-alpha.vercel.app";
 
         /// <summary>
         /// The leaderboard's OWN on/off switch, deliberately separate from
